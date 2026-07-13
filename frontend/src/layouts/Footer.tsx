@@ -1,11 +1,13 @@
 import React from 'react'
+import { Gamepad2 } from 'lucide-react'
 
 export const Footer: React.FC = () => {
   return (
     <footer className="w-full py-12 bg-surface-container-lowest dark:bg-on-background border-t border-outline-variant/30 dark:border-outline/20">
       <div className="flex flex-col md:flex-row justify-between items-center px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto gap-base">
-        <div className="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed mb-4 md:mb-0">
-          QuizzApp
+        <div className="flex items-center gap-2 font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed mb-4 md:mb-0">
+          <Gamepad2 className="w-6 h-6 text-primary" />
+          <span>QuizzApp</span>
         </div>
         <div className="font-label-bold text-label-bold text-on-surface-variant dark:text-outline-variant flex flex-col md:flex-row gap-4 items-center">
           <span>© 2026 QuizzApp. All rights reserved.</span>
