@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { Gamepad2, Menu, X } from 'lucide-react'
+import { NavLink, Link } from 'react-router-dom'
+import { Gamepad2, Menu, X, LogIn } from 'lucide-react'
 
 interface HeaderProps {
   onGetStartedClick?: () => void
@@ -60,14 +60,21 @@ export const Header: React.FC<HeaderProps> = ({ onGetStartedClick }) => {
           </NavLink>
         </nav>
 
-        <div className="flex items-center gap-base md:gap-gutter">
-          {/* Desktop Get Started Button */}
-          <button 
-            onClick={onGetStartedClick}
-            className="hidden md:block font-button text-button bg-primary text-on-primary rounded-full px-6 py-3 shadow-level-1 hover:shadow-level-2 hover:-translate-y-1 transition-all active:scale-95"
+        <div className="flex items-center gap-3">
+          {/* Desktop Auth Buttons */}
+          <Link
+            to="/login"
+            className="hidden md:inline-flex items-center gap-1.5 font-button text-button text-primary border-2 border-primary/30 rounded-full px-5 py-2.5 hover:border-primary hover:bg-primary-fixed/20 transition-all"
           >
-            Get Started
-          </button>
+            <LogIn className="w-4 h-4" />
+            Log In
+          </Link>
+          <Link
+            to="/register"
+            className="hidden md:block font-button text-button bg-primary text-on-primary rounded-full px-6 py-2.5 shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-95"
+          >
+            Sign Up
+          </Link>
 
           {/* Mobile Hamburger Toggle */}
           <button
@@ -117,15 +124,23 @@ export const Header: React.FC<HeaderProps> = ({ onGetStartedClick }) => {
           >
             Feedback
           </NavLink>
-          <button
-            onClick={() => {
-              setIsMenuOpen(false)
-              if (onGetStartedClick) onGetStartedClick()
-            }}
-            className="font-button text-button bg-primary text-on-primary rounded-full px-6 py-4 shadow-level-1 hover:shadow-level-2 transition-all active:scale-95 text-center mt-2 w-full"
-          >
-            Get Started
-          </button>
+          <div className="flex flex-col gap-3 mt-2">
+            <Link
+              to="/login"
+              onClick={() => setIsMenuOpen(false)}
+              className="font-button text-button text-primary border-2 border-primary/40 rounded-full px-6 py-3 text-center hover:border-primary hover:bg-primary-fixed/20 transition-all flex items-center justify-center gap-2"
+            >
+              <LogIn className="w-4 h-4" />
+              Log In
+            </Link>
+            <Link
+              to="/register"
+              onClick={() => setIsMenuOpen(false)}
+              className="font-button text-button bg-primary text-on-primary rounded-full px-6 py-3 shadow-md text-center hover:shadow-lg transition-all active:scale-95"
+            >
+              Sign Up
+            </Link>
+          </div>
         </div>
       )}
     </header>
