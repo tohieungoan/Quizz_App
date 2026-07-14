@@ -37,7 +37,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     await new Promise((r) => setTimeout(r, 1500))
     setLoading(false)
     setSuccess(true)
-    setTimeout(() => navigate('/'), 1000)
+    setTimeout(() => navigate('/dashboard'), 1000)
   }
 
   if (success) {

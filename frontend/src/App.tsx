@@ -6,12 +6,13 @@ import { LandingPage } from './pages/LandingPage'
 import { AboutUs } from './pages/AboutUs'
 import { Feedback } from './pages/Feedback'
 import { AuthPage } from './pages/AuthPage'
+import { Dashboard } from './pages/Dashboard'
 
 const App: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register'
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname.startsWith('/dashboard')
 
   const handleGetStarted = () => {
     navigate('/register')
@@ -23,6 +24,7 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/register" element={<AuthPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     )
   }

@@ -58,7 +58,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchLogin }) => 
     await new Promise((r) => setTimeout(r, 1500))
     setLoading(false)
     setSuccess(true)
-    setTimeout(() => navigate('/'), 1200)
+    setTimeout(() => navigate('/dashboard'), 1200)
   }
 
   if (success) {
