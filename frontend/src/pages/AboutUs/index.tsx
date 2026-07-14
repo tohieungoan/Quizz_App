@@ -42,7 +42,7 @@ export const AboutUs: React.FC = () => {
           {/* Hero Right Abstract Illustration Area */}
           <div className="relative z-10 h-[500px] hidden lg:flex items-center justify-center">
             <div className="w-[400px] h-[400px] bg-gradient-to-tr from-primary/10 to-secondary/10 rounded-[40px] rotate-12 blur-sm absolute" />
-            <div className="w-[380px] h-[380px] bg-white rounded-[32px] shadow-premium relative z-10 p-8 flex flex-col justify-between border border-outline-variant/30 overflow-hidden">
+            <div className="w-[380px] h-[380px] bg-white rounded-[32px] shadow-premium relative z-10 p-8 flex flex-col justify-between border border-outline-variant/30">
               <div className="absolute -right-10 -top-10 w-40 h-40 bg-secondary/5 rounded-full blur-2xl" />
               
               <div className="flex justify-between items-center mb-8">
@@ -61,24 +61,24 @@ export const AboutUs: React.FC = () => {
               </div>
 
               {/* Floating Stat Card 1 */}
-              <div className="absolute -left-8 top-20 bg-white/70 backdrop-blur-md p-4 rounded-xl shadow-lg flex items-center gap-3 border border-white/50 animate-bounce" style={{ animationDuration: '6s' }}>
-                <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-white">
+              <div className="absolute -left-12 top-28 bg-white/80 backdrop-blur-md p-4 rounded-xl shadow-lg flex items-center gap-3 border border-white/50 min-w-[180px] whitespace-nowrap animate-bounce" style={{ animationDuration: '6s' }}>
+                <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-white flex-shrink-0">
                   <Award className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <div className="text-xs text-on-surface-variant font-medium">Top Rated</div>
-                  <div className="font-headline-md text-sm font-bold text-on-surface">4.9/5 Stars</div>
+                  <div className="text-[10px] text-on-surface-variant font-medium leading-none">Top Rated</div>
+                  <div className="font-headline-md text-sm font-bold text-on-surface mt-0.5">4.9/5 Stars</div>
                 </div>
               </div>
 
               {/* Floating Stat Card 2 */}
-              <div className="absolute -right-8 bottom-20 bg-white/70 backdrop-blur-md p-4 rounded-xl shadow-lg flex items-center gap-3 border border-white/50 animate-bounce" style={{ animationDuration: '6s', animationDelay: '2s' }}>
-                <div className="w-10 h-10 bg-tertiary rounded-full flex items-center justify-center text-white">
+              <div className="absolute -right-12 bottom-20 bg-white/80 backdrop-blur-md p-4 rounded-xl shadow-lg flex items-center gap-3 border border-white/50 min-w-[180px] whitespace-nowrap animate-bounce" style={{ animationDuration: '6s', animationDelay: '2s' }}>
+                <div className="w-10 h-10 bg-tertiary rounded-full flex items-center justify-center text-white flex-shrink-0">
                   <Zap className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <div className="text-xs text-on-surface-variant font-medium">Active Users</div>
-                  <div className="font-headline-md text-sm font-bold text-on-surface">10k+ Daily</div>
+                  <div className="text-[10px] text-on-surface-variant font-medium leading-none">Active Users</div>
+                  <div className="font-headline-md text-sm font-bold text-on-surface mt-0.5">10k+ Daily</div>
                 </div>
               </div>
             </div>

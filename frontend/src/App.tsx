@@ -14,23 +14,7 @@ const App: React.FC = () => {
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/register'
 
   const handleGetStarted = () => {
-    const scrollAndFocus = () => {
-      const formElement = document.getElementById('joinGameForm')
-      if (formElement) {
-        formElement.scrollIntoView({ behavior: 'smooth' })
-        const roomCodeInput = document.getElementById('roomCode')
-        if (roomCodeInput) {
-          roomCodeInput.focus()
-        }
-      }
-    }
-
-    if (location.pathname !== '/') {
-      navigate('/')
-      setTimeout(scrollAndFocus, 100)
-    } else {
-      scrollAndFocus()
-    }
+    navigate('/register')
   }
 
   // Auth routes render without Header & Footer
