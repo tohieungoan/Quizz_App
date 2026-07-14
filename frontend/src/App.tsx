@@ -5,10 +5,13 @@ import { Footer } from './layouts/Footer'
 import { LandingPage } from './pages/LandingPage'
 import { AboutUs } from './pages/AboutUs'
 import { Feedback } from './pages/Feedback'
+import { AuthPage } from './pages/AuthPage'
 
 const App: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
+
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register'
 
   const handleGetStarted = () => {
     const scrollAndFocus = () => {
@@ -28,6 +31,16 @@ const App: React.FC = () => {
     } else {
       scrollAndFocus()
     }
+  }
+
+  // Auth routes render without Header & Footer
+  if (isAuthRoute) {
+    return (
+      <Routes>
+        <Route path="/login" element={<AuthPage />} />
+        <Route path="/register" element={<AuthPage />} />
+      </Routes>
+    )
   }
 
   return (
