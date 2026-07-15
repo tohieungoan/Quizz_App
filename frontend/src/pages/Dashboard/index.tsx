@@ -84,6 +84,15 @@ export const Dashboard: React.FC = () => {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [activeReviewItem, setActiveReviewItem] = useState<any>(null)
+  
+  // Create Room Configuration Modal States
+  const [hostRoomModalOpen, setHostRoomModalOpen] = useState(false)
+  const [selectedQuizId, setSelectedQuizId] = useState<string>('1')
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('1')
+  const [roomTimeLimit, setRoomTimeLimit] = useState<number>(30)
+  const [roomPassword, setRoomPassword] = useState<string>('')
+  const [randomizeQuestions, setRandomizeQuestions] = useState<boolean>(true)
+  const [randomizeAnswers, setRandomizeAnswers] = useState<boolean>(false)
 
   // AI Chat and Mobile Sidebar States
   const [isAiChatOpen, setIsAiChatOpen] = useState(false)
@@ -559,12 +568,13 @@ export const Dashboard: React.FC = () => {
                         onClick={() => {
                           const enteredCode = code.join('')
                           if (enteredCode.length === 6) {
-                            alert(`Joining room: ${enteredCode}`)
-                          } else {
-                            alert('Please enter a 6-digit code.')
+                            navigate('/lobby', {
+                              state: { roomCode: enteredCode, nickname: 'Sarah Jenkins' }
+                            })
                           }
                         }}
-                        className="w-full bg-secondary hover:bg-secondary/95 text-white font-button py-3 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm relative"
+                        disabled={code.join('').length < 6}
+                        className="w-full bg-secondary hover:bg-secondary/95 text-white font-button py-3 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm relative disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md"
                       >
                         Join Live Session
                         <ArrowRight className="w-4 h-4" />
@@ -845,20 +855,19 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             )}
-
-            {/* TAB: JOIN ROOM */}
+               {/* TAB: JOIN ROOM */}
             {activeTab === 'join_room' && (
               <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-200">
                 {/* Left Card: Join Room */}
-                <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-8 flex flex-col items-center justify-center text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center mb-4 shadow-sm">
-                    <Zap className="w-8 h-8" />
-                  </div>
-                  <h2 className="font-headline-md text-lg font-bold text-on-surface mb-1">Join a Room</h2>
-                  <p className="font-body-md text-xs text-on-surface-variant mb-6">Enter the 6-digit code from your instructor.</p>
+                <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-8 flex flex-col justify-between text-center min-h-[320px]">
+                  <div>
+                    <div className="w-16 h-16 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center mb-4 shadow-sm mx-auto">
+                      <Zap className="w-8 h-8" />
+                    </div>
+                    <h2 className="font-headline-md text-lg font-bold text-on-surface mb-1">Join a Room</h2>
+                    <p className="font-body-md text-xs text-on-surface-variant mb-6">Enter the 6-digit code from your instructor.</p>
 
-                  <div className="w-full space-y-4">
-                    <div className="flex justify-center gap-2">
+                    <div className="flex justify-center gap-2 mb-6">
                       {code.map((num, i) => (
                         <input
                           key={i}
@@ -874,108 +883,75 @@ export const Dashboard: React.FC = () => {
                         />
                       ))}
                     </div>
-                    <button
-                      onClick={() => alert(`Connecting with code ${code.join('')}...`)}
-                      className="w-full bg-secondary text-white font-button py-3 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
-                    >
-                      Join Session
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
                   </div>
+                  <button
+                    onClick={() => {
+                      const enteredCode = code.join('')
+                      if (enteredCode.length === 6) {
+                        navigate('/lobby', {
+                          state: { roomCode: enteredCode, nickname: 'Sarah Jenkins' }
+                        })
+                      }
+                    }}
+                    disabled={code.join('').length < 6}
+                    className="w-full bg-secondary text-white font-button py-3.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md"
+                  >
+                    Join Session
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
                 </div>
 
                 {/* Right Card: Host a Session */}
-                <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-8 flex flex-col">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shadow-sm">
-                      <GraduationCap className="w-6 h-6" />
+                <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-8 flex flex-col justify-between min-h-[320px]">
+                  <div>
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shadow-sm">
+                        <GraduationCap className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h2 className="font-headline-md text-base font-bold text-on-surface">Host a Session</h2>
+                        <p className="font-body-md text-xs text-on-surface-variant">Create a room for your members.</p>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="font-headline-md text-base font-bold text-on-surface">Host a Session</h2>
-                      <p className="font-body-md text-xs text-on-surface-variant">Create a room for your members.</p>
+
+                    <div className="space-y-6">
+                      {/* Game Mode */}
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-outline uppercase tracking-wider mb-3">Game Mode</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['classic', 'fun', 'team'] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => setSelectedGameMode(mode)}
+                              className={`flex flex-col items-center gap-1.5 p-3.5 border rounded-xl transition-all ${selectedGameMode === mode
+                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-primary font-bold'
+                                : 'border-outline-variant/30 hover:bg-surface-container-low text-on-surface-variant'
+                                }`}
+                            >
+                              {mode === 'classic' && <Trophy className="w-5 h-5" />}
+                              {mode === 'fun' && <Zap className="w-5 h-5" />}
+                              {mode === 'team' && <Users className="w-5 h-5" />}
+                              <span className="text-[11px] uppercase tracking-wide">{mode}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    {/* Game Mode */}
-                    <div>
-                      <label className="block text-[10px] font-extrabold text-outline uppercase tracking-wider mb-3">Game Mode</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['classic', 'fun', 'team'] as const).map((mode) => (
-                          <button
-                            key={mode}
-                            onClick={() => setSelectedGameMode(mode)}
-                            className={`flex flex-col items-center gap-1.5 p-3.5 border rounded-xl transition-all ${selectedGameMode === mode
-                              ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-primary font-bold'
-                              : 'border-outline-variant/30 hover:bg-surface-container-low text-on-surface-variant'
-                              }`}
-                          >
-                            {mode === 'classic' && <Trophy className="w-5 h-5" />}
-                            {mode === 'fun' && <Zap className="w-5 h-5" />}
-                            {mode === 'team' && <Users className="w-5 h-5" />}
-                            <span className="text-[11px] uppercase tracking-wide">{mode}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Settings Panel */}
-                    <div className="space-y-4 bg-surface-container-low/40 p-4 rounded-xl border border-outline-variant/10">
-                      {/* Progression Mode */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-on-surface">Progression</span>
-                          <span className="text-[10px] text-on-surface-variant">Manual vs Automatic rounds</span>
-                        </div>
-                        <div className="flex bg-outline-variant/20 p-1 rounded-lg">
-                          <button
-                            onClick={() => setProgressionMode('manual')}
-                            className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${progressionMode === 'manual' ? 'bg-white shadow-sm text-primary' : 'text-on-surface-variant'
-                              }`}
-                          >
-                            Manual
-                          </button>
-                          <button
-                            onClick={() => setProgressionMode('auto')}
-                            className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${progressionMode === 'auto' ? 'bg-white shadow-sm text-primary' : 'text-on-surface-variant'
-                              }`}
-                          >
-                            Auto
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Leaderboard Toggle */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-on-surface">Leaderboard</span>
-                          <span className="text-[10px] text-on-surface-variant">Show rankings after rounds</span>
-                        </div>
-                        <button
-                          onClick={() => setLeaderboardToggle(!leaderboardToggle)}
-                          className={`w-9 h-5 rounded-full relative p-0.5 transition-colors ${leaderboardToggle ? 'bg-secondary' : 'bg-outline-variant/40'
-                            }`}
-                        >
-                          <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${leaderboardToggle ? 'translate-x-4' : 'translate-x-0'
-                            }`} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Action Button */}
-                    <button
-                      onClick={() => alert(`Room created in ${selectedGameMode} mode!`)}
-                      className="w-full bg-primary text-white font-button py-3.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm"
-                    >
-                      Create Room
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setHostRoomModalOpen(true)}
+                    className="w-full bg-primary text-white font-button py-3.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm mt-6"
+                  >
+                    Create Room
+                    <Plus className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )}
 
             {/* TAB: ASSIGNED EXAMS */}
+
             {activeTab === 'assigned_exams' && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div>
@@ -1884,6 +1860,179 @@ export const Dashboard: React.FC = () => {
               Send
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Modal: Create Room Configuration Setup */}
+      {hostRoomModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-lg w-full m-4 border border-outline-variant/20 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <GraduationCap className="w-5.5 h-5.5" />
+                </div>
+                <div>
+                  <h3 className="font-headline-md text-base font-bold text-on-surface">Room Customization</h3>
+                  <p className="text-xs text-on-surface-variant">Configure settings before hosting your live session</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setHostRoomModalOpen(false)}
+                className="text-on-surface-variant hover:text-error p-1.5 hover:bg-surface-container-low rounded-lg transition-all"
+              >
+                <Plus className="w-5 h-5 rotate-45" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                // Sinh mã phòng random 6 chữ số
+                const generatedRoomCode = Math.floor(100000 + Math.random() * 900000).toString()
+                setHostRoomModalOpen(false)
+                
+                // Điều hướng sang trang Lobby Waiting với vai trò là Host/Teacher
+                navigate('/lobby', {
+                  state: {
+                    roomCode: generatedRoomCode,
+                    nickname: 'Host / Sarah Jenkins',
+                    isHost: true,
+                    settings: {
+                      quizId: selectedQuizId,
+                      groupId: selectedGroupId,
+                      gameMode: selectedGameMode,
+                      progressionMode,
+                      leaderboardEnabled: leaderboardToggle,
+                      randomizeQuestions,
+                      randomizeAnswers
+                    }
+                  }
+                })
+              }}
+              className="space-y-5"
+            >
+              {/* Select Quiz */}
+              <div>
+                <label className="block text-xs font-extrabold mb-1.5 uppercase tracking-wider text-on-surface-variant">Select Quiz</label>
+                <select
+                  value={selectedQuizId}
+                  onChange={(e) => setSelectedQuizId(e.target.value)}
+                  className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 text-sm outline-none"
+                >
+                  {hostQuizzes.map(quiz => (
+                    <option key={quiz.id} value={quiz.id}>{quiz.title} ({quiz.questions} Qs - {quiz.level})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Assign to Group */}
+              <div>
+                <label className="block text-xs font-extrabold mb-1.5 uppercase tracking-wider text-on-surface-variant">Target Group</label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 text-sm outline-none"
+                >
+                  <option value="freedom">Freedom (Guest or members from other groups can join)</option>
+                  {hostGroups.map(group => (
+                    <option key={group.id} value={group.id}>{group.name} ({group.membersCount} members)</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Settings Panel: Progression & Leaderboard */}
+              <div className="bg-surface-container-low/40 p-4 rounded-xl border border-outline-variant/10 space-y-4">
+                {/* Progression Mode */}
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-on-surface">Progression</span>
+                    <span className="text-[10px] text-on-surface-variant">Manual vs Automatic rounds</span>
+                  </div>
+                  <div className="flex bg-outline-variant/20 p-1 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setProgressionMode('manual')}
+                      className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${progressionMode === 'manual' ? 'bg-white shadow-sm text-primary' : 'text-on-surface-variant'}`}
+                    >
+                      Manual
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProgressionMode('auto')}
+                      className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${progressionMode === 'auto' ? 'bg-white shadow-sm text-primary' : 'text-on-surface-variant'}`}
+                    >
+                      Auto
+                    </button>
+                  </div>
+                </div>
+
+                {/* Leaderboard Toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-on-surface">Leaderboard</span>
+                    <span className="text-[10px] text-on-surface-variant">Show rankings after rounds</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLeaderboardToggle(!leaderboardToggle)}
+                    className={`w-9 h-5 rounded-full relative p-0.5 transition-colors ${leaderboardToggle ? 'bg-secondary' : 'bg-outline-variant/40'}`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${leaderboardToggle ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Switches: AI-Generated Questions & Answer Order */}
+              <div className="bg-surface-container-low/40 p-4 rounded-xl border border-outline-variant/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-on-surface">AI-Generated Similar Questions</span>
+                    <span className="text-[10px] text-on-surface-variant">Use AI to generate similar questions dynamically</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRandomizeQuestions(!randomizeQuestions)}
+                    className={`w-9 h-5 rounded-full relative p-0.5 transition-colors ${randomizeQuestions ? 'bg-secondary' : 'bg-outline-variant/40'}`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${randomizeQuestions ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-on-surface">Randomize Answer Options</span>
+                    <span className="text-[10px] text-on-surface-variant">Shuffle choice buttons values dynamically</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRandomizeAnswers(!randomizeAnswers)}
+                    className={`w-9 h-5 rounded-full relative p-0.5 transition-colors ${randomizeAnswers ? 'bg-secondary' : 'bg-outline-variant/40'}`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${randomizeAnswers ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit & Cancel Actions */}
+              <div className="flex justify-end gap-3 mt-8">
+                <button
+                  type="button"
+                  onClick={() => setHostRoomModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-low text-xs font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white font-button text-xs shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                >
+                  Launch Room 🚀
+                </button>
+              </div>
+            </form>
+
+          </div>
         </div>
       )}
 
