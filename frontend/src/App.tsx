@@ -9,12 +9,13 @@ import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { LobbyWaiting } from './pages/LobbyWaiting'
+import { FormalExam } from './pages/FormalExam'
 
 const App: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname.startsWith('/dashboard') || location.pathname === '/lobby'
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname.startsWith('/dashboard') || location.pathname === '/lobby' || location.pathname === '/exam'
 
   const handleGetStarted = () => {
     navigate('/register')
@@ -28,6 +29,7 @@ const App: React.FC = () => {
         <Route path="/register" element={<AuthPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/lobby" element={<LobbyWaiting />} />
+        <Route path="/exam" element={<FormalExam />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     )

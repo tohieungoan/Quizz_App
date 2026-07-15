@@ -984,7 +984,7 @@ export const Dashboard: React.FC = () => {
                           </td>
                           <td className="py-4 px-8 text-right">
                             <button
-                              onClick={() => alert(`Starting exam: ${exam.title}`)}
+                              onClick={() => navigate('/exam', { state: { examTitle: exam.title, subject: exam.subject } })}
                               className="bg-primary hover:bg-primary-container text-white text-xs font-bold py-2.5 px-6 rounded-lg shadow-sm hover:shadow-md transition-shadow active:scale-95 duration-100"
                             >
                               Start Exam
