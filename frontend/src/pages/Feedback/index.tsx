@@ -4,7 +4,7 @@ import { Megaphone, Star, Send } from 'lucide-react'
 export const Feedback: React.FC = () => {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState('student')
+  const [role, setRole] = useState('member')
   const [rating, setRating] = useState(0)
   const [hoverRating, setHoverRating] = useState(0)
   const [message, setMessage] = useState('')
@@ -20,7 +20,7 @@ export const Feedback: React.FC = () => {
       setSubmitted(true)
       setName('')
       setEmail('')
-      setRole('student')
+      setRole('member')
       setRating(0)
       setMessage('')
     }, 1200)
@@ -110,7 +110,7 @@ export const Feedback: React.FC = () => {
               <div className="flex flex-col gap-3">
                 <label className="font-label-bold text-label-bold text-on-surface">I am a...</label>
                 <div className="flex flex-wrap gap-3">
-                  {['student', 'teacher', 'admin'].map((r) => (
+                  {['member', 'host', 'admin'].map((r) => (
                     <label key={r} className="cursor-pointer relative">
                       <input
                         checked={role === r}

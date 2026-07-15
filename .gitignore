@@ -43,3 +43,6 @@ venv/
 
 # Vercel
 .vercel
+
+# Agent config (local only)
+.agents/

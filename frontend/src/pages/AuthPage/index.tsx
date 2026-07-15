@@ -15,9 +15,9 @@ export const AuthPage: React.FC = () => {
   const [resetEmail, setResetEmail] = useState('')
 
   const testimonials = [
-    { text: 'QuizzApp transformed how I engage my students. Real-time results are incredible!', name: 'Ms. Sarah T.', role: 'High School Teacher' },
+    { text: 'QuizzApp transformed how I engage my members. Real-time results are incredible!', name: 'Ms. Sarah T.', role: 'High School Teacher' },
     { text: 'Our department performance improved 40% after adopting QuizzApp for formal exams.', name: 'Prof. David L.', role: 'University Lecturer' },
-    { text: 'My students actually look forward to quizzes now. The game mode is a hit!', name: 'Mr. James K.', role: 'Middle School Educator' },
+    { text: 'My members actually look forward to quizzes now. The game mode is a hit!', name: 'Mr. James K.', role: 'Middle School Educator' },
   ]
   const [testimonialIdx] = useState(0)
   const testimonial = testimonials[testimonialIdx]
@@ -44,7 +44,7 @@ export const AuthPage: React.FC = () => {
         {/* Background image */}
         <img
           src={landingPage1}
-          alt="QuizzApp - Engage your students"
+          alt="QuizzApp - Engage your members"
           className="absolute inset-0 w-full h-full object-cover"
         />
         {/* Gradient overlay */}
@@ -74,7 +74,7 @@ export const AuthPage: React.FC = () => {
               </div>
               <h1 className="font-headline-xl text-4xl xl:text-5xl text-on-primary leading-tight font-extrabold">
                 Host Live Quizzes.<br />
-                <span className="text-secondary-fixed-dim">Engage Students.</span><br />
+                <span className="text-secondary-fixed-dim">Engage Members.</span><br />
                 Assess Smarter.
               </h1>
               <p className="font-body-lg text-on-primary/80 text-lg max-w-md">
@@ -86,7 +86,7 @@ export const AuthPage: React.FC = () => {
             <div className="grid grid-cols-3 gap-4">
               {[
                 { value: '10K+', label: 'Educators' },
-                { value: '2M+', label: 'Students' },
+                { value: '2M+', label: 'Members' },
                 { value: '50M+', label: 'Quizzes Played' },
               ].map((stat) => (
                 <div

@@ -24,7 +24,7 @@ export const AboutUs: React.FC = () => {
               </span>
             </h1>
             <p className="font-body-lg text-xl text-on-surface-variant font-medium max-w-lg">
-              Empowering educators and inspiring students through gamified learning experiences.
+              Empowering hosts and inspiring members through gamified learning experiences.
             </p>
             <p className="font-body-md text-base text-on-surface-variant max-w-lg leading-relaxed">
               We believe learning shouldn't be a chore. QuizzApp merges high-stakes academic rigor with the dopamine rush of modern gaming, creating an ecosystem where progress is celebrated and anxiety is left behind.
@@ -313,11 +313,11 @@ export const AboutUs: React.FC = () => {
         <div className="max-w-container-max mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 relative z-10 text-center">
           <div className="p-4 space-y-1">
             <div className="font-headline-xl text-4xl lg:text-5xl font-extrabold text-white">500K+</div>
-            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">Students</div>
+            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">Members</div>
           </div>
           <div className="p-4 space-y-1">
             <div className="font-headline-xl text-4xl lg:text-5xl font-extrabold text-white">50K+</div>
-            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">Teachers</div>
+            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">Hosts</div>
           </div>
           <div className="p-4 space-y-1">
             <div className="font-headline-xl text-4xl lg:text-5xl font-extrabold text-white">2M+</div>
@@ -379,7 +379,7 @@ export const AboutUs: React.FC = () => {
               </div>
               <h3 className="font-headline-md text-xl font-bold text-on-surface mb-3">Security</h3>
               <p className="font-body-md text-on-surface-variant text-sm leading-relaxed">
-                Protecting student data with enterprise-grade security protocols and strict privacy standards.
+                Protecting member data with enterprise-grade security protocols and strict privacy standards.
               </p>
             </div>
 
@@ -432,7 +432,7 @@ export const AboutUs: React.FC = () => {
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-secondary opacity-20 rounded-full blur-3xl transform -translate-x-1/2 translate-y-1/2" />
           
           <div className="relative z-10 space-y-6">
-            <h2 className="font-headline-lg text-3xl md:text-5xl font-bold text-white mb-6">Ready to Transform Your Classroom?</h2>
+            <h2 className="font-headline-lg text-3xl md:text-5xl font-bold text-white mb-6">Ready to Transform Your Group?</h2>
             <p className="font-body-lg text-indigo-100 text-lg md:text-xl max-w-2xl mx-auto">
               Join thousands of educators who are making learning an achievement, not a task. Start for free today.
             </p>
