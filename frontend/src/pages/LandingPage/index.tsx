@@ -1,29 +1,74 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import landingPage1 from '@/assets/images/landing-page-1.jpg'
 import landingPage2 from '@/assets/images/landing-page-2.jpg'
 import landingPage3 from '@/assets/images/landing-page-3.jpg'
 
 export const LandingPage: React.FC = () => {
-  const [roomCode, setRoomCode] = useState('')
+  const navigate = useNavigate()
+  const [code, setCode] = useState<string[]>(['', '', '', '', '', ''])
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const [nickname, setNickname] = useState('')
   const [codeError, setCodeError] = useState(false)
   const [nickError, setNickError] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
 
+  // ── 6-digit input handlers (giống Dashboard) ──
+  const handleCodeChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, '').slice(-1)
+    const newCode = [...code]
+    newCode[index] = digit
+    setCode(newCode)
+    if (digit && index < 5) {
+      setTimeout(() => inputRefs.current[index + 1]?.focus(), 0)
+    }
+    if (newCode.every(d => d !== '')) setCodeError(false)
+  }
+
+  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      e.preventDefault()
+      const newCode = [...code]
+      if (code[index]) {
+        newCode[index] = ''
+        setCode(newCode)
+      } else if (index > 0) {
+        newCode[index - 1] = ''
+        setCode(newCode)
+        setTimeout(() => inputRefs.current[index - 1]?.focus(), 0)
+      }
+    } else if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault()
+      inputRefs.current[index - 1]?.focus()
+    } else if (e.key === 'ArrowRight' && index < 5) {
+      e.preventDefault()
+      inputRefs.current[index + 1]?.focus()
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault()
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (!pasted) return
+    const newCode = [...code]
+    for (let i = 0; i < 6; i++) newCode[i] = pasted[i] || ''
+    setCode(newCode)
+    const focusIndex = Math.min(pasted.length, 5)
+    setTimeout(() => inputRefs.current[focusIndex]?.focus(), 0)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-
+    const roomCode = code.join('')
     let isValid = true
 
-    // Validate Room Code (must be 6 digits)
-    if (!/^\d{6}$/.test(roomCode)) {
+    if (roomCode.length < 6 || !/^\d{6}$/.test(roomCode)) {
       setCodeError(true)
       isValid = false
     } else {
       setCodeError(false)
     }
 
-    // Validate Nickname (cannot be empty)
     if (nickname.trim() === '') {
       setNickError(true)
       isValid = false
@@ -34,9 +79,8 @@ export const LandingPage: React.FC = () => {
     if (isValid) {
       setIsConnecting(true)
       setTimeout(() => {
-        alert(`Connecting to game room: ${roomCode} as ${nickname}`)
-        setIsConnecting(false)
-      }, 1000)
+        navigate('/lobby', { state: { roomCode, nickname: nickname.trim() } })
+      }, 600)
     }
   }
 
@@ -62,21 +106,38 @@ export const LandingPage: React.FC = () => {
             <div className="bg-surface-container-lowest rounded-xl p-8 custom-shadow-level-1 max-w-md mx-auto">
               <h2 className="font-headline-md text-headline-md text-center mb-6 text-on-surface">Join a Game</h2>
               <form onSubmit={handleSubmit} className="flex flex-col gap-4" id="joinGameForm">
-                <div className="flex flex-col gap-1">
-                  <label className="font-label-bold text-label-bold text-on-surface-variant sr-only" htmlFor="roomCode">Room Code</label>
-                  <input 
-                    type="text"
-                    id="roomCode"
-                    maxLength={6}
-                    placeholder="Enter 6-digit room code"
-                    value={roomCode}
-                    onChange={(e) => setRoomCode(e.target.value.replace(/\D/g, ''))}
-                    className={`w-full rounded-lg border-2 px-4 py-4 font-body-md focus:border-primary focus:ring-0 transition-colors text-center text-lg tracking-widest placeholder:tracking-normal placeholder:text-outline ${
-                      codeError ? 'border-error' : 'border-outline-variant'
-                    }`}
-                  />
+                {/* 6 individual digit boxes */}
+                <div>
+                  <label className="font-label-bold text-label-bold text-on-surface-variant sr-only">Room Code</label>
+                  <div className="flex justify-center gap-2 mb-1">
+                    {code.map((digit, i) => (
+                      <input
+                        key={i}
+                        ref={(el) => (inputRefs.current[i] = el)}
+                        value={digit}
+                        onChange={(e) => handleCodeChange(i, e.target.value)}
+                        onKeyDown={(e) => handleCodeKeyDown(i, e)}
+                        onPaste={handlePaste}
+                        placeholder="•"
+                        id={i === 0 ? 'roomCode' : undefined}
+                        className={`w-12 h-14 text-center font-headline-md text-xl font-bold rounded-xl border-2 focus:outline-none transition-colors bg-white shadow-sm
+                          placeholder:text-outline-variant/50
+                          ${
+                            codeError
+                              ? 'border-error focus:border-error focus:ring-1 focus:ring-error'
+                              : digit
+                              ? 'border-primary bg-primary/5 text-primary'
+                              : 'border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary'
+                          } ${isConnecting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        disabled={isConnecting}
+                      />
+                    ))}
+                  </div>
                   {codeError && (
-                    <span className="text-error font-body-md text-sm" id="codeError">
+                    <span className="text-error font-body-md text-sm block text-center" id="codeError">
                       Please enter a valid 6-digit code.
                     </span>
                   )}
@@ -103,9 +164,12 @@ export const LandingPage: React.FC = () => {
                   disabled={isConnecting}
                   type="submit"
                   id="joinBtn"
-                  className="mt-4 font-button text-button bg-secondary text-on-secondary w-full py-4 rounded-full custom-shadow-level-1 hover:custom-shadow-level-2 hover:-translate-y-1 transition-all active:scale-95 disabled:opacity-80"
+                  className="mt-4 font-button text-button bg-secondary text-on-secondary w-full py-4 rounded-full custom-shadow-level-1 hover:custom-shadow-level-2 hover:-translate-y-1 transition-all active:scale-95 disabled:opacity-80 flex items-center justify-center gap-2"
                 >
-                  {isConnecting ? 'Connecting...' : 'Join Game'}
+                  {isConnecting
+                    ? (<><span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Joining room...</>)
+                    : 'Join Game'
+                  }
                 </button>
               </form>
             </div>
