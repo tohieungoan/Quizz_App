@@ -15,7 +15,7 @@ export const LandingPage: React.FC = () => {
 
     let isValid = true
 
-    // Validate Room Code (phải là 6 chữ số)
+    // Validate Room Code (must be 6 digits)
     if (!/^\d{6}$/.test(roomCode)) {
       setCodeError(true)
       isValid = false
@@ -23,7 +23,7 @@ export const LandingPage: React.FC = () => {
       setCodeError(false)
     }
 
-    // Validate Nickname (không được rỗng)
+    // Validate Nickname (cannot be empty)
     if (nickname.trim() === '') {
       setNickError(true)
       isValid = false
