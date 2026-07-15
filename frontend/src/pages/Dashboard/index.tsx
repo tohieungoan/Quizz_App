@@ -41,27 +41,15 @@ const mockHistory = [
   { id: 16, title: 'Environmental Science Quiz', date: 'Jul 14, 2026', score: '89%' },
 ]
 
-const hostQuizzes = [
-  { id: 1, title: 'Cell Biology Basics', subject: 'Science', level: 'Medium', questions: 15, status: 'PUBLISHED' },
-  { id: 2, title: 'World War II Overview', subject: 'History', level: 'Hard', questions: 25, status: 'DRAFT' },
-  { id: 3, title: 'Algebra I - Linear Equations', subject: 'Math', level: 'Easy', questions: 10, status: 'PUBLISHED' },
-]
 
-const hostExams = [
-  { id: 1, title: 'Midterm Biology 101', groupAssigned: 'Group 10A1', date: 'Oct 25, 2026', status: 'Active' },
-  { id: 2, title: 'Calculus III Quiz', groupAssigned: 'Eng. Int.', date: 'Oct 30, 2026', status: 'Scheduled' },
-]
 
-const hostGroups = [
-  { id: 1, name: 'Group 10A1', subject: 'Mathematics', membersCount: 35, avgPerformance: 88 },
-  { id: 2, name: 'English Intermediate', subject: 'Languages', membersCount: 20, avgPerformance: 92 },
-  { id: 3, name: 'Science 101', subject: 'Science', membersCount: 28, avgPerformance: 85 },
-]
 
 const groupRoster = [
-  { id: 1, name: 'Alex Johnson', email: 'alex.j@member.edu', scores: [85, 92, 78, 95] },
-  { id: 2, name: 'Maria Garcia', email: 'm.garcia@member.edu', scores: [70, 88, 82, 75] },
-  { id: 3, name: 'Liam Smith', email: 'l.smith@member.edu', scores: [95, 98, 92, 100] },
+  { id: 1, name: 'Alex Johnson', email: 'alex.j@member.edu', group: 'Group 10A1', scores: [85, 92, 78, 95, 88, 90, 82, 94] },
+  { id: 2, name: 'Maria Garcia', email: 'm.garcia@member.edu', group: 'Group 10A1', scores: [70, 88, 82, 75] },
+  { id: 3, name: 'Liam Smith', email: 'l.smith@member.edu', group: 'Group 10A1', scores: [95, 98, 92, 100, 96, 99, 97, 95, 100, 98] },
+  { id: 4, name: 'John Doe', email: 'j.doe@member.edu', group: 'English Intensive', scores: [65, 72, 60, 68, 70, 58] },
+  { id: 5, name: 'Emma Watson', email: 'e.watson@member.edu', group: 'English Intensive', scores: [90, 92] }
 ]
 
 export const Dashboard: React.FC = () => {
@@ -71,10 +59,15 @@ export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'join_room' | 'assigned_exams' | 'history' | 'achievements' | 'settings' | 'host_studio'>('overview')
   const [hostSubTab, setHostSubTab] = useState<'quizzes' | 'exams' | 'groups' | 'members'>('quizzes')
   const [examView, setExamView] = useState<'manage' | 'create' | 'report'>('manage')
-  const [groupView, setGroupView] = useState<'list' | 'details'>('list')
+  const [groupView, setGroupView] = useState<'list' | 'details' | 'create'>('list')
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [historyPage, setHistoryPage] = useState(1)
   const ITEMS_PER_PAGE = 5
+
+  // History Tab States
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyScoreFilter, setHistoryScoreFilter] = useState<'all' | 'high' | 'avg' | 'low'>('all')
+  const [historySort, setHistorySort] = useState<'date_desc' | 'date_asc' | 'score_desc' | 'score_asc'>('date_desc')
 
   // Achievements
   const [activeTitle, setActiveTitle] = useState<string | null>('Perfect Score')
@@ -84,7 +77,7 @@ export const Dashboard: React.FC = () => {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [activeReviewItem, setActiveReviewItem] = useState<any>(null)
-  
+
   // Create Room Configuration Modal States
   const [hostRoomModalOpen, setHostRoomModalOpen] = useState(false)
   const [selectedQuizId, setSelectedQuizId] = useState<string>('1')
@@ -118,6 +111,123 @@ export const Dashboard: React.FC = () => {
       }
       setChatMessages(prev => [...prev, { sender: 'ai', text: reply }])
     }, 1000)
+  }
+
+  // Host Quizzes Subtab Filter States
+  const [quizSearch, setQuizSearch] = useState('')
+  const [quizFilterLevel, setQuizFilterLevel] = useState<'all' | 'Easy' | 'Medium' | 'Hard'>('all')
+  const [quizFilterStatus, setQuizFilterStatus] = useState<'all' | 'PUBLISHED' | 'DRAFT'>('all')
+  const [quizSort, setQuizSort] = useState<'title_asc' | 'title_desc' | 'questions_desc' | 'questions_asc'>('title_asc')
+
+  const [quizzesList, setQuizzesList] = useState([
+    { id: 1, title: 'Cell Biology Basics', subject: 'Science', level: 'Medium', questions: 15, status: 'PUBLISHED' },
+    { id: 2, title: 'World War II Overview', subject: 'History', level: 'Hard', questions: 25, status: 'DRAFT' },
+    { id: 3, title: 'Algebra I - Linear Equations', subject: 'Math', level: 'Easy', questions: 10, status: 'PUBLISHED' },
+  ])
+
+  // Host Exams Subtab Filter States
+  const [examSearch, setExamSearch] = useState('')
+  const [examFilterStatus, setExamFilterStatus] = useState<'all' | 'Active' | 'Scheduled'>('all')
+  const [examSort, setExamSort] = useState<'title_asc' | 'title_desc' | 'date_desc' | 'date_asc'>('title_asc')
+
+  // Host Group Subtab Filter States
+  const [groupSearch, setGroupSearch] = useState('')
+  const [groupSort, setGroupSort] = useState<'name_asc' | 'name_desc' | 'members_desc' | 'performance_desc'>('name_asc')
+
+  // Members Directory Subtab Filter States
+  const [memberSearch, setMemberSearch] = useState('')
+  const [memberSort, setMemberSort] = useState<'name_asc' | 'name_desc' | 'performance_desc' | 'performance_asc'>('name_asc')
+  const [memberFilterGroup, setMemberFilterGroup] = useState<string>('all')
+
+  // Question Bank Modal State
+  const [questionBankOpen, setQuestionBankOpen] = useState(false)
+  const [questionBankSearch, setQuestionBankSearch] = useState('')
+  const [questionBank, setQuestionBank] = useState([
+    { id: 1, text: 'What is the purpose of Semantic HTML?', type: 'Multiple Choice', category: 'HTML', dateCreated: '2026-06-15' },
+    { id: 2, text: 'Explain the concept of Virtual DOM in React.', type: 'Essay', category: 'React', dateCreated: '2026-06-18' },
+    { id: 3, text: 'Which CSS unit is relative to the font-size of the root element?', type: 'Multiple Choice', category: 'CSS / Web Fundamentals', dateCreated: '2026-06-20' },
+    { id: 4, text: 'What is the difference between let and var in JS?', type: 'Multiple Choice', category: 'Javascript Basics', dateCreated: '2026-06-22' },
+    { id: 5, text: 'Describe how flex-grow property works in CSS Flexbox.', type: 'Essay', category: 'CSS / Web Fundamentals', dateCreated: '2026-06-25' }
+  ])
+
+  // New Exam Form States
+  const [examTitleInput, setExamTitleInput] = useState('')
+  const [examDurationInput, setExamDurationInput] = useState('60')
+  const [examSubjectInput, setExamSubjectInput] = useState('Biology 101')
+  const [examGroupInput, setExamGroupInput] = useState('Group 10A1')
+  const [examStartDateInput, setExamStartDateInput] = useState('')
+  const [examEndDateInput, setExamEndDateInput] = useState('')
+  const [newExamPublished, setNewExamPublished] = useState(false)
+
+  // Move hostExams to state so it is dynamic
+  const [examsList, setExamsList] = useState([
+    { id: 1, title: 'Midterm Biology 101', groupAssigned: 'Group 10A1', date: 'Oct 25, 2026 09:00 AM', status: 'Active', published: true },
+    { id: 2, title: 'Calculus III Quiz', groupAssigned: 'Eng. Int.', date: 'Oct 30, 2026 02:00 PM', status: 'Scheduled', published: false },
+  ])
+
+  const handleCreateExamSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    // Format date string for display
+    const formattedDate = examStartDateInput
+      ? new Date(examStartDateInput).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      })
+      : 'Oct 25, 2026'
+
+    const newExam = {
+      id: examsList.length + 1,
+      title: examTitleInput || 'Unnamed Exam',
+      groupAssigned: examGroupInput,
+      date: formattedDate,
+      status: newExamPublished ? 'Active' : 'Scheduled',
+      published: newExamPublished
+    }
+
+    setExamsList(prev => [...prev, newExam])
+    setExamView('manage')
+
+    // Reset Form
+    setExamTitleInput('')
+    setExamDurationInput('60')
+    setExamStartDateInput('')
+    setExamEndDateInput('')
+    setNewExamPublished(false)
+  }
+
+  // New Group Form States
+  const [groupNameInput, setGroupNameInput] = useState('')
+  const [groupSubjectInput, setGroupSubjectInput] = useState('Mathematics')
+  const [groupMembersCountInput, setGroupMembersCountInput] = useState('30')
+
+  // Move hostGroups to state so it is dynamic
+  const [groupsList, setGroupsList] = useState([
+    { id: 1, name: 'Group 10A1', subject: 'Mathematics', membersCount: 35, avgPerformance: 88 },
+    { id: 2, name: 'English Intermediate', subject: 'Languages', membersCount: 20, avgPerformance: 92 },
+    { id: 3, name: 'Science 101', subject: 'Science', membersCount: 28, avgPerformance: 85 },
+  ])
+
+  const handleCreateGroupSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const newGroup = {
+      id: groupsList.length + 1,
+      name: groupNameInput || 'Unnamed Group',
+      subject: groupSubjectInput,
+      membersCount: Number(groupMembersCountInput) || 0,
+      avgPerformance: 0
+    }
+    setGroupsList(prev => [...prev, newGroup])
+    setGroupView('list')
+
+    // Reset Form
+    setGroupNameInput('')
+    setGroupSubjectInput('Mathematics')
+    setGroupMembersCountInput('30')
   }
 
   // Host Session Settings
@@ -377,16 +487,6 @@ export const Dashboard: React.FC = () => {
             >
               <Menu className="w-6 h-6" />
             </button>
-
-            {/* Search Input Bar */}
-            <div className="relative w-40 sm:w-72 md:w-96">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-outline" />
-              <input
-                type="text"
-                placeholder="Search..."
-                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-full py-1.5 pl-10 pr-4 text-xs md:text-sm font-body-md placeholder:text-outline-variant shadow-sm transition-colors"
-              />
-            </div>
           </div>
 
           {/* Action Icons and Avatar */}
@@ -855,7 +955,7 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             )}
-               {/* TAB: JOIN ROOM */}
+            {/* TAB: JOIN ROOM */}
             {activeTab === 'join_room' && (
               <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-200">
                 {/* Left Card: Join Room */}
@@ -999,48 +1099,138 @@ export const Dashboard: React.FC = () => {
             )}
 
             {/* TAB: HISTORY */}
+            {/* TAB: HISTORY */}
             {activeTab === 'history' && (() => {
-              const totalPages = Math.ceil(mockHistory.length / ITEMS_PER_PAGE)
-              const startIdx = (historyPage - 1) * ITEMS_PER_PAGE
-              const pagedHistory = mockHistory.slice(startIdx, startIdx + ITEMS_PER_PAGE)
+              // 1. Filter history list
+              const filtered = mockHistory.filter(hist => {
+                const matchesSearch = hist.title.toLowerCase().includes(historySearch.toLowerCase())
+                
+                const numScore = parseInt(hist.score.replace('%', ''), 10)
+                let matchesScore = true
+                if (historyScoreFilter === 'high') matchesScore = numScore >= 90
+                else if (historyScoreFilter === 'avg') matchesScore = numScore >= 70 && numScore < 90
+                else if (historyScoreFilter === 'low') matchesScore = numScore < 70
+
+                return matchesSearch && matchesScore
+              })
+
+              // 2. Sort history list
+              const sorted = [...filtered].sort((a, b) => {
+                const scoreA = parseInt(a.score.replace('%', ''), 10)
+                const scoreB = parseInt(b.score.replace('%', ''), 10)
+                const dateA = new Date(a.date).getTime()
+                const dateB = new Date(b.date).getTime()
+
+                if (historySort === 'score_desc') return scoreB - scoreA
+                if (historySort === 'score_asc') return scoreA - scoreB
+                if (historySort === 'date_asc') return dateA - dateB
+                return dateB - dateA // default: date_desc
+              })
+
+              // 3. Paginate
+              const totalPages = Math.max(1, Math.ceil(sorted.length / ITEMS_PER_PAGE))
+              const currentPage = Math.min(historyPage, totalPages)
+              const startIdx = (currentPage - 1) * ITEMS_PER_PAGE
+              const pagedHistory = sorted.slice(startIdx, startIdx + ITEMS_PER_PAGE)
 
               return (
                 <div className="space-y-6 animate-in fade-in duration-200">
                   <div>
-                    <h2 className="font-headline-lg text-2xl font-extrabold text-on-surface">History</h2>
-                    <p className="font-body-md text-on-surface-variant text-sm mt-1">Review your past performance.</p>
+                    <h2 className="font-headline-lg text-2xl font-extrabold text-on-surface text-left">History</h2>
+                    <p className="font-body-md text-on-surface-variant text-sm mt-1 text-left">Review your past performance.</p>
                   </div>
 
+                  {/* Filter Toolbar */}
+                  <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-outline-variant/10 shadow-sm">
+                    {/* Search Input */}
+                    <div className="relative w-full sm:w-80 flex items-center">
+                      <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 pointer-events-none" />
+                      <input 
+                        type="text"
+                        value={historySearch}
+                        onChange={(e) => {
+                          setHistorySearch(e.target.value)
+                          setHistoryPage(1)
+                        }}
+                        className="w-full pl-10 pr-4 py-2 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none"
+                        placeholder="Search exam name..."
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
+                      {/* Filter by score */}
+                      <select
+                        value={historyScoreFilter}
+                        onChange={(e) => {
+                          setHistoryScoreFilter(e.target.value as any)
+                          setHistoryPage(1)
+                        }}
+                        className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                      >
+                        <option value="all">All Scores</option>
+                        <option value="high">High Performance (≥ 90%)</option>
+                        <option value="avg">Average Performance (70% - 89%)</option>
+                        <option value="low">Low Performance (&lt; 70%)</option>
+                      </select>
+
+                      {/* Sort dropdown */}
+                      <select
+                        value={historySort}
+                        onChange={(e) => {
+                          setHistorySort(e.target.value as any)
+                          setHistoryPage(1)
+                        }}
+                        className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                      >
+                        <option value="date_desc">Newest Date</option>
+                        <option value="date_asc">Oldest Date</option>
+                        <option value="score_desc">Highest Score</option>
+                        <option value="score_asc">Lowest Score</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* List Container */}
                   <div className="space-y-4">
-                    {pagedHistory.map((hist) => (
-                      <div key={hist.id} className="bg-white p-5 rounded-2xl border border-outline-variant/10 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
-                        <div>
-                          <h4 className="font-semibold text-sm text-on-surface">{hist.title}</h4>
-                          <p className="text-xs text-on-surface-variant mt-1">Completed on {hist.date}</p>
+                    {pagedHistory.length > 0 ? (
+                      pagedHistory.map((hist) => (
+                        <div key={hist.id} className="bg-white p-5 rounded-2xl border border-outline-variant/10 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+                          <div className="text-left">
+                            <h4 className="font-semibold text-sm text-on-surface">{hist.title}</h4>
+                            <p className="text-xs text-on-surface-variant mt-1">Completed on {hist.date}</p>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="font-headline-md text-lg font-bold text-secondary">{hist.score}</span>
+                            <button
+                              onClick={() => handleReviewClick(hist)}
+                              className="text-primary hover:text-primary-container font-bold text-xs border border-primary/20 rounded-lg px-3.5 py-2 hover:bg-primary/5"
+                            >
+                              Review
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-headline-md text-lg font-bold text-secondary">{hist.score}</span>
-                          <button
-                            onClick={() => handleReviewClick(hist)}
-                            className="text-primary hover:text-primary-container font-bold text-xs border border-primary/20 rounded-lg px-3.5 py-2 hover:bg-primary/5"
-                          >
-                            Review
-                          </button>
+                      ))
+                    ) : (
+                      <div className="bg-white p-12 rounded-2xl border border-outline-variant/10 shadow-sm text-center">
+                        <div className="w-12 h-12 bg-surface-container-low text-on-surface-variant rounded-full flex items-center justify-center mx-auto mb-4">
+                          <History className="w-6 h-6" />
                         </div>
+                        <h4 className="font-bold text-sm text-on-surface">No history items found</h4>
+                        <p className="text-xs text-on-surface-variant mt-1">Try adjusting your filters or search keywords.</p>
                       </div>
-                    ))}
+                    )}
                   </div>
 
                   {/* Pagination */}
                   {totalPages > 1 && (
                     <div className="flex items-center justify-between pt-2">
                       <p className="text-xs text-on-surface-variant">
-                        Showing {startIdx + 1}–{Math.min(startIdx + ITEMS_PER_PAGE, mockHistory.length)} of {mockHistory.length}
+                        Showing {startIdx + 1}–{Math.min(startIdx + ITEMS_PER_PAGE, sorted.length)} of {sorted.length}
                       </p>
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-                          disabled={historyPage === 1}
+                          disabled={currentPage === 1}
                           className="px-3 py-1.5 text-xs font-bold rounded-lg border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-low disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                           Prev
@@ -1049,7 +1239,7 @@ export const Dashboard: React.FC = () => {
                           <button
                             key={i}
                             onClick={() => setHistoryPage(i + 1)}
-                            className={`w-8 h-8 text-xs font-bold rounded-lg transition-colors ${historyPage === i + 1
+                            className={`w-8 h-8 text-xs font-bold rounded-lg transition-colors ${currentPage === i + 1
                               ? 'bg-primary text-on-primary shadow-sm'
                               : 'text-on-surface-variant hover:bg-surface-container-low'
                               }`}
@@ -1059,7 +1249,7 @@ export const Dashboard: React.FC = () => {
                         ))}
                         <button
                           onClick={() => setHistoryPage((p) => Math.min(totalPages, p + 1))}
-                          disabled={historyPage === totalPages}
+                          disabled={currentPage === totalPages}
                           className="px-3 py-1.5 text-xs font-bold rounded-lg border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-low disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                           Next
@@ -1095,11 +1285,10 @@ export const Dashboard: React.FC = () => {
                     const isActive = activeTitle === title
                     return (
                       <div
-                        className={`bg-white rounded-2xl p-6 text-center shadow-sm relative overflow-hidden group transition-all duration-200 ${
-                          isActive
-                            ? 'border-2 border-primary shadow-md ring-2 ring-primary/20'
-                            : 'border border-outline-variant/10 hover:shadow-md hover:border-primary/30'
-                        }`}
+                        className={`bg-white rounded-2xl p-6 text-center shadow-sm relative overflow-hidden group transition-all duration-200 ${isActive
+                          ? 'border-2 border-primary shadow-md ring-2 ring-primary/20'
+                          : 'border border-outline-variant/10 hover:shadow-md hover:border-primary/30'
+                          }`}
                       >
                         {isActive && (
                           <span className="absolute top-2.5 right-2.5 text-[9px] font-extrabold uppercase tracking-wider bg-primary text-white px-2 py-0.5 rounded-full">
@@ -1113,11 +1302,10 @@ export const Dashboard: React.FC = () => {
                         <p className="text-xs text-on-surface-variant leading-relaxed mb-4">Achieved 100% on any proctored exam.</p>
                         <button
                           onClick={() => setActiveTitle(isActive ? null : title)}
-                          className={`w-full text-xs font-bold py-2 px-4 rounded-lg transition-all duration-150 active:scale-95 ${
-                            isActive
-                              ? 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20'
-                              : 'bg-primary text-white hover:bg-primary/90 shadow-sm'
-                          }`}
+                          className={`w-full text-xs font-bold py-2 px-4 rounded-lg transition-all duration-150 active:scale-95 ${isActive
+                            ? 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20'
+                            : 'bg-primary text-white hover:bg-primary/90 shadow-sm'
+                            }`}
                         >
                           {isActive ? '✓ Currently Active' : 'Use This Title'}
                         </button>
@@ -1131,11 +1319,10 @@ export const Dashboard: React.FC = () => {
                     const isActive = activeTitle === title
                     return (
                       <div
-                        className={`bg-white rounded-2xl p-6 text-center shadow-sm relative overflow-hidden group transition-all duration-200 ${
-                          isActive
-                            ? 'border-2 border-primary shadow-md ring-2 ring-primary/20'
-                            : 'border border-outline-variant/10 hover:shadow-md hover:border-primary/30'
-                        }`}
+                        className={`bg-white rounded-2xl p-6 text-center shadow-sm relative overflow-hidden group transition-all duration-200 ${isActive
+                          ? 'border-2 border-primary shadow-md ring-2 ring-primary/20'
+                          : 'border border-outline-variant/10 hover:shadow-md hover:border-primary/30'
+                          }`}
                       >
                         {isActive && (
                           <span className="absolute top-2.5 right-2.5 text-[9px] font-extrabold uppercase tracking-wider bg-primary text-white px-2 py-0.5 rounded-full">
@@ -1149,11 +1336,10 @@ export const Dashboard: React.FC = () => {
                         <p className="text-xs text-on-surface-variant leading-relaxed mb-4">5 consecutive days of learning activity.</p>
                         <button
                           onClick={() => setActiveTitle(isActive ? null : title)}
-                          className={`w-full text-xs font-bold py-2 px-4 rounded-lg transition-all duration-150 active:scale-95 ${
-                            isActive
-                              ? 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20'
-                              : 'bg-primary text-white hover:bg-primary/90 shadow-sm'
-                          }`}
+                          className={`w-full text-xs font-bold py-2 px-4 rounded-lg transition-all duration-150 active:scale-95 ${isActive
+                            ? 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20'
+                            : 'bg-primary text-white hover:bg-primary/90 shadow-sm'
+                            }`}
                         >
                           {isActive ? '✓ Currently Active' : 'Use This Title'}
                         </button>
@@ -1281,155 +1467,374 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 {/* Sub Tab: Quizzes */}
-                {hostSubTab === 'quizzes' && (
-                  <div className="space-y-6">
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => alert('Creating a new quiz...')}
-                        className="bg-primary hover:bg-primary-container text-white font-button py-2.5 px-6 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-xs flex items-center gap-1.5"
-                      >
-                        <Plus className="w-4 h-4" /> Create New Quiz
-                      </button>
-                    </div>
+                {hostSubTab === 'quizzes' && (() => {
+                  const filteredQuizzes = quizzesList.filter(quiz => {
+                    const matchesSearch = quiz.title.toLowerCase().includes(quizSearch.toLowerCase()) || quiz.subject.toLowerCase().includes(quizSearch.toLowerCase())
+                    const matchesLevel = quizFilterLevel === 'all' || quiz.level === quizFilterLevel
+                    const matchesStatus = quizFilterStatus === 'all' || quiz.status === quizFilterStatus
+                    return matchesSearch && matchesLevel && matchesStatus
+                  })
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {hostQuizzes.map((quiz) => (
-                        <div key={quiz.id} className="bg-white border border-outline-variant/10 rounded-2xl p-5 shadow-sm flex flex-col hover:shadow-md transition-shadow">
-                          <div className="flex justify-between items-start mb-4">
-                            <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${quiz.status === 'PUBLISHED' ? 'bg-secondary/10 text-secondary' : 'bg-surface-container-highest text-on-surface-variant'
-                              }`}>
-                              {quiz.status}
-                            </span>
-                            <button className="text-on-surface-variant hover:text-primary"><Plus className="w-4 h-4 rotate-45" /></button>
-                          </div>
-                          <h3 className="font-bold text-base text-on-surface mb-1">{quiz.title}</h3>
-                          <p className="text-xs text-on-surface-variant mb-4">Subject: {quiz.subject} • {quiz.level}</p>
-                          <div className="mt-auto pt-4 border-t border-outline-variant/10 flex justify-between items-center text-xs">
-                            <span className="text-outline">{quiz.questions} Questions</span>
-                            <button
-                              onClick={() => alert(`Editing quiz: ${quiz.title}`)}
-                              className="text-primary font-bold hover:underline"
-                            >
-                              Edit
-                            </button>
-                          </div>
+                  const sortedQuizzes = [...filteredQuizzes].sort((a, b) => {
+                    if (quizSort === 'title_desc') return b.title.localeCompare(a.title)
+                    if (quizSort === 'questions_desc') return b.questions - a.questions
+                    if (quizSort === 'questions_asc') return a.questions - b.questions
+                    return a.title.localeCompare(b.title)
+                  })
+
+                  return (
+                    <div className="space-y-6 text-left">
+                      <div className="flex justify-between items-center gap-3">
+                        <h3 className="font-bold text-base text-on-surface">Manage Quizzes</h3>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setQuestionBankOpen(true)}
+                            className="bg-secondary/10 hover:bg-secondary/20 text-secondary border border-secondary/20 font-button py-2.5 px-6 rounded-xl transition-all text-xs flex items-center gap-1.5 font-bold"
+                          >
+                            <BookOpen className="w-4 h-4" /> Question Bank
+                          </button>
+                          <button
+                            onClick={() => {
+                              const title = prompt('Enter quiz title:')
+                              if (!title) return
+                              const subject = prompt('Enter subject:') || 'General'
+                              const level = (prompt('Enter level (Easy, Medium, Hard):') || 'Medium') as any
+                              const newQuiz = {
+                                id: quizzesList.length + 1,
+                                title,
+                                subject,
+                                level,
+                                questions: 10,
+                                status: 'DRAFT' as const
+                              }
+                              setQuizzesList(prev => [...prev, newQuiz])
+                            }}
+                            className="bg-primary hover:bg-primary-container text-white font-button py-2.5 px-6 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-xs flex items-center gap-1.5"
+                          >
+                            <Plus className="w-4 h-4" /> Create New Quiz
+                          </button>
                         </div>
-                      ))}
+                      </div>
+
+                      {/* Filter Toolbar */}
+                      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-outline-variant/10 shadow-sm">
+                        <div className="relative w-full sm:w-80 flex items-center">
+                          <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 pointer-events-none" />
+                          <input 
+                            type="text"
+                            value={quizSearch}
+                            onChange={(e) => setQuizSearch(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none text-on-surface"
+                            placeholder="Search by title or subject..."
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
+                          <select
+                            value={quizFilterLevel}
+                            onChange={(e) => setQuizFilterLevel(e.target.value as any)}
+                            className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                          >
+                            <option value="all">All Levels</option>
+                            <option value="Easy">Easy</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Hard">Hard</option>
+                          </select>
+
+                          <select
+                            value={quizFilterStatus}
+                            onChange={(e) => setQuizFilterStatus(e.target.value as any)}
+                            className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                          >
+                            <option value="all">All Status</option>
+                            <option value="PUBLISHED">Published</option>
+                            <option value="DRAFT">Draft</option>
+                          </select>
+
+                          <select
+                            value={quizSort}
+                            onChange={(e) => setQuizSort(e.target.value as any)}
+                            className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                          >
+                            <option value="title_asc">Name: A to Z</option>
+                            <option value="title_desc">Name: Z to A</option>
+                            <option value="questions_desc">Questions: High to Low</option>
+                            <option value="questions_asc">Questions: Low to High</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Quizzes List */}
+                      {sortedQuizzes.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {sortedQuizzes.map((quiz) => (
+                            <div key={quiz.id} className="bg-white border border-outline-variant/10 rounded-2xl p-5 shadow-sm flex flex-col hover:shadow-md transition-shadow">
+                              <div className="flex justify-between items-start mb-4">
+                                <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${quiz.status === 'PUBLISHED' ? 'bg-secondary/10 text-secondary' : 'bg-surface-container-highest text-on-surface-variant'
+                                  }`}>
+                                  {quiz.status}
+                                </span>
+                                <button 
+                                  onClick={() => setQuizzesList(prev => prev.filter(q => q.id !== quiz.id))}
+                                  className="text-on-surface-variant hover:text-error transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <h3 className="font-bold text-base text-on-surface mb-1">{quiz.title}</h3>
+                              <p className="text-xs text-on-surface-variant mb-4">Subject: {quiz.subject} • {quiz.level}</p>
+                              <div className="mt-auto pt-4 border-t border-outline-variant/10 flex justify-between items-center text-xs">
+                                <span className="text-outline">{quiz.questions} Questions</span>
+                                <button
+                                  onClick={() => alert(`Editing quiz: ${quiz.title}`)}
+                                  className="text-primary font-bold hover:underline"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="bg-white p-12 rounded-2xl border border-outline-variant/10 shadow-sm text-center">
+                          <div className="w-12 h-12 bg-surface-container-low text-on-surface-variant rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Star className="w-6 h-6" />
+                          </div>
+                          <h4 className="font-bold text-sm text-on-surface">No quizzes found</h4>
+                          <p className="text-xs text-on-surface-variant mt-1">Try adjusting your filters or search keywords.</p>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* Sub Tab: Exams */}
                 {hostSubTab === 'exams' && (
                   <div className="space-y-6">
-                    {examView === 'manage' && (
-                      <div className="space-y-6">
-                        <div className="flex justify-between items-center">
-                          <h3 className="font-bold text-base text-on-surface">Exams Schedule</h3>
-                          <div className="flex gap-3">
-                            <button
-                              onClick={() => alert('Exporting report...')}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-outline-variant text-on-surface-variant font-button text-xs hover:bg-surface-container-low transition-colors"
-                            >
-                              <Upload className="w-4 h-4" /> Export Report
-                            </button>
-                            <button
-                              onClick={() => setExamView('create')}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white font-button text-xs shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
-                            >
-                              <Plus className="w-4 h-4" /> Create New
-                            </button>
-                          </div>
-                        </div>
+                    {examView === 'manage' && (() => {
+                      const filteredExams = examsList.filter(exam => {
+                        const matchesSearch = exam.title.toLowerCase().includes(examSearch.toLowerCase()) || exam.groupAssigned.toLowerCase().includes(examSearch.toLowerCase())
+                        let matchesStatus = true
+                        if (examFilterStatus === 'Active') matchesStatus = exam.published
+                        else if (examFilterStatus === 'Scheduled') matchesStatus = !exam.published
+                        return matchesSearch && matchesStatus
+                      })
 
-                        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
-                          <table className="w-full text-left border-collapse">
-                            <thead>
-                              <tr className="bg-surface-container-low/30 border-b border-outline-variant/10">
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Exam Title</th>
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Group</th>
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Date</th>
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Status</th>
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider text-right">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-outline-variant/10">
-                              {hostExams.map((exam) => (
-                                <tr key={exam.id} className="hover:bg-primary/5 transition-colors">
-                                  <td className="py-4 px-6 font-semibold text-sm text-on-surface">{exam.title}</td>
-                                  <td className="py-4 px-6 text-xs text-on-surface-variant">{exam.groupAssigned}</td>
-                                  <td className="py-4 px-6 text-xs text-on-surface-variant">{exam.date}</td>
-                                  <td className="py-4 px-6">
-                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${exam.status === 'Active' ? 'bg-secondary/10 text-secondary' : 'bg-surface-container-highest text-on-surface-variant'
-                                      }`}>
-                                      {exam.status}
-                                    </span>
-                                  </td>
-                                  <td className="py-4 px-6 text-right space-x-3">
-                                    <button
-                                      onClick={() => setExamView('report')}
-                                      className="text-primary font-bold text-xs hover:underline"
-                                    >
-                                      View Report
-                                    </button>
-                                    <button className="text-on-surface-variant hover:text-primary inline-block"><Edit className="w-4 h-4" /></button>
-                                    <button className="text-on-surface-variant hover:text-error inline-block"><Trash2 className="w-4 h-4" /></button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                      const sortedExams = [...filteredExams].sort((a, b) => {
+                        if (examSort === 'title_desc') return b.title.localeCompare(a.title)
+                        if (examSort === 'date_desc') return new Date(b.date).getTime() - new Date(a.date).getTime()
+                        if (examSort === 'date_asc') return new Date(a.date).getTime() - new Date(b.date).getTime()
+                        return a.title.localeCompare(b.title) // default: title_asc
+                      })
+
+                      return (
+                        <div className="space-y-6">
+                          <div className="flex justify-between items-center gap-3">
+                            <h3 className="font-bold text-base text-on-surface">Exams Schedule</h3>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => alert('Exporting report...')}
+                                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant font-button text-xs hover:bg-surface-container-low transition-colors"
+                              >
+                                <Upload className="w-4 h-4" /> Export Report
+                              </button>
+                              <button
+                                onClick={() => setExamView('create')}
+                                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-white font-button text-xs shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+                              >
+                                <Plus className="w-4 h-4" /> Create New
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Filter Toolbar */}
+                          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-outline-variant/10 shadow-sm text-left">
+                            {/* Search */}
+                            <div className="relative w-full sm:w-80 flex items-center">
+                              <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 pointer-events-none" />
+                              <input 
+                                type="text"
+                                value={examSearch}
+                                onChange={(e) => setExamSearch(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none text-on-surface"
+                                placeholder="Search by exam title or group..."
+                              />
+                            </div>
+
+                            <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
+                              {/* Filter by status */}
+                              <select
+                                value={examFilterStatus}
+                                onChange={(e) => setExamFilterStatus(e.target.value as any)}
+                                className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                              >
+                                <option value="all">All Exams</option>
+                                <option value="Active">Published (Active)</option>
+                                <option value="Scheduled">Draft (Scheduled)</option>
+                              </select>
+
+                              {/* Sort dropdown */}
+                              <select
+                                value={examSort}
+                                onChange={(e) => setExamSort(e.target.value as any)}
+                                className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                              >
+                                <option value="title_asc">Title: A to Z</option>
+                                <option value="title_desc">Title: Z to A</option>
+                                <option value="date_desc">Date: Newest First</option>
+                                <option value="date_asc">Date: Oldest First</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {sortedExams.length > 0 ? (
+                            <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-surface-container-low/30 border-b border-outline-variant/10">
+                                    <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Exam Title</th>
+                                    <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Group</th>
+                                    <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Date</th>
+                                    <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Status</th>
+                                    <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider text-right">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-outline-variant/10">
+                                  {sortedExams.map((exam) => (
+                                    <tr key={exam.id} className="hover:bg-primary/5 transition-colors">
+                                      <td className="py-4 px-6 font-semibold text-sm text-on-surface">
+                                        <div className="flex flex-col text-left">
+                                          <span>{exam.title}</span>
+                                          <span className={`text-[10px] font-bold mt-0.5 ${exam.published ? 'text-secondary' : 'text-outline'}`}>
+                                            {exam.published ? '• Published' : '• Draft'}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-4 px-6 text-xs text-on-surface-variant">{exam.groupAssigned}</td>
+                                      <td className="py-4 px-6 text-xs text-on-surface-variant">{exam.date}</td>
+                                      <td className="py-4 px-6">
+                                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${exam.status === 'Active' ? 'bg-secondary/10 text-secondary' : 'bg-surface-container-highest text-on-surface-variant'
+                                          }`}>
+                                          {exam.status}
+                                        </span>
+                                      </td>
+                                      <td className="py-4 px-6 text-right space-x-3">
+                                        <button
+                                          onClick={() => setExamView('report')}
+                                          className="text-primary font-bold text-xs hover:underline"
+                                        >
+                                          View Report
+                                        </button>
+                                        <button className="text-on-surface-variant hover:text-primary inline-block"><Edit className="w-4 h-4" /></button>
+                                        <button
+                                          onClick={() => setExamsList(prev => prev.filter(e => e.id !== exam.id))}
+                                          className="text-on-surface-variant hover:text-error inline-block"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="bg-white p-12 rounded-2xl border border-outline-variant/10 shadow-sm text-center">
+                              <div className="w-12 h-12 bg-surface-container-low text-on-surface-variant rounded-full flex items-center justify-center mx-auto mb-4">
+                                <ClipboardList className="w-6 h-6" />
+                              </div>
+                              <h4 className="font-bold text-sm text-on-surface">No exams scheduled</h4>
+                              <p className="text-xs text-on-surface-variant mt-1">Try adjusting your filters or search keywords.</p>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     {examView === 'create' && (
                       <div className="bg-white rounded-2xl border border-outline-variant/10 shadow-sm p-8 max-w-3xl mx-auto animate-in zoom-in-95 duration-200">
-                        <h3 className="font-headline-md text-lg font-bold text-on-surface mb-6">Create New Exam</h3>
-                        <form onSubmit={(e) => { e.preventDefault(); setExamView('manage'); }} className="space-y-6">
+                        <h3 className="font-headline-md text-lg font-bold text-on-surface mb-6 text-left">Create New Exam</h3>
+                        <form onSubmit={handleCreateExamSubmit} className="space-y-6">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="md:col-span-2">
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Exam Title</label>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Exam Title</label>
                               <input
                                 className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
                                 placeholder="e.g. Semester 1 Final Exam"
                                 type="text"
+                                value={examTitleInput}
+                                onChange={(e) => setExamTitleInput(e.target.value)}
                                 required
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Exam Duration (minutes)</label>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Exam Duration (minutes)</label>
                               <input
                                 className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
                                 placeholder="60"
                                 type="number"
+                                value={examDurationInput}
+                                onChange={(e) => setExamDurationInput(e.target.value)}
                                 required
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Subject/Quiz Template</label>
-                              <select className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none">
-                                <option>Select a template...</option>
-                                <option>Biology 101</option>
-                                <option>Calculus III</option>
-                                <option>World History</option>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Subject/Quiz Template</label>
+                              <select
+                                value={examSubjectInput}
+                                onChange={(e) => setExamSubjectInput(e.target.value)}
+                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none text-left"
+                              >
+                                <option value="Biology 101">Biology 101</option>
+                                <option value="Calculus III">Calculus III</option>
+                                <option value="World History">World History</option>
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Assigned Group</label>
-                              <select className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none">
-                                <option>Select a group...</option>
-                                <option>Group 10A1</option>
-                                <option>English Intensive</option>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Assigned Group</label>
+                              <select
+                                value={examGroupInput}
+                                onChange={(e) => setExamGroupInput(e.target.value)}
+                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none text-left"
+                              >
+                                <option value="Group 10A1">Group 10A1</option>
+                                <option value="English Intensive">English Intensive</option>
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Start Date &amp; Time</label>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Start Date &amp; Time</label>
                               <input
                                 className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
                                 type="datetime-local"
+                                value={examStartDateInput}
+                                onChange={(e) => setExamStartDateInput(e.target.value)}
                                 required
                               />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">End Date &amp; Time</label>
+                              <input
+                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
+                                type="datetime-local"
+                                value={examEndDateInput}
+                                onChange={(e) => setExamEndDateInput(e.target.value)}
+                                required
+                              />
+                            </div>
+                            <div className="md:col-span-2 flex items-center justify-between p-4 bg-[#f9f9ff] rounded-xl border border-outline-variant/20 mt-2">
+                              <div className="text-left">
+                                <h4 className="text-sm font-bold text-on-surface">Publish Immediately</h4>
+                                <p className="text-xs text-on-surface-variant mt-0.5">If enabled, members will see this exam on their dashboard immediately.</p>
+                              </div>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={newExamPublished}
+                                  onChange={(e) => setNewExamPublished(e.target.checked)}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-outline-variant/40 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                              </label>
                             </div>
                             <div className="md:col-span-2">
                               <hr className="border-outline-variant/10 my-2" />
@@ -1476,56 +1881,174 @@ export const Dashboard: React.FC = () => {
                 {/* Sub Tab: Classes */}
                 {hostSubTab === 'groups' && (
                   <div className="space-y-6">
-                    {groupView === 'list' && (
-                      <div className="space-y-6 animate-in fade-in duration-200">
-                        <div className="flex justify-end">
-                          <button
-                            onClick={() => alert('Creating class...')}
-                            className="bg-primary hover:bg-primary-container text-white font-button py-2.5 px-6 rounded-xl shadow-sm hover:shadow-md transition-all text-xs flex items-center gap-1.5"
-                          >
-                            <Plus className="w-4 h-4" /> Create New Group
-                          </button>
-                        </div>
+                    {groupView === 'list' && (() => {
+                      const filteredGroups = groupsList.filter(group => 
+                        group.name.toLowerCase().includes(groupSearch.toLowerCase()) || 
+                        group.subject.toLowerCase().includes(groupSearch.toLowerCase())
+                      )
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {hostGroups.map((cls) => (
-                            <div key={cls.id} className="bg-white border border-outline-variant/10 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between min-h-[220px]">
-                              <div>
-                                <div className="flex justify-between items-start mb-4">
-                                  <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                                    <Building className="w-6 h-6" />
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <button className="text-on-surface-variant hover:text-primary transition-colors"><Edit className="w-4 h-4" /></button>
-                                    <button className="text-on-surface-variant hover:text-error transition-colors"><Trash2 className="w-4 h-4" /></button>
-                                  </div>
-                                </div>
-                                <h3 className="font-bold text-base text-on-surface mb-1">{cls.name}</h3>
-                                <p className="text-xs text-on-surface-variant mb-4">Subject: {cls.subject} • {cls.membersCount} Members</p>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-xs font-bold">
-                                  <span className="text-outline">Avg. Performance</span>
-                                  <span className="text-secondary">{cls.avgPerformance}%</span>
-                                </div>
-                                <div className="w-full h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
-                                  <div className="h-full bg-secondary" style={{ width: `${cls.avgPerformance}%` }} />
-                                </div>
-                                <div className="pt-2 text-right">
-                                  <button
-                                    onClick={() => {
-                                      setSelectedGroup(cls.name)
-                                      setGroupView('details')
-                                    }}
-                                    className="text-primary font-bold hover:underline text-xs"
-                                  >
-                                    View Roster
-                                  </button>
-                                </div>
-                              </div>
+                      const sortedGroups = [...filteredGroups].sort((a, b) => {
+                        if (groupSort === 'name_desc') return b.name.localeCompare(a.name)
+                        if (groupSort === 'members_desc') return b.membersCount - a.membersCount
+                        if (groupSort === 'performance_desc') return b.avgPerformance - a.avgPerformance
+                        return a.name.localeCompare(b.name)
+                      })
+
+                      return (
+                        <div className="space-y-6 animate-in fade-in duration-200">
+                          <div className="flex justify-between items-center gap-3">
+                            <h3 className="font-bold text-base text-on-surface">Groups List</h3>
+                            <button
+                              onClick={() => setGroupView('create')}
+                              className="bg-primary hover:bg-primary-container text-white font-button py-2.5 px-6 rounded-xl shadow-sm hover:shadow-md transition-all text-xs flex items-center gap-1.5"
+                            >
+                              <Plus className="w-4 h-4" /> Create New Group
+                            </button>
+                          </div>
+
+                          {/* Filter Toolbar */}
+                          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-outline-variant/10 shadow-sm text-left">
+                            {/* Search */}
+                            <div className="relative w-full sm:w-80 flex items-center">
+                              <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 pointer-events-none" />
+                              <input 
+                                type="text"
+                                value={groupSearch}
+                                onChange={(e) => setGroupSearch(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none text-on-surface"
+                                placeholder="Search group name or subject..."
+                              />
                             </div>
-                          ))}
+
+                            <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
+                              {/* Sort dropdown */}
+                              <select
+                                value={groupSort}
+                                onChange={(e) => setGroupSort(e.target.value as any)}
+                                className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                              >
+                                <option value="name_asc">Name: A to Z</option>
+                                <option value="name_desc">Name: Z to A</option>
+                                <option value="members_desc">Members: High to Low</option>
+                                <option value="performance_desc">Performance: High to Low</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {sortedGroups.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {sortedGroups.map((cls) => (
+                                <div key={cls.id} className="bg-white border border-outline-variant/10 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between min-h-[220px]">
+                                  <div>
+                                    <div className="flex justify-between items-start mb-4">
+                                      <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                                        <Building className="w-6 h-6" />
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button className="text-on-surface-variant hover:text-primary transition-colors"><Edit className="w-4 h-4" /></button>
+                                        <button
+                                          onClick={() => setGroupsList(prev => prev.filter(g => g.id !== cls.id))}
+                                          className="text-on-surface-variant hover:text-error transition-colors"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <h3 className="font-bold text-base text-on-surface mb-1 text-left">{cls.name}</h3>
+                                    <p className="text-xs text-on-surface-variant mb-4 text-left">Subject: {cls.subject} • {cls.membersCount} Members</p>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <div className="flex justify-between text-xs font-bold">
+                                      <span className="text-outline">Avg. Performance</span>
+                                      <span className="text-secondary">{cls.avgPerformance}%</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
+                                      <div className="h-full bg-secondary" style={{ width: `${cls.avgPerformance}%` }} />
+                                    </div>
+                                    <div className="pt-2 text-right">
+                                      <button
+                                        onClick={() => {
+                                          setSelectedGroup(cls.name)
+                                          setGroupView('details')
+                                        }}
+                                        className="text-primary font-bold hover:underline text-xs"
+                                      >
+                                        View Roster
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="bg-white p-12 rounded-2xl border border-outline-variant/10 shadow-sm text-center">
+                              <div className="w-12 h-12 bg-surface-container-low text-on-surface-variant rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Building className="w-6 h-6" />
+                              </div>
+                              <h4 className="font-bold text-sm text-on-surface">No groups found</h4>
+                              <p className="text-xs text-on-surface-variant mt-1">Try adjusting your filters or search keywords.</p>
+                            </div>
+                          )}
                         </div>
+                      )
+                    })()}
+
+                    {groupView === 'create' && (
+                      <div className="bg-white rounded-2xl border border-outline-variant/10 shadow-sm p-8 max-w-xl mx-auto animate-in zoom-in-95 duration-200">
+                        <h3 className="font-headline-md text-lg font-bold text-on-surface mb-6 text-left">Create New Group</h3>
+                        <form onSubmit={handleCreateGroupSubmit} className="space-y-6">
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Group Name</label>
+                              <input
+                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
+                                placeholder="e.g. Group 10A2, Eng. Advanced"
+                                type="text"
+                                value={groupNameInput}
+                                onChange={(e) => setGroupNameInput(e.target.value)}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Subject / Category</label>
+                              <input
+                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
+                                placeholder="e.g. Mathematics, Languages, Science"
+                                type="text"
+                                value={groupSubjectInput}
+                                onChange={(e) => setGroupSubjectInput(e.target.value)}
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Estimated Members Count</label>
+                              <input
+                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
+                                placeholder="30"
+                                type="number"
+                                value={groupMembersCountInput}
+                                onChange={(e) => setGroupMembersCountInput(e.target.value)}
+                                required
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end gap-3 pt-4">
+                            <button
+                              type="button"
+                              onClick={() => setGroupView('list')}
+                              className="px-6 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant font-button text-xs hover:bg-surface-container-low transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              className="bg-primary hover:bg-primary-container text-white font-button py-2.5 px-8 rounded-xl shadow-md hover:shadow-lg transition-all text-xs"
+                            >
+                              Create Group
+                            </button>
+                          </div>
+                        </form>
                       </div>
                     )}
 
@@ -1568,16 +2091,43 @@ export const Dashboard: React.FC = () => {
                                   <td className="py-4 px-6 font-semibold text-sm text-on-surface">{st.name}</td>
                                   <td className="py-4 px-6 text-xs text-on-surface-variant">{st.email}</td>
                                   <td className="py-4 px-6">
-                                    <div className="flex items-end gap-1.5 h-8">
-                                      {st.scores.map((score, sIdx) => (
-                                        <div
-                                          key={sIdx}
-                                          className="w-3.5 bg-primary/40 rounded-t-sm hover:bg-primary transition-colors cursor-pointer"
-                                          style={{ height: `${score}%` }}
-                                          title={`Quiz ${sIdx + 1}: ${score}%`}
-                                        />
-                                      ))}
-                                    </div>
+                                    {(() => {
+                                      const avgScore = Math.round(st.scores.reduce((sum, val) => sum + val, 0) / st.scores.length)
+                                      return (
+                                        <div className="flex flex-col gap-2 text-left">
+                                          <div className="flex items-center gap-3">
+                                            <span className={`text-sm font-extrabold ${avgScore >= 85 ? 'text-secondary' : avgScore >= 70 ? 'text-primary' : 'text-error'}`}>
+                                              {avgScore}% Avg
+                                            </span>
+                                            <div className="flex gap-1 items-center">
+                                              {st.scores.slice(0, 4).map((score, sIdx) => (
+                                                <span 
+                                                  key={sIdx} 
+                                                  className="px-2 py-0.5 rounded bg-surface-container-highest text-[10px] font-bold text-on-surface-variant border border-outline-variant/25"
+                                                  title={`Quiz ${sIdx + 1}: ${score}%`}
+                                                >
+                                                  {score}
+                                                </span>
+                                              ))}
+                                              {st.scores.length > 4 && (
+                                                <span 
+                                                  className="px-2 py-0.5 rounded bg-primary/10 text-[10px] font-extrabold text-primary border border-primary/20 cursor-help"
+                                                  title={st.scores.slice(4).map((s, idx) => `Quiz ${5 + idx}: ${s}%`).join('\n')}
+                                                >
+                                                  +{st.scores.length - 4}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="w-44 h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
+                                            <div 
+                                              className={`h-full rounded-full ${avgScore >= 85 ? 'bg-secondary' : avgScore >= 70 ? 'bg-primary' : 'bg-error'}`} 
+                                              style={{ width: `${avgScore}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )
+                                    })()}
                                   </td>
                                   <td className="py-4 px-6 text-right">
                                     <button
@@ -1598,67 +2148,142 @@ export const Dashboard: React.FC = () => {
                 )}
 
                 {/* Sub Tab: Members Directory */}
-                {hostSubTab === 'members' && (
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h3 className="font-bold text-base text-on-surface">Member Directory</h3>
-                        <p className="text-xs text-on-surface-variant mt-0.5">Manage member enrollment and track performance across classes.</p>
-                      </div>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => setImportModalOpen(true)}
-                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant font-button text-xs hover:bg-surface-container-low transition-colors"
-                        >
-                          <Upload className="w-4 h-4" /> Import Member
-                        </button>
-                        <button
-                          onClick={() => setMemberModalOpen(true)}
-                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-white font-button text-xs shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
-                        >
-                          <Plus className="w-4 h-4" /> Add New Member
-                        </button>
-                      </div>
-                    </div>
+                {hostSubTab === 'members' && (() => {
+                  const filteredMembers = groupRoster.filter(st => {
+                    const matchesSearch = st.name.toLowerCase().includes(memberSearch.toLowerCase()) || 
+                                          st.email.toLowerCase().includes(memberSearch.toLowerCase())
+                    const matchesGroup = memberFilterGroup === 'all' || st.group === memberFilterGroup
+                    return matchesSearch && matchesGroup
+                  })
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-surface-container-low/30 border-b border-outline-variant/10">
-                            <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Member Name</th>
-                            <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Email</th>
-                            <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Group</th>
-                            <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Performance</th>
-                            <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-outline-variant/10">
-                          {groupRoster.map((st) => (
-                            <tr key={st.id} className="hover:bg-primary/5 transition-colors">
-                              <td className="py-4 px-6 font-semibold text-sm text-on-surface">{st.name}</td>
-                              <td className="py-4 px-6 text-xs text-on-surface-variant">{st.email}</td>
-                              <td className="py-4 px-6">
-                                <span className="px-2 py-1 bg-outline-variant/20 rounded text-[10px] font-bold text-on-surface-variant">10A1</span>
-                              </td>
-                              <td className="py-4 px-6">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex-grow h-1.5 bg-outline-variant/20 rounded-full overflow-hidden max-w-[120px]">
-                                    <div className="h-full bg-secondary" style={{ width: '85%' }} />
-                                  </div>
-                                  <span className="text-xs font-bold text-secondary">85%</span>
-                                </div>
-                              </td>
-                              <td className="py-4 px-6 text-right space-x-3">
-                                <button className="text-on-surface-variant hover:text-primary inline-block"><Edit className="w-4 h-4" /></button>
-                                <button className="text-on-surface-variant hover:text-error inline-block"><Trash2 className="w-4 h-4" /></button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  const sortedMembers = [...filteredMembers].sort((a, b) => {
+                    const avgA = Math.round(a.scores.reduce((sum, val) => sum + val, 0) / a.scores.length)
+                    const avgB = Math.round(b.scores.reduce((sum, val) => sum + val, 0) / b.scores.length)
+
+                    if (memberSort === 'name_desc') return b.name.localeCompare(a.name)
+                    if (memberSort === 'performance_desc') return avgB - avgA
+                    if (memberSort === 'performance_asc') return avgA - avgB
+                    return a.name.localeCompare(b.name)
+                  })
+
+                  return (
+                    <div className="space-y-6">
+                      <div className="flex justify-between items-center gap-3">
+                        <div className="text-left">
+                          <h3 className="font-bold text-base text-on-surface">Member Directory</h3>
+                          <p className="text-xs text-on-surface-variant mt-0.5">Manage member enrollment and track performance across classes.</p>
+                        </div>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => setImportModalOpen(true)}
+                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant font-button text-xs hover:bg-surface-container-low transition-colors"
+                          >
+                            <Upload className="w-4 h-4" /> Import Member
+                          </button>
+                          <button
+                            onClick={() => setMemberModalOpen(true)}
+                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-white font-button text-xs shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+                          >
+                            <Plus className="w-4 h-4" /> Add New Member
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Filter Toolbar */}
+                      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-outline-variant/10 shadow-sm text-left">
+                        {/* Search */}
+                        <div className="relative w-full sm:w-80 flex items-center">
+                          <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 pointer-events-none" />
+                          <input 
+                            type="text"
+                            value={memberSearch}
+                            onChange={(e) => setMemberSearch(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none text-on-surface"
+                            placeholder="Search by name or email..."
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 w-full sm:w-auto justify-end">
+                          {/* Filter by class/group */}
+                          <select
+                            value={memberFilterGroup}
+                            onChange={(e) => setMemberFilterGroup(e.target.value)}
+                            className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                          >
+                            <option value="all">All Groups</option>
+                            <option value="Group 10A1">Group 10A1</option>
+                            <option value="English Intensive">English Intensive</option>
+                          </select>
+
+                          {/* Sort dropdown */}
+                          <select
+                            value={memberSort}
+                            onChange={(e) => setMemberSort(e.target.value as any)}
+                            className="bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2 text-xs font-bold outline-none text-on-surface"
+                          >
+                            <option value="name_asc">Name: A to Z</option>
+                            <option value="name_desc">Name: Z to A</option>
+                            <option value="performance_desc">Performance: High to Low</option>
+                            <option value="performance_asc">Performance: Low to High</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {sortedMembers.length > 0 ? (
+                        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-surface-container-low/30 border-b border-outline-variant/10">
+                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Member Name</th>
+                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Email</th>
+                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Group</th>
+                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Performance</th>
+                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-outline-variant/10">
+                              {sortedMembers.map((st) => {
+                                const avgScore = Math.round(st.scores.reduce((sum, val) => sum + val, 0) / st.scores.length)
+                                return (
+                                  <tr key={st.id} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-4 px-6 font-semibold text-sm text-on-surface">{st.name}</td>
+                                    <td className="py-4 px-6 text-xs text-on-surface-variant">{st.email}</td>
+                                    <td className="py-4 px-6">
+                                      <span className="px-2 py-1 bg-outline-variant/20 rounded text-[10px] font-bold text-on-surface-variant">{st.group}</span>
+                                    </td>
+                                    <td className="py-4 px-6">
+                                      <div className="flex items-center gap-3">
+                                        <div className="flex-grow h-1.5 bg-outline-variant/20 rounded-full overflow-hidden max-w-[120px]">
+                                          <div 
+                                            className={`h-full rounded-full ${avgScore >= 85 ? 'bg-secondary' : avgScore >= 70 ? 'bg-primary' : 'bg-error'}`} 
+                                            style={{ width: `${avgScore}%` }} 
+                                          />
+                                        </div>
+                                        <span className={`text-xs font-bold ${avgScore >= 85 ? 'text-secondary' : avgScore >= 70 ? 'text-primary' : 'text-error'}`}>{avgScore}%</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-4 px-6 text-right space-x-3">
+                                      <button className="text-on-surface-variant hover:text-primary inline-block"><Edit className="w-4 h-4" /></button>
+                                      <button className="text-on-surface-variant hover:text-error inline-block"><Trash2 className="w-4 h-4" /></button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="bg-white p-12 rounded-2xl border border-outline-variant/10 shadow-sm text-center">
+                          <div className="w-12 h-12 bg-surface-container-low text-on-surface-variant rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Users className="w-6 h-6" />
+                          </div>
+                          <h4 className="font-bold text-sm text-on-surface">No members found</h4>
+                          <p className="text-xs text-on-surface-variant mt-1">Try adjusting your filters or search keywords.</p>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             )}
 
@@ -1805,6 +2430,91 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Modal: Question Bank */}
+      {questionBankOpen && (() => {
+        const filteredQuestions = questionBank.filter(q => 
+          q.text.toLowerCase().includes(questionBankSearch.toLowerCase()) ||
+          q.category.toLowerCase().includes(questionBankSearch.toLowerCase())
+        )
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full m-4 border border-outline-variant/20 animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+              <div className="flex justify-between items-center mb-6">
+                <div className="text-left">
+                  <h3 className="font-headline-md text-lg font-bold text-on-surface flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-primary" /> Question Bank
+                  </h3>
+                  <p className="text-xs text-on-surface-variant mt-0.5">Browse and reuse questions you created across all your courses.</p>
+                </div>
+                <button
+                  onClick={() => setQuestionBankOpen(false)}
+                  className="text-on-surface-variant hover:text-error p-1.5 hover:bg-surface-container-low rounded-lg transition-all"
+                >
+                  <Plus className="w-5 h-5 rotate-45" />
+                </button>
+              </div>
+
+              {/* Search Bar for Questions */}
+              <div className="relative mb-6 flex-shrink-0 text-left">
+                <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input 
+                  type="text"
+                  value={questionBankSearch}
+                  onChange={(e) => setQuestionBankSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none text-on-surface"
+                  placeholder="Search by question text or category..."
+                />
+              </div>
+
+              {/* Questions List Container */}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                {filteredQuestions.length > 0 ? (
+                  filteredQuestions.map((q) => (
+                    <div key={q.id} className="p-4 rounded-xl border border-outline-variant/15 hover:border-primary/30 bg-[#f9f9ff]/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
+                      <div className="space-y-1.5 flex-grow">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary uppercase tracking-wider">
+                          {q.type}
+                        </span>
+                        <span className="text-[10px] text-on-surface-variant font-semibold ml-2">
+                          Tag: {q.category}
+                        </span>
+                        <p className="text-sm font-semibold text-on-surface">{q.text}</p>
+                        <p className="text-[10px] text-outline">Created on {q.dateCreated}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setQuizzesList(prev => prev.map((quiz, idx) => idx === 0 ? { ...quiz, questions: quiz.questions + 1 } : quiz))
+                          alert(`"${q.text}" successfully added to your active Quiz Template!`)
+                        }}
+                        className="bg-primary hover:bg-primary-container text-white font-button text-xs py-2 px-4 rounded-lg shadow-sm hover:shadow-md transition-all font-bold shrink-0 self-start md:self-center"
+                      >
+                        Reuse Question
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-12 text-center">
+                    <BookOpen className="w-10 h-10 text-outline-variant mx-auto mb-3" />
+                    <h4 className="font-bold text-sm text-on-surface">No questions found</h4>
+                    <p className="text-xs text-on-surface-variant mt-1">Try matching other keywords.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-outline-variant/10 flex-shrink-0">
+                <button
+                  onClick={() => setQuestionBankOpen(false)}
+                  className="px-6 py-2.5 rounded-xl bg-surface-container-high text-on-surface-variant font-button text-xs hover:bg-surface-container-highest transition-colors font-bold"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* AI Chatbox Floating Container */}
       {isAiChatOpen && (
         <div className="fixed bottom-6 right-6 w-[360px] h-[480px] bg-white border border-outline-variant/30 rounded-2xl shadow-2xl z-[100] flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-300">
@@ -1891,7 +2601,7 @@ export const Dashboard: React.FC = () => {
                 // Sinh mã phòng random 6 chữ số
                 const generatedRoomCode = Math.floor(100000 + Math.random() * 900000).toString()
                 setHostRoomModalOpen(false)
-                
+
                 // Điều hướng sang trang Lobby Waiting với vai trò là Host/Teacher
                 navigate('/lobby', {
                   state: {
@@ -1920,7 +2630,7 @@ export const Dashboard: React.FC = () => {
                   onChange={(e) => setSelectedQuizId(e.target.value)}
                   className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 text-sm outline-none"
                 >
-                  {hostQuizzes.map(quiz => (
+                  {quizzesList.map(quiz => (
                     <option key={quiz.id} value={quiz.id}>{quiz.title} ({quiz.questions} Qs - {quiz.level})</option>
                   ))}
                 </select>
@@ -1935,7 +2645,7 @@ export const Dashboard: React.FC = () => {
                   className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 text-sm outline-none"
                 >
                   <option value="freedom">Freedom (Guest or members from other groups can join)</option>
-                  {hostGroups.map(group => (
+                  {groupsList.map(group => (
                     <option key={group.id} value={group.id}>{group.name} ({group.membersCount} members)</option>
                   ))}
                 </select>
