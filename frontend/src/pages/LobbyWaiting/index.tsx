@@ -228,7 +228,7 @@ export const LobbyWaiting: React.FC = () => {
                   {copied ? 'Copied!' : 'Copy Code'}
                 </button>
                 <button
-                  onClick={handleStartGame}
+                  onClick={() => navigate('/host-panel', { state: { roomCode, quizTitle: 'Advanced Web Fundamentals Quiz' } })}
                   className="bg-secondary text-on-secondary px-8 py-3.5 rounded-full font-button text-base shadow-xl shadow-secondary/20 hover:shadow-secondary/35 hover:-translate-y-0.5 active:scale-98 transition-all flex items-center justify-center gap-2 min-w-[200px]"
                 >
                   Start Quiz Session <span className="material-symbols-outlined">rocket_launch</span>
@@ -390,7 +390,13 @@ export const LobbyWaiting: React.FC = () => {
                   Waiting for the host to start the quiz...
                 </p>
               </div>
-              <p className="text-on-surface font-label-bold text-label-bold">Get ready! 🚀</p>
+              <button
+                onClick={() => navigate('/play', { state: { nickname, roomCode, score: 0, streak: 0 } })}
+                className="mt-2 flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-button text-xs font-bold shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all cursor-pointer"
+              >
+                Start Game (Simulated) <span className="material-symbols-outlined text-sm">play_arrow</span>
+              </button>
+              <p className="text-on-surface font-label-bold text-label-bold mt-1">Get ready! 🚀</p>
             </div>
           </section>
 

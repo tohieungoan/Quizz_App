@@ -10,18 +10,31 @@ import { Dashboard } from './pages/Dashboard'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { LobbyWaiting } from './pages/LobbyWaiting'
 import { FormalExam } from './pages/FormalExam'
+import { ParticipantAnswer } from './pages/ParticipantAnswer'
+import { LiveLeaderboard } from './pages/LiveLeaderboard'
+import { PowerUpSelection } from './pages/PowerUpSelection'
+import { HostLiveReview } from './pages/HostLiveReview'
 
 const App: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname.startsWith('/dashboard') || location.pathname === '/lobby' || location.pathname === '/exam'
+  const isAuthRoute = 
+    location.pathname === '/login' || 
+    location.pathname === '/register' || 
+    location.pathname.startsWith('/dashboard') || 
+    location.pathname === '/lobby' || 
+    location.pathname === '/exam' ||
+    location.pathname === '/play' ||
+    location.pathname === '/leaderboard' ||
+    location.pathname === '/powerups' ||
+    location.pathname === '/host-panel'
 
   const handleGetStarted = () => {
     navigate('/register')
   }
 
-  // Auth routes render without Header & Footer
+  // Auth/Game routes render without Header & Footer
   if (isAuthRoute) {
     return (
       <Routes>
@@ -30,6 +43,10 @@ const App: React.FC = () => {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/lobby" element={<LobbyWaiting />} />
         <Route path="/exam" element={<FormalExam />} />
+        <Route path="/play" element={<ParticipantAnswer />} />
+        <Route path="/leaderboard" element={<LiveLeaderboard />} />
+        <Route path="/powerups" element={<PowerUpSelection />} />
+        <Route path="/host-panel" element={<HostLiveReview />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     )

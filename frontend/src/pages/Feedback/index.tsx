@@ -110,7 +110,7 @@ export const Feedback: React.FC = () => {
               <div className="flex flex-col gap-3">
                 <label className="font-label-bold text-label-bold text-on-surface">I am a...</label>
                 <div className="flex flex-wrap gap-3">
-                  {['member', 'host', 'admin'].map((r) => (
+                  {['member', 'host'].map((r) => (
                     <label key={r} className="cursor-pointer relative">
                       <input
                         checked={role === r}
@@ -142,11 +142,10 @@ export const Feedback: React.FC = () => {
                       className="focus:outline-none transition-transform active:scale-90"
                     >
                       <Star
-                        className={`w-8 h-8 transition-colors ${
-                          val <= (hoverRating || rating)
+                        className={`w-8 h-8 transition-colors ${val <= (hoverRating || rating)
                             ? 'text-yellow-500 fill-yellow-500'
                             : 'text-outline-variant'
-                        }`}
+                          }`}
                       />
                     </button>
                   ))}
