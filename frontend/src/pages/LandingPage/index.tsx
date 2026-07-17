@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Sparkles, Users, Laptop, Award, Zap, ChevronRight, Play } from 'lucide-react'
 import landingPage1 from '@/assets/images/landing-page-1.jpg'
 import landingPage2 from '@/assets/images/landing-page-2.jpg'
 import landingPage3 from '@/assets/images/landing-page-3.jpg'
@@ -13,7 +14,7 @@ export const LandingPage: React.FC = () => {
   const [nickError, setNickError] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
 
-  // ── 6-digit input handlers (giống Dashboard) ──
+  // ── 6-digit input handlers ──
   const handleCodeChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, '').slice(-1)
     const newCode = [...code]
@@ -79,37 +80,56 @@ export const LandingPage: React.FC = () => {
     if (isValid) {
       setIsConnecting(true)
       setTimeout(() => {
-        navigate('/lobby', { state: { roomCode, nickname: nickname.trim() } })
-      }, 600)
+        // Chuyển sang Lobby với state roomCode và nickname
+        navigate('/lobby', { state: { roomCode, nickname: nickname.trim(), isHost: false } })
+      }, 800)
     }
   }
 
   return (
-    <div className="flex-grow">
+    <div className="flex-grow bg-[#f9f9ff]">
       {/* Hero Section */}
-      <section className="relative pt-24 pb-32 px-margin-mobile md:px-margin-desktop overflow-hidden pattern-bg">
-        <div className="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-12 gap-gutter items-center">
+      <section className="relative pt-20 pb-28 px-margin-mobile md:px-margin-desktop overflow-hidden pattern-bg border-b border-outline-variant/10">
+        <div className="max-w-container-max mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative z-10">
+          
           {/* Hero Text */}
-          <div className="md:col-span-7 flex flex-col gap-6 relative z-10 text-center md:text-left">
-            <h1 className="font-headline-xl text-headline-lg-mobile md:text-headline-xl text-on-surface">
+          <div className="lg:col-span-7 flex flex-col gap-6 text-center lg:text-left">
+            <div className="inline-flex items-center gap-2 bg-primary/5 text-primary border border-primary/10 rounded-full px-4 py-1.5 self-center lg:self-start text-xs font-bold tracking-wide uppercase shadow-sm">
+              <Sparkles className="w-3.5 h-3.5" /> Next-Gen Gamified Quizzes
+            </div>
+            
+            <h1 className="font-headline-xl text-4xl md:text-5xl lg:text-6xl text-on-surface tracking-tight font-extrabold leading-tight">
               Host Live Quizzes. <br />
-              <span className="text-primary">Engage Students.</span> <br />
+              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Engage Students.</span> <br />
               Assess Smarter.
             </h1>
-            <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto md:mx-0">
-              The ultimate platform for synchronized real-time quiz games and professional formal examinations. Build, play, and analyze with focused play.
+            
+            <p className="font-body-lg text-body-md md:text-lg text-on-surface-variant max-w-2xl mx-auto lg:mx-0 leading-relaxed">
+              The ultimate platform for synchronized real-time quiz games and professional formal examinations. Empower your classroom with rich aesthetics, instant grading, and real-time interactive dashboards.
             </p>
+
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 mt-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant">
+                <span className="w-2 h-2 rounded-full bg-secondary animate-ping" />
+                <span>Over 10,000+ active players today</span>
+              </div>
+            </div>
           </div>
 
           {/* Guest PIN Widget */}
-          <div className="md:col-span-5 relative z-10 mt-12 md:mt-0">
-            <div className="bg-surface-container-lowest rounded-xl p-8 custom-shadow-level-1 max-w-md mx-auto">
-              <h2 className="font-headline-md text-headline-md text-center mb-6 text-on-surface">Join a Game</h2>
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4" id="joinGameForm">
+          <div className="lg:col-span-5 w-full max-w-md mx-auto">
+            <div className="bg-white/90 backdrop-blur-md rounded-3xl p-8 border border-white shadow-xl relative overflow-hidden transition-all duration-300 hover:shadow-2xl">
+              
+              {/* Decorative top blur gradient */}
+              <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-secondary to-tertiary" />
+
+              <h2 className="font-headline-md text-2xl text-center mb-6 text-on-surface font-extrabold">Join a Game Session</h2>
+              
+              <form onSubmit={handleSubmit} className="flex flex-col gap-5" id="joinGameForm">
                 {/* 6 individual digit boxes */}
-                <div>
-                  <label className="font-label-bold text-label-bold text-on-surface-variant sr-only">Room Code</label>
-                  <div className="flex justify-center gap-2 mb-1">
+                <div className="flex flex-col gap-2">
+                  <label className="font-label-bold text-xs uppercase tracking-wider text-on-surface-variant font-bold">Room PIN Code</label>
+                  <div className="flex justify-between gap-1.5">
                     {code.map((digit, i) => (
                       <input
                         key={i}
@@ -120,15 +140,15 @@ export const LandingPage: React.FC = () => {
                         onPaste={handlePaste}
                         placeholder="•"
                         id={i === 0 ? 'roomCode' : undefined}
-                        className={`w-12 h-14 text-center font-headline-md text-xl font-bold rounded-xl border-2 focus:outline-none transition-colors bg-white shadow-sm
-                          placeholder:text-outline-variant/50
+                        className={`w-[14%] aspect-square text-center font-headline-md text-xl font-bold rounded-xl border-2 focus:outline-none transition-all shadow-inner
+                          placeholder:text-outline-variant/40
                           ${
                             codeError
-                              ? 'border-error focus:border-error focus:ring-1 focus:ring-error'
+                              ? 'border-error bg-error/5 focus:border-error focus:ring-1 focus:ring-error text-error'
                               : digit
                               ? 'border-primary bg-primary/5 text-primary'
-                              : 'border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary'
-                          } ${isConnecting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                              : 'border-outline-variant bg-[#fcfcff] focus:border-primary focus:ring-1 focus:ring-primary'
+                          } ${isConnecting ? 'opacity-55 cursor-not-allowed' : ''}`}
                         type="text"
                         inputMode="numeric"
                         maxLength={1}
@@ -137,99 +157,130 @@ export const LandingPage: React.FC = () => {
                     ))}
                   </div>
                   {codeError && (
-                    <span className="text-error font-body-md text-sm block text-center" id="codeError">
-                      Please enter a valid 6-digit code.
+                    <span className="text-error font-body-md text-xs text-center mt-1 font-semibold flex items-center justify-center gap-1" id="codeError">
+                      Please enter a valid 6-digit numeric PIN.
                     </span>
                   )}
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="font-label-bold text-label-bold text-on-surface-variant sr-only" htmlFor="nickname">Nickname</label>
+
+                <div className="flex flex-col gap-2">
+                  <label className="font-label-bold text-xs uppercase tracking-wider text-on-surface-variant font-bold" htmlFor="nickname">Your Nickname</label>
                   <input 
                     type="text"
                     id="nickname"
-                    placeholder="Enter Nickname"
+                    placeholder="e.g. SpeedRunner"
                     value={nickname}
-                    onChange={(e) => setNickname(e.target.value)}
-                    className={`w-full rounded-lg border-2 px-4 py-4 font-body-md focus:border-primary focus:ring-0 transition-colors text-center ${
-                      nickError ? 'border-error' : 'border-outline-variant'
+                    onChange={(e) => {
+                      setNickname(e.target.value)
+                      if(e.target.value.trim() !== '') setNickError(false)
+                    }}
+                    className={`w-full rounded-xl border-2 px-4 py-3.5 font-body-md text-center text-on-surface focus:outline-none transition-all ${
+                      nickError 
+                        ? 'border-error bg-error/5 focus:border-error' 
+                        : 'border-outline-variant bg-[#fcfcff] focus:border-primary focus:border-2'
                     }`}
                   />
                   {nickError && (
-                    <span className="text-error font-body-md text-sm" id="nickError">
-                      Nickname is required.
+                    <span className="text-error font-body-md text-xs text-left font-semibold" id="nickError">
+                      Nickname is required to display on the leaderboard.
                     </span>
                   )}
                 </div>
+
                 <button 
                   disabled={isConnecting}
                   type="submit"
                   id="joinBtn"
-                  className="mt-4 font-button text-button bg-secondary text-on-secondary w-full py-4 rounded-full custom-shadow-level-1 hover:custom-shadow-level-2 hover:-translate-y-1 transition-all active:scale-95 disabled:opacity-80 flex items-center justify-center gap-2"
+                  className="mt-2 font-button text-base bg-primary text-white w-full py-4 rounded-2xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 active:scale-98 disabled:opacity-75 flex items-center justify-center gap-2 cursor-pointer font-bold"
                 >
-                  {isConnecting
-                    ? (<><span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Joining room...</>)
-                    : 'Join Game'
-                  }
+                  {isConnecting ? (
+                    <>
+                      <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      Connecting to lobby...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-current" /> Join Room
+                    </>
+                  )}
                 </button>
               </form>
             </div>
           </div>
-
-          {/* Decorative elements for hero */}
-          <div className="absolute top-10 right-10 w-64 h-64 bg-primary-fixed rounded-full blur-3xl opacity-30 -z-10"></div>
-          <div className="absolute bottom-10 left-10 w-48 h-48 bg-secondary-fixed rounded-full blur-3xl opacity-30 -z-10"></div>
         </div>
+
+        {/* Decorative elements for hero background */}
+        <div className="absolute top-[-10%] right-[-5%] w-[45%] h-[45%] bg-primary/10 rounded-full blur-[100px] pointer-events-none -z-10" />
+        <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-secondary/15 rounded-full blur-[100px] pointer-events-none -z-10" />
       </section>
 
-      {/* Feature Highlights */}
-      <section className="py-24 px-margin-mobile md:px-margin-desktop bg-surface-container-lowest relative z-20">
+      {/* Feature Highlights Section */}
+      <section className="py-24 px-margin-mobile md:px-margin-desktop bg-white relative z-20">
         <div className="max-w-container-max mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="font-headline-lg text-headline-lg text-on-surface">Built for Everyone</h2>
-            <p className="font-body-lg text-body-lg text-on-surface-variant mt-4">Tools designed specifically for your role in the classroom.</p>
+          <div className="text-center mb-16 max-w-2xl mx-auto">
+            <h2 className="font-headline-lg text-3xl md:text-4xl text-on-surface font-extrabold">Tailored Educational Tools</h2>
+            <p className="font-body-md text-on-surface-variant mt-3 text-base md:text-lg">Designed to maximize learning outcomes, simplify quiz orchestration, and increase participant engagement.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
-            {/* Feature 1 */}
-            <div className="bg-surface rounded-xl p-8 custom-shadow-level-1 hover:-translate-y-2 transition-transform duration-300 border border-outline-variant/30 flex flex-col items-start gap-4">
-              <div className="w-full h-48 mb-6 overflow-hidden rounded-lg shadow-sm">
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            
+            {/* Feature 1 - Teachers */}
+            <div className="bg-[#f9f9ff] rounded-3xl p-8 border border-outline-variant/30 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col items-start gap-4 group">
+              <div className="w-full h-44 mb-4 overflow-hidden rounded-2xl shadow-sm border border-outline-variant/20 relative">
                 <img 
                   alt="Teacher creating quizzes" 
-                  className="w-full h-full object-cover" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   src={landingPage1} 
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#111c2d]/30 to-transparent" />
               </div>
-              <h3 className="font-headline-md text-headline-md text-on-surface">Teachers</h3>
-              <p className="font-label-bold text-label-bold text-primary mb-2">Create &amp; Host</p>
-              <p className="font-body-md text-body-md text-on-surface-variant">Build MCQ, True/False, and Short Answer quizzes with AI-assisted tools. Host live interactive rooms with ease.</p>
+              <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
+                <Laptop className="w-3.5 h-3.5" /> Host Studio
+              </div>
+              <h3 className="font-headline-md text-xl font-bold text-on-surface mt-1">For Educators</h3>
+              <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
+                Build beautiful MCQ, True/False, and essay exams using AI-assisted tools. Coordinate classrooms, share invite links, and control question pacing.
+              </p>
             </div>
             
-            {/* Feature 2 */}
-            <div className="bg-surface rounded-xl p-8 custom-shadow-level-1 hover:-translate-y-2 transition-transform duration-300 border border-outline-variant/30 flex flex-col items-start gap-4">
-              <div className="w-full h-48 mb-6 overflow-hidden rounded-lg shadow-sm">
+            {/* Feature 2 - Students */}
+            <div className="bg-[#f9f9ff] rounded-3xl p-8 border border-outline-variant/30 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col items-start gap-4 group">
+              <div className="w-full h-44 mb-4 overflow-hidden rounded-2xl shadow-sm border border-outline-variant/20 relative">
                 <img 
                   alt="Students playing gamified quiz" 
-                  className="w-full h-full object-cover" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   src={landingPage2} 
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#111c2d]/30 to-transparent" />
               </div>
-              <h3 className="font-headline-md text-headline-md text-on-surface">Students</h3>
-              <p className="font-label-bold text-label-bold text-secondary mb-2">Exam &amp; Game Modes</p>
-              <p className="font-body-md text-body-md text-on-surface-variant">Engage in live quiz rooms or take scheduled formal exams. Earn progression badges as you learn.</p>
+              <div className="flex items-center gap-2 bg-secondary/10 text-secondary px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
+                <Zap className="w-3.5 h-3.5" /> Gamified Play
+              </div>
+              <h3 className="font-headline-md text-xl font-bold text-on-surface mt-1">For Participants</h3>
+              <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
+                Join live games with power-ups (X2, 50:50, Time Freeze). Answer quickly to build streaks, climb live standings, and view interactive results.
+              </p>
             </div>
             
-            {/* Feature 3 */}
-            <div className="bg-surface rounded-xl p-8 custom-shadow-level-1 hover:-translate-y-2 transition-transform duration-300 border border-outline-variant/30 flex flex-col items-start gap-4">
-              <div className="w-full h-48 mb-6 overflow-hidden rounded-lg shadow-sm">
+            {/* Feature 3 - Admins */}
+            <div className="bg-[#f9f9ff] rounded-3xl p-8 border border-outline-variant/30 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col items-start gap-4 group">
+              <div className="w-full h-44 mb-4 overflow-hidden rounded-2xl shadow-sm border border-outline-variant/20 relative">
                 <img 
                   alt="Administrator reviewing data analytics" 
-                  className="w-full h-full object-cover" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   src={landingPage3} 
                 />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#111c2d]/30 to-transparent" />
               </div>
-              <h3 className="font-headline-md text-headline-md text-on-surface">Admins</h3>
-              <p className="font-label-bold text-label-bold text-tertiary-container mb-2">Super Admin Insights</p>
-              <p className="font-body-md text-body-md text-on-surface-variant">Access comprehensive dashboards, manage users via CSV, and generate global reports effortlessly.</p>
+              <div className="flex items-center gap-2 bg-tertiary-container/30 text-tertiary-container px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
+                <Award className="w-3.5 h-3.5" /> Admin Insights
+              </div>
+              <h3 className="font-headline-md text-xl font-bold text-on-surface mt-1">For Administrators</h3>
+              <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
+                Manage global school groups, import rosters via CSV file, monitor user activity, and extract detailed CSV performance reports.
+              </p>
             </div>
+
           </div>
         </div>
       </section>

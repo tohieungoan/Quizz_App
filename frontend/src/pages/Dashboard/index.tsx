@@ -44,13 +44,7 @@ const mockHistory = [
 
 
 
-const groupRoster = [
-  { id: 1, name: 'Alex Johnson', email: 'alex.j@member.edu', group: 'Group 10A1', scores: [85, 92, 78, 95, 88, 90, 82, 94] },
-  { id: 2, name: 'Maria Garcia', email: 'm.garcia@member.edu', group: 'Group 10A1', scores: [70, 88, 82, 75] },
-  { id: 3, name: 'Liam Smith', email: 'l.smith@member.edu', group: 'Group 10A1', scores: [95, 98, 92, 100, 96, 99, 97, 95, 100, 98] },
-  { id: 4, name: 'John Doe', email: 'j.doe@member.edu', group: 'English Intensive', scores: [65, 72, 60, 68, 70, 58] },
-  { id: 5, name: 'Emma Watson', email: 'e.watson@member.edu', group: 'English Intensive', scores: [90, 92] }
-]
+// groupRoster moved to component state below
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate()
@@ -77,6 +71,187 @@ export const Dashboard: React.FC = () => {
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [activeReviewItem, setActiveReviewItem] = useState<any>(null)
+
+  // Group Roster (dynamic state)
+  const [groupRoster, setGroupRoster] = useState([
+    { id: 1, name: 'Alex Johnson', email: 'alex.j@member.edu', group: 'Group 10A1', scores: [85, 92, 78, 95, 88, 90, 82, 94] },
+    { id: 2, name: 'Maria Garcia', email: 'm.garcia@member.edu', group: 'Group 10A1', scores: [70, 88, 82, 75] },
+    { id: 3, name: 'Liam Smith', email: 'l.smith@member.edu', group: 'Group 10A1', scores: [95, 98, 92, 100, 96, 99, 97, 95, 100, 98] },
+    { id: 4, name: 'John Doe', email: 'j.doe@member.edu', group: 'English Intensive', scores: [65, 72, 60, 68, 70, 58] },
+    { id: 5, name: 'Emma Watson', email: 'e.watson@member.edu', group: 'English Intensive', scores: [90, 92] },
+  ])
+
+  // Add Member to Roster Modal States
+  const [addRosterMemberOpen, setAddRosterMemberOpen] = useState(false)
+  const [addMemberTab, setAddMemberTab] = useState<'select' | 'manual' | 'import'>('select')
+  const [newMemberName, setNewMemberName] = useState('')
+  const [newMemberEmail, setNewMemberEmail] = useState('')
+  const [addMemberError, setAddMemberError] = useState('')
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<number>>(new Set())
+  const [memberSearchInModal, setMemberSearchInModal] = useState('')
+  const [importedFileMembers, setImportedFileMembers] = useState<{ name: string; email: string }[]>([])
+  const [importFileName, setImportFileName] = useState('')
+  const [importPreviewVisible, setImportPreviewVisible] = useState(false)
+
+  const closeAddMemberModal = () => {
+    setAddRosterMemberOpen(false)
+    setAddMemberTab('select')
+    setNewMemberName('')
+    setNewMemberEmail('')
+    setAddMemberError('')
+    setSelectedMemberIds(new Set())
+    setMemberSearchInModal('')
+    setImportedFileMembers([])
+    setImportFileName('')
+    setImportPreviewVisible(false)
+  }
+
+  const handleAddRosterMember = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newMemberName.trim()) { setAddMemberError('Name is required.'); return }
+    if (!newMemberEmail.trim()) { setAddMemberError('Email is required.'); return }
+    const newMember = {
+      id: Date.now(),
+      name: newMemberName.trim(),
+      email: newMemberEmail.trim(),
+      group: selectedGroup || 'Unknown',
+      scores: [],
+    }
+    setGroupRoster(prev => [...prev, newMember])
+    setGroupsList(prev => prev.map(g =>
+      g.name === selectedGroup ? { ...g, membersCount: g.membersCount + 1 } : g
+    ))
+    closeAddMemberModal()
+  }
+
+  const handleAddSelectedMembers = () => {
+    const alreadyInGroup = new Set(groupRoster.filter(m => m.group === selectedGroup).map(m => m.id))
+    const toAdd = groupRoster.filter(m => selectedMemberIds.has(m.id) && !alreadyInGroup.has(m.id))
+    const newMembers = toAdd.map(m => ({ ...m, group: selectedGroup || 'Unknown' }))
+    // Add new entries with new IDs for the group
+    const withNewIds = newMembers.map(m => ({ ...m, id: Date.now() + Math.random() }))
+    setGroupRoster(prev => [...prev, ...withNewIds])
+    setGroupsList(prev => prev.map(g =>
+      g.name === selectedGroup ? { ...g, membersCount: g.membersCount + withNewIds.length } : g
+    ))
+    closeAddMemberModal()
+  }
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      const lines = text.split(/\r?\n/).filter(l => l.trim())
+      // Skip header row, parse name,email
+      const parsed = lines.slice(1).map(line => {
+        const cols = line.split(',')
+        return { name: (cols[0] || '').trim().replace(/"/g, ''), email: (cols[1] || '').trim().replace(/"/g, '') }
+      }).filter(r => r.name && r.email)
+      setImportedFileMembers(parsed)
+      setImportPreviewVisible(true)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const handleConfirmImport = () => {
+    const newMembers = importedFileMembers.map((m, i) => ({
+      id: Date.now() + i,
+      name: m.name,
+      email: m.email,
+      group: selectedGroup || 'Unknown',
+      scores: [],
+    }))
+    setGroupRoster(prev => [...prev, ...newMembers])
+    setGroupsList(prev => prev.map(g =>
+      g.name === selectedGroup ? { ...g, membersCount: g.membersCount + newMembers.length } : g
+    ))
+    closeAddMemberModal()
+  }
+
+  // Join Group States
+  const [joinGroupCode, setJoinGroupCode] = useState('')
+  const [joinGroupError, setJoinGroupError] = useState('')
+  const [joinFoundGroup, setJoinFoundGroup] = useState<typeof groupsList[0] | null>(null)
+  const [joinedGroupCodes, setJoinedGroupCodes] = useState<string[]>(['MTH10A', 'ENG2IM', 'HIS22A'])
+  const [viewingGroupScores, setViewingGroupScores] = useState<string | null>(null)
+
+  const getStudentScoresForGroup = (groupName: string) => {
+    if (groupName === 'Group 10A1') {
+      return [
+        { title: 'Algebra I - Linear Equations', type: 'Quiz', score: 90, date: 'Oct 10, 2026' },
+        { title: 'Cell Biology Basics', type: 'Practice', score: 85, date: 'Oct 12, 2026' },
+        { title: 'Quadratic Equations Pop Quiz', type: 'Quiz', score: 95, date: 'Oct 08, 2026' },
+      ]
+    }
+    if (groupName === 'English Intermediate') {
+      return [
+        { title: 'Grammar & Vocabulary Test', type: 'Exam', score: 92, date: 'Oct 14, 2026' },
+        { title: 'Reading Comprehension Practice', type: 'Practice', score: 88, date: 'Oct 11, 2026' },
+        { title: 'English Speaking Practice', type: 'Quiz', score: 96, date: 'Oct 05, 2026' },
+      ]
+    }
+    if (groupName === 'Science 101') {
+      return [
+        { title: 'Physics Mechanics Quiz', type: 'Quiz', score: 78, date: 'Oct 15, 2026' },
+        { title: 'Chemical Elements Test', type: 'Exam', score: 84, date: 'Oct 09, 2026' },
+      ]
+    }
+    if (groupName === 'History Archive') {
+      return [
+        { title: 'World War II Overview', type: 'Exam', score: 72, date: 'Jan 15, 2026' },
+        { title: 'Ancient Civilizations Quiz', type: 'Quiz', score: 80, date: 'Jan 10, 2026' },
+      ]
+    }
+    return []
+  }
+
+  const handleJoinGroupCodeChange = (val: string) => {
+    const clean = val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+    setJoinGroupCode(clean)
+    setJoinGroupError('')
+    if (clean.length === 6) {
+      const found = groupsList.find(g => g.code === clean)
+      setJoinFoundGroup(found || null)
+      if (!found) setJoinGroupError('No group found with this code.')
+    } else {
+      setJoinFoundGroup(null)
+    }
+  }
+
+  const handleJoinGroup = () => {
+    if (!joinFoundGroup) return
+    if (joinFoundGroup.status === 'Archived') { setJoinGroupError('This group is archived and not accepting new members.'); return }
+    if (joinedGroupCodes.includes(joinFoundGroup.code)) { setJoinGroupError('You are already a member of this group.'); return }
+    setJoinedGroupCodes(prev => [...prev, joinFoundGroup.code])
+    setGroupRoster(prev => [...prev, {
+      id: Date.now(),
+      name: 'Sarah Jenkins',
+      email: 'sarah.j@student.edu',
+      group: joinFoundGroup.name,
+      scores: [],
+    }])
+    setGroupsList(prev => prev.map(g => g.code === joinFoundGroup.code ? { ...g, membersCount: g.membersCount + 1 } : g))
+    setJoinGroupCode('')
+    setJoinFoundGroup(null)
+    setJoinGroupError('')
+  }
+
+  const handleLeaveGroup = (gcode: string) => {
+    const g = groupsList.find(x => x.code === gcode)
+    if (!g) return
+    setJoinedGroupCodes(prev => prev.filter(c => c !== gcode))
+    setGroupRoster(prev => {
+      // remove one entry of current user from this group
+      const idx = prev.findIndex(m => m.group === g.name && m.email === 'sarah.j@student.edu')
+      if (idx === -1) return prev
+      return [...prev.slice(0, idx), ...prev.slice(idx + 1)]
+    })
+    setGroupsList(prev => prev.map(x => x.code === gcode ? { ...x, membersCount: Math.max(0, x.membersCount - 1) } : x))
+  }
 
   // Create Room Configuration Modal States
   const [hostRoomModalOpen, setHostRoomModalOpen] = useState(false)
@@ -142,12 +317,30 @@ export const Dashboard: React.FC = () => {
   // Question Bank Modal State
   const [questionBankOpen, setQuestionBankOpen] = useState(false)
   const [questionBankSearch, setQuestionBankSearch] = useState('')
+  const [questionBankCategory, setQuestionBankCategory] = useState<string>('All')
   const [questionBank, setQuestionBank] = useState([
+    // HTML
     { id: 1, text: 'What is the purpose of Semantic HTML?', type: 'Multiple Choice', category: 'HTML', dateCreated: '2026-06-15' },
+    { id: 6, text: 'What does the <meta charset="UTF-8"> tag do?', type: 'Multiple Choice', category: 'HTML', dateCreated: '2026-07-01' },
+    { id: 7, text: 'Explain the difference between <div> and <section> tags.', type: 'Essay', category: 'HTML', dateCreated: '2026-07-03' },
+    // React
     { id: 2, text: 'Explain the concept of Virtual DOM in React.', type: 'Essay', category: 'React', dateCreated: '2026-06-18' },
+    { id: 8, text: 'What is the difference between useState and useEffect hooks?', type: 'Multiple Choice', category: 'React', dateCreated: '2026-07-05' },
+    { id: 9, text: 'What is prop drilling and how can it be avoided?', type: 'Essay', category: 'React', dateCreated: '2026-07-08' },
+    { id: 10, text: 'How does React reconciliation work?', type: 'Multiple Choice', category: 'React', dateCreated: '2026-07-10' },
+    // CSS / Web Fundamentals
     { id: 3, text: 'Which CSS unit is relative to the font-size of the root element?', type: 'Multiple Choice', category: 'CSS / Web Fundamentals', dateCreated: '2026-06-20' },
+    { id: 5, text: 'Describe how flex-grow property works in CSS Flexbox.', type: 'Essay', category: 'CSS / Web Fundamentals', dateCreated: '2026-06-25' },
+    { id: 11, text: 'What is the CSS Box Model and how does box-sizing affect it?', type: 'Essay', category: 'CSS / Web Fundamentals', dateCreated: '2026-07-02' },
+    { id: 12, text: 'What is the difference between position: absolute and position: fixed?', type: 'Multiple Choice', category: 'CSS / Web Fundamentals', dateCreated: '2026-07-06' },
+    // Javascript Basics
     { id: 4, text: 'What is the difference between let and var in JS?', type: 'Multiple Choice', category: 'Javascript Basics', dateCreated: '2026-06-22' },
-    { id: 5, text: 'Describe how flex-grow property works in CSS Flexbox.', type: 'Essay', category: 'CSS / Web Fundamentals', dateCreated: '2026-06-25' }
+    { id: 13, text: 'Explain closures in JavaScript with an example.', type: 'Essay', category: 'Javascript Basics', dateCreated: '2026-06-28' },
+    { id: 14, text: 'What is event bubbling and how does stopPropagation work?', type: 'Multiple Choice', category: 'Javascript Basics', dateCreated: '2026-07-04' },
+    // TypeScript
+    { id: 15, text: 'What is the difference between interface and type in TypeScript?', type: 'Multiple Choice', category: 'TypeScript', dateCreated: '2026-07-07' },
+    { id: 16, text: 'How do Generics work in TypeScript? Provide an example.', type: 'Essay', category: 'TypeScript', dateCreated: '2026-07-09' },
+    { id: 17, text: 'What is the purpose of the unknown type vs. any in TypeScript?', type: 'Multiple Choice', category: 'TypeScript', dateCreated: '2026-07-11' },
   ])
 
   // New Exam Form States
@@ -202,32 +395,56 @@ export const Dashboard: React.FC = () => {
 
   // New Group Form States
   const [groupNameInput, setGroupNameInput] = useState('')
+  const [groupDescriptionInput, setGroupDescriptionInput] = useState('')
   const [groupSubjectInput, setGroupSubjectInput] = useState('Mathematics')
-  const [groupMembersCountInput, setGroupMembersCountInput] = useState('30')
+  const [groupMaxMemberInput, setGroupMaxMemberInput] = useState('30')
+  const [groupStatusInput, setGroupStatusInput] = useState<'Active' | 'Archived'>('Active')
+  const [groupAvatarInput, setGroupAvatarInput] = useState('🎓')
+  const [groupCodeInput, setGroupCodeInput] = useState('')
+
+  // Helper: generate random 6-char join code
+  const generateGroupCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+  }
 
   // Move hostGroups to state so it is dynamic
   const [groupsList, setGroupsList] = useState([
-    { id: 1, name: 'Group 10A1', subject: 'Mathematics', membersCount: 35, avgPerformance: 88 },
-    { id: 2, name: 'English Intermediate', subject: 'Languages', membersCount: 20, avgPerformance: 92 },
-    { id: 3, name: 'Science 101', subject: 'Science', membersCount: 28, avgPerformance: 85 },
+    { id: 1, name: 'Group 10A1', description: 'Advanced Mathematics – Semester 1', subject: 'Mathematics', membersCount: 35, avgPerformance: 88, code: 'MTH10A', status: 'Active' as const, avatar: '📐', maxMember: 40, ownerId: 'sarah.j', createdAt: '2026-01-15', updatedAt: '2026-10-01' },
+    { id: 2, name: 'English Intermediate', description: 'English speaking and writing practice', subject: 'Languages', membersCount: 20, avgPerformance: 92, code: 'ENG2IM', status: 'Active' as const, avatar: '🗣️', maxMember: 30, ownerId: 'sarah.j', createdAt: '2026-02-10', updatedAt: '2026-09-20' },
+    { id: 3, name: 'Science 101', description: 'Introduction to Natural Sciences', subject: 'Science', membersCount: 28, avgPerformance: 85, code: 'SCI101', status: 'Active' as const, avatar: '🔬', maxMember: 35, ownerId: 'sarah.j', createdAt: '2026-03-05', updatedAt: '2026-09-15' },
+    { id: 4, name: 'History Archive', description: 'World History – Previous Semester', subject: 'History', membersCount: 22, avgPerformance: 79, code: 'HIS22A', status: 'Archived' as const, avatar: '🏛️', maxMember: 25, ownerId: 'sarah.j', createdAt: '2025-09-01', updatedAt: '2026-01-30' },
   ])
 
   const handleCreateGroupSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const now = new Date().toISOString().slice(0, 10)
     const newGroup = {
       id: groupsList.length + 1,
       name: groupNameInput || 'Unnamed Group',
+      description: groupDescriptionInput,
       subject: groupSubjectInput,
-      membersCount: Number(groupMembersCountInput) || 0,
-      avgPerformance: 0
+      membersCount: 0,
+      avgPerformance: 0,
+      code: groupCodeInput || generateGroupCode(),
+      status: groupStatusInput,
+      avatar: groupAvatarInput,
+      maxMember: Number(groupMaxMemberInput) || 30,
+      ownerId: 'sarah.j',
+      createdAt: now,
+      updatedAt: now,
     }
     setGroupsList(prev => [...prev, newGroup])
     setGroupView('list')
 
     // Reset Form
     setGroupNameInput('')
+    setGroupDescriptionInput('')
     setGroupSubjectInput('Mathematics')
-    setGroupMembersCountInput('30')
+    setGroupMaxMemberInput('30')
+    setGroupStatusInput('Active')
+    setGroupAvatarInput('🎓')
+    setGroupCodeInput('')
   }
 
   // Host Session Settings
@@ -957,100 +1174,273 @@ export const Dashboard: React.FC = () => {
             )}
             {/* TAB: JOIN ROOM */}
             {activeTab === 'join_room' && (
-              <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-200">
-                {/* Left Card: Join Room */}
-                <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-8 flex flex-col justify-between text-center min-h-[320px]">
-                  <div>
-                    <div className="w-16 h-16 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center mb-4 shadow-sm mx-auto">
-                      <Zap className="w-8 h-8" />
-                    </div>
-                    <h2 className="font-headline-md text-lg font-bold text-on-surface mb-1">Join a Room</h2>
-                    <p className="font-body-md text-xs text-on-surface-variant mb-6">Enter the 6-digit code from your instructor.</p>
+              <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                    <div className="flex justify-center gap-2 mb-6">
-                      {code.map((num, i) => (
-                        <input
-                          key={i}
-                          ref={(el) => (inputRefs.current[i] = el)}
-                          value={num}
-                          onChange={(e) => handleCodeChange(i, e.target.value)}
-                          onKeyDown={(e) => handleCodeKeyDown(i, e)}
-                          onPaste={handlePaste}
-                          placeholder="0"
-                          className="w-10 h-12 text-center font-headline-md text-xl font-bold rounded-xl border border-outline-variant focus:border-secondary focus:ring-1 focus:ring-secondary focus:outline-none bg-white shadow-sm"
-                          type="text"
-                          inputMode="numeric"
-                        />
-                      ))}
+                  {/* Card 1: Join a Room (Session) */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-7 flex flex-col justify-between text-center min-h-[320px]">
+                    <div>
+                      <div className="w-14 h-14 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center mb-4 shadow-sm mx-auto">
+                        <Zap className="w-7 h-7" />
+                      </div>
+                      <h2 className="font-bold text-base text-on-surface mb-1">Join a Room</h2>
+                      <p className="text-xs text-on-surface-variant mb-5">Enter the 6-digit code from your instructor.</p>
+
+                      <div className="flex justify-center gap-1.5 mb-4">
+                        {code.map((num, i) => (
+                          <input
+                            key={i}
+                            ref={(el) => (inputRefs.current[i] = el)}
+                            value={num}
+                            onChange={(e) => handleCodeChange(i, e.target.value)}
+                            onKeyDown={(e) => handleCodeKeyDown(i, e)}
+                            onPaste={handlePaste}
+                            placeholder="0"
+                            className="w-9 h-11 text-center font-bold text-lg rounded-xl border border-outline-variant focus:border-secondary focus:ring-1 focus:ring-secondary focus:outline-none bg-white shadow-sm"
+                            type="text"
+                            inputMode="numeric"
+                          />
+                        ))}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => {
+                        const enteredCode = code.join('')
+                        if (enteredCode.length === 6) {
+                          navigate('/lobby', { state: { roomCode: enteredCode, nickname: 'Sarah Jenkins' } })
+                        }
+                      }}
+                      disabled={code.join('').length < 6}
+                      className="w-full bg-secondary text-white font-button py-3 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md"
+                    >
+                      Join Session <ArrowRight className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      const enteredCode = code.join('')
-                      if (enteredCode.length === 6) {
-                        navigate('/lobby', {
-                          state: { roomCode: enteredCode, nickname: 'Sarah Jenkins' }
-                        })
-                      }
-                    }}
-                    disabled={code.join('').length < 6}
-                    className="w-full bg-secondary text-white font-button py-3.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md"
-                  >
-                    Join Session
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
 
-                {/* Right Card: Host a Session */}
-                <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-8 flex flex-col justify-between min-h-[320px]">
-                  <div>
-                    <div className="flex items-center gap-4 mb-6">
-                      <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shadow-sm">
-                        <GraduationCap className="w-6 h-6" />
+                  {/* Card 2: Join a Group */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-7 flex flex-col justify-between text-center min-h-[320px] relative overflow-hidden">
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-secondary" />
+                    <div>
+                      <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4 shadow-sm mx-auto">
+                        <Users className="w-7 h-7" />
                       </div>
-                      <div>
-                        <h2 className="font-headline-md text-base font-bold text-on-surface">Host a Session</h2>
-                        <p className="font-body-md text-xs text-on-surface-variant">Create a room for your members.</p>
+                      <h2 className="font-bold text-base text-on-surface mb-1">Join a Group</h2>
+                      <p className="text-xs text-on-surface-variant mb-5">Enter the 6-character group code to join.</p>
+
+                      {/* Code input */}
+                      <div className="relative mb-3">
+                        <input
+                          type="text"
+                          value={joinGroupCode}
+                          onChange={e => handleJoinGroupCodeChange(e.target.value)}
+                          placeholder="e.g. MTH10A"
+                          maxLength={6}
+                          className={`w-full text-center font-mono font-extrabold text-xl tracking-[0.35em] py-3.5 px-4 rounded-xl border-2 outline-none transition-all uppercase bg-[#f9f9ff] ${
+                            joinGroupError
+                              ? 'border-error text-error'
+                              : joinFoundGroup
+                                ? 'border-secondary text-secondary'
+                                : 'border-outline-variant/40 focus:border-primary text-on-surface'
+                          }`}
+                        />
+                        {joinGroupCode.length > 0 && (
+                          <button
+                            onClick={() => { setJoinGroupCode(''); setJoinFoundGroup(null); setJoinGroupError('') }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-error transition-colors"
+                          >
+                            <Plus className="w-4 h-4 rotate-45" />
+                          </button>
+                        )}
                       </div>
+
+                      {joinGroupError && (
+                        <p className="text-error text-xs font-bold mb-3">{joinGroupError}</p>
+                      )}
+
+                      {/* Group Preview Card */}
+                      {joinFoundGroup && !joinGroupError && (
+                        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 mb-2 text-left">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-2xl">{joinFoundGroup.avatar || '🎓'}</span>
+                            <div className="min-w-0">
+                              <p className="font-bold text-sm text-on-surface truncate">{joinFoundGroup.name}</p>
+                              <p className="text-[10px] text-on-surface-variant">{joinFoundGroup.subject} • {joinFoundGroup.membersCount}/{joinFoundGroup.maxMember} members</p>
+                            </div>
+                            <span className={`ml-auto text-[9px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${
+                              joinFoundGroup.status === 'Active'
+                                ? 'bg-secondary/10 text-secondary border-secondary/20'
+                                : 'bg-outline/10 text-outline border-outline/20'
+                            }`}>
+                              {joinFoundGroup.status === 'Active' ? '🟢 Active' : '🔒 Archived'}
+                            </span>
+                          </div>
+                          {joinFoundGroup.description && (
+                            <p className="text-[10px] text-on-surface-variant mt-2 line-clamp-1">{joinFoundGroup.description}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="space-y-6">
-                      {/* Game Mode */}
-                      <div>
-                        <label className="block text-[10px] font-extrabold text-outline uppercase tracking-wider mb-3">Game Mode</label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(['classic', 'fun', 'team'] as const).map((mode) => (
-                            <button
-                              key={mode}
-                              onClick={() => setSelectedGameMode(mode)}
-                              className={`flex flex-col items-center gap-1.5 p-3.5 border rounded-xl transition-all ${selectedGameMode === mode
-                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-primary font-bold'
-                                : 'border-outline-variant/30 hover:bg-surface-container-low text-on-surface-variant'
+                    <button
+                      onClick={handleJoinGroup}
+                      disabled={!joinFoundGroup || !!joinGroupError}
+                      className="w-full bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-button py-3 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm"
+                    >
+                      <Users className="w-4 h-4" /> Join Group
+                    </button>
+                  </div>
+
+                  {/* Card 3: Host a Session */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 p-7 flex flex-col justify-between min-h-[320px]">
+                    <div>
+                      <div className="flex items-center gap-3 mb-5">
+                        <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shadow-sm">
+                          <GraduationCap className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h2 className="font-bold text-base text-on-surface">Host a Session</h2>
+                          <p className="text-xs text-on-surface-variant">Create a room for your members.</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-5">
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-outline uppercase tracking-wider mb-3">Game Mode</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(['classic', 'fun', 'team'] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                onClick={() => setSelectedGameMode(mode)}
+                                className={`flex flex-col items-center gap-1.5 p-3 border rounded-xl transition-all ${selectedGameMode === mode
+                                  ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-primary font-bold'
+                                  : 'border-outline-variant/30 hover:bg-surface-container-low text-on-surface-variant'
                                 }`}
-                            >
-                              {mode === 'classic' && <Trophy className="w-5 h-5" />}
-                              {mode === 'fun' && <Zap className="w-5 h-5" />}
-                              {mode === 'team' && <Users className="w-5 h-5" />}
-                              <span className="text-[11px] uppercase tracking-wide">{mode}</span>
-                            </button>
-                          ))}
+                              >
+                                {mode === 'classic' && <Trophy className="w-4 h-4" />}
+                                {mode === 'fun' && <Zap className="w-4 h-4" />}
+                                {mode === 'team' && <Users className="w-4 h-4" />}
+                                <span className="text-[10px] uppercase tracking-wide">{mode}</span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
+
+                    <button
+                      onClick={() => setHostRoomModalOpen(true)}
+                      className="w-full bg-primary text-white font-button py-3 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm mt-6"
+                    >
+                      Create Room <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* My Groups Panel */}
+                <div className="bg-white rounded-2xl border border-outline-variant/10 shadow-sm overflow-hidden">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/10 bg-surface-container-low/30">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Users className="w-3.5 h-3.5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-extrabold text-on-surface">My Groups</p>
+                        <p className="text-[10px] text-on-surface-variant">Groups you have joined</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                      {joinedGroupCodes.length} group{joinedGroupCodes.length !== 1 ? 's' : ''}
+                    </span>
                   </div>
 
-                  <button
-                    onClick={() => setHostRoomModalOpen(true)}
-                    className="w-full bg-primary text-white font-button py-3.5 rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm mt-6"
-                  >
-                    Create Room
-                    <Plus className="w-4 h-4" />
-                  </button>
+                  {/* Empty state */}
+                  {joinedGroupCodes.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <div className="w-14 h-14 rounded-2xl bg-surface-container-low flex items-center justify-center mx-auto mb-3">
+                        <Users className="w-7 h-7 text-outline-variant" />
+                      </div>
+                      <p className="text-sm font-semibold text-on-surface-variant">You haven't joined any groups yet</p>
+                      <p className="text-xs text-outline mt-1">Enter a group code above to get started</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-outline-variant/10">
+                      {joinedGroupCodes.map(gcode => {
+                        const g = groupsList.find(x => x.code === gcode)
+                        if (!g) return null
+                        const fillPct = Math.round((g.membersCount / g.maxMember) * 100)
+                        return (
+                          <div
+                            key={gcode}
+                            onClick={() => setViewingGroupScores(g.name)}
+                            className="flex items-center gap-4 px-6 py-4 hover:bg-primary/5 cursor-pointer transition-all group"
+                            title="Click to view your grades in this group"
+                          >
+                            {/* Avatar */}
+                            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-xl flex-shrink-0 shadow-sm transition-transform group-hover:scale-105">
+                              {g.avatar || '🎓'}
+                            </div>
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0 text-left">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <p className="font-bold text-sm text-on-surface truncate group-hover:text-primary transition-colors">{g.name}</p>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                                  g.status === 'Active'
+                                    ? 'bg-secondary/10 text-secondary'
+                                    : 'bg-outline/10 text-outline'
+                                }`}>
+                                  {g.status === 'Active' ? '🟢 Active' : '🔒 Archived'}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-on-surface-variant mb-2">{g.subject} • Code: <span className="font-mono font-bold">{gcode}</span></p>
+
+                              {/* Members progress bar */}
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500"
+                                    style={{ width: `${fillPct}%` }}
+                                  />
+                                </div>
+                                <span className="text-[9px] text-on-surface-variant font-bold whitespace-nowrap">{g.membersCount}/{g.maxMember}</span>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setViewingGroupScores(g.name)
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-all"
+                              >
+                                <Award className="w-3.5 h-3.5" /> View Grades
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (window.confirm(`Leave "${g.name}"? You will need the group code to rejoin.`)) {
+                                    handleLeaveGroup(gcode)
+                                  }
+                                }}
+                                className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-error border border-error/30 hover:bg-error/10 rounded-lg transition-all"
+                              >
+                                <LogOut className="w-3.5 h-3.5" /> Leave
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             {/* TAB: ASSIGNED EXAMS */}
+
 
             {activeTab === 'assigned_exams' && (
               <div className="space-y-6 animate-in fade-in duration-200">
@@ -1938,42 +2328,79 @@ export const Dashboard: React.FC = () => {
                           {sortedGroups.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                               {sortedGroups.map((cls) => (
-                                <div key={cls.id} className="bg-white border border-outline-variant/10 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow group flex flex-col justify-between min-h-[220px]">
+                                <div key={cls.id} className={`bg-white border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group flex flex-col justify-between min-h-[240px] ${
+                                  cls.status === 'Archived' ? 'border-outline-variant/20 opacity-75' : 'border-outline-variant/10 hover:-translate-y-0.5'
+                                }`}>
                                   <div>
+                                    {/* Card Header */}
                                     <div className="flex justify-between items-start mb-4">
-                                      <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                                        <Building className="w-6 h-6" />
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-2xl">
+                                          {cls.avatar || '🎓'}
+                                        </div>
+                                        <div className="text-left">
+                                          <h3 className="font-bold text-sm text-on-surface leading-tight">{cls.name}</h3>
+                                          <p className="text-[10px] text-on-surface-variant mt-0.5">{cls.subject}</p>
+                                        </div>
                                       </div>
-                                      <div className="flex gap-2">
-                                        <button className="text-on-surface-variant hover:text-primary transition-colors"><Edit className="w-4 h-4" /></button>
+                                      <div className="flex gap-1.5 items-center">
+                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                          cls.status === 'Active'
+                                            ? 'bg-secondary/10 text-secondary border-secondary/20'
+                                            : 'bg-outline/10 text-outline border-outline/20'
+                                        }`}>
+                                          {cls.status === 'Active' ? '🟢 Active' : '🔒 Archived'}
+                                        </span>
+                                        <button className="text-on-surface-variant hover:text-primary transition-colors p-1 rounded-lg hover:bg-primary/5"><Edit className="w-3.5 h-3.5" /></button>
                                         <button
                                           onClick={() => setGroupsList(prev => prev.filter(g => g.id !== cls.id))}
-                                          className="text-on-surface-variant hover:text-error transition-colors"
+                                          className="text-on-surface-variant hover:text-error transition-colors p-1 rounded-lg hover:bg-error/5"
                                         >
-                                          <Trash2 className="w-4 h-4" />
+                                          <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       </div>
                                     </div>
-                                    <h3 className="font-bold text-base text-on-surface mb-1 text-left">{cls.name}</h3>
-                                    <p className="text-xs text-on-surface-variant mb-4 text-left">Subject: {cls.subject} • {cls.membersCount} Members</p>
+
+                                    {/* Description */}
+                                    {'description' in cls && cls.description && (
+                                      <p className="text-[11px] text-on-surface-variant text-left mb-3 line-clamp-2">{cls.description}</p>
+                                    )}
+
+                                    {/* Meta row */}
+                                    <div className="flex items-center gap-3 flex-wrap mb-3">
+                                      <span className="flex items-center gap-1 text-[10px] text-on-surface-variant">
+                                        <Users className="w-3 h-3" />
+                                        {cls.membersCount}{'maxMember' in cls ? `/${cls.maxMember}` : ''} members
+                                      </span>
+                                      {'code' in cls && cls.code && (
+                                        <span className="flex items-center gap-1 text-[10px] font-mono font-bold bg-primary/5 text-primary px-2 py-0.5 rounded-lg border border-primary/10">
+                                          🔑 {cls.code}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="space-y-2">
+
+                                  {/* Performance Bar */}
+                                  <div className="space-y-1.5">
                                     <div className="flex justify-between text-xs font-bold">
                                       <span className="text-outline">Avg. Performance</span>
                                       <span className="text-secondary">{cls.avgPerformance}%</span>
                                     </div>
                                     <div className="w-full h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
-                                      <div className="h-full bg-secondary" style={{ width: `${cls.avgPerformance}%` }} />
+                                      <div className="h-full bg-gradient-to-r from-secondary to-primary transition-all duration-500" style={{ width: `${cls.avgPerformance}%` }} />
                                     </div>
-                                    <div className="pt-2 text-right">
+                                    <div className="pt-1.5 flex justify-between items-center">
+                                      {'createdAt' in cls && (
+                                        <span className="text-[9px] text-outline">Created {cls.createdAt}</span>
+                                      )}
                                       <button
                                         onClick={() => {
                                           setSelectedGroup(cls.name)
                                           setGroupView('details')
                                         }}
-                                        className="text-primary font-bold hover:underline text-xs"
+                                        className="text-primary font-bold hover:underline text-xs ml-auto"
                                       >
-                                        View Roster
+                                        View Roster →
                                       </button>
                                     </div>
                                   </div>
@@ -1994,156 +2421,384 @@ export const Dashboard: React.FC = () => {
                     })()}
 
                     {groupView === 'create' && (
-                      <div className="bg-white rounded-2xl border border-outline-variant/10 shadow-sm p-8 max-w-xl mx-auto animate-in zoom-in-95 duration-200">
-                        <h3 className="font-headline-md text-lg font-bold text-on-surface mb-6 text-left">Create New Group</h3>
-                        <form onSubmit={handleCreateGroupSubmit} className="space-y-6">
-                          <div className="space-y-4">
-                            <div>
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Group Name</label>
+                      <div className="animate-in zoom-in-95 duration-200 max-w-2xl mx-auto">
+                        {/* Header */}
+                        <div className="flex items-center gap-3 mb-6">
+                          <button
+                            type="button"
+                            onClick={() => setGroupView('list')}
+                            className="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant"
+                          >
+                            <ArrowLeft className="w-5 h-5" />
+                          </button>
+                          <div>
+                            <h3 className="font-bold text-lg text-on-surface text-left">Create New Group</h3>
+                            <p className="text-xs text-on-surface-variant text-left">Fill in the details below to create a new study group</p>
+                          </div>
+                        </div>
+
+                        <form onSubmit={handleCreateGroupSubmit} className="space-y-5">
+                          {/* Avatar + Name row */}
+                          <div className="bg-white rounded-2xl border border-outline-variant/10 shadow-sm p-6 space-y-5">
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-outline/70 text-left">Basic Information</p>
+
+                            {/* Avatar Emoji Picker */}
+                            <div className="text-left">
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Group Avatar</label>
+                              <div className="flex flex-wrap gap-2">
+                                {['🎓', '📚', '🔬', '📐', '🗣️', '💻', '🎨', '🏛️', '⚗️', '🌍', '📊', '🧠'].map(emoji => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => setGroupAvatarInput(emoji)}
+                                    className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all border-2 ${
+                                      groupAvatarInput === emoji
+                                        ? 'border-primary bg-primary/10 scale-110 shadow-sm'
+                                        : 'border-transparent bg-[#f9f9ff] hover:border-outline-variant'
+                                    }`}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Group Name */}
+                            <div className="text-left">
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Group Name <span className="text-error">*</span></label>
                               <input
                                 className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
-                                placeholder="e.g. Group 10A2, Eng. Advanced"
+                                placeholder="e.g. CS Class K21, English Advanced, Math Group A..."
                                 type="text"
                                 value={groupNameInput}
                                 onChange={(e) => setGroupNameInput(e.target.value)}
                                 required
                               />
                             </div>
-                            <div>
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Subject / Category</label>
-                              <input
-                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
-                                placeholder="e.g. Mathematics, Languages, Science"
-                                type="text"
-                                value={groupSubjectInput}
-                                onChange={(e) => setGroupSubjectInput(e.target.value)}
-                                required
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2 text-left">Estimated Members Count</label>
-                              <input
-                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
-                                placeholder="30"
-                                type="number"
-                                value={groupMembersCountInput}
-                                onChange={(e) => setGroupMembersCountInput(e.target.value)}
-                                required
+
+                            {/* Description */}
+                            <div className="text-left">
+                              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Description</label>
+                              <textarea
+                                className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none resize-none"
+                                placeholder="A short description about this group..."
+                                rows={3}
+                                value={groupDescriptionInput}
+                                onChange={(e) => setGroupDescriptionInput(e.target.value)}
                               />
                             </div>
                           </div>
 
-                          <div className="flex justify-end gap-3 pt-4">
+                          {/* Settings */}
+                          <div className="bg-white rounded-2xl border border-outline-variant/10 shadow-sm p-6 space-y-5">
+                            <p className="text-[10px] font-extrabold uppercase tracking-widest text-outline/70 text-left">Group Settings</p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                              {/* Subject */}
+                              <div className="text-left">
+                                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Subject / Category <span className="text-error">*</span></label>
+                                <select
+                                  className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
+                                  value={groupSubjectInput}
+                                  onChange={(e) => setGroupSubjectInput(e.target.value)}
+                                  required
+                                >
+                                  <option value="Mathematics">Mathematics</option>
+                                  <option value="Science">Science</option>
+                                  <option value="Languages">Languages</option>
+                                  <option value="History">History</option>
+                                  <option value="Computer Science">Computer Science</option>
+                                  <option value="Art">Art</option>
+                                  <option value="Physics">Physics</option>
+                                  <option value="Chemistry">Chemistry</option>
+                                  <option value="Biology">Biology</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                              </div>
+
+                              {/* Max Members */}
+                              <div className="text-left">
+                                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Max Members <span className="text-error">*</span></label>
+                                <input
+                                  className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none"
+                                  placeholder="30"
+                                  type="number"
+                                  min="1"
+                                  max="500"
+                                  value={groupMaxMemberInput}
+                                  onChange={(e) => setGroupMaxMemberInput(e.target.value)}
+                                  required
+                                />
+                              </div>
+
+                              {/* Status */}
+                              <div className="text-left">
+                                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Status</label>
+                                <div className="flex gap-3">
+                                  {(['Active', 'Archived'] as const).map(s => (
+                                    <button
+                                      key={s}
+                                      type="button"
+                                      onClick={() => setGroupStatusInput(s)}
+                                      className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                                        groupStatusInput === s
+                                          ? s === 'Active'
+                                            ? 'border-secondary bg-secondary/10 text-secondary'
+                                            : 'border-outline bg-outline/10 text-outline'
+                                          : 'border-outline-variant/30 bg-[#f9f9ff] text-on-surface-variant hover:border-outline-variant'
+                                      }`}
+                                    >
+                                      {s === 'Active' ? '🟢 Active' : '🔒 Archived'}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Join Code */}
+                              <div className="text-left">
+                                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Join Code</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    className="flex-1 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-2.5 font-body-md text-sm outline-none font-mono tracking-widest uppercase"
+                                    placeholder="Auto-generate"
+                                    type="text"
+                                    maxLength={6}
+                                    value={groupCodeInput}
+                                    onChange={(e) => setGroupCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setGroupCodeInput(generateGroupCode())}
+                                    className="px-3 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors text-xs font-bold whitespace-nowrap flex items-center gap-1"
+                                    title="Generate random code"
+                                  >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                <p className="text-[10px] text-on-surface-variant mt-1">Leave blank to auto-generate. Members use this code to join the group.</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex justify-end gap-3 pt-2">
                             <button
                               type="button"
-                              onClick={() => setGroupView('list')}
+                              onClick={() => {
+                                setGroupView('list')
+                                setGroupNameInput('')
+                                setGroupDescriptionInput('')
+                                setGroupSubjectInput('Mathematics')
+                                setGroupMaxMemberInput('30')
+                                setGroupStatusInput('Active')
+                                setGroupAvatarInput('🎓')
+                                setGroupCodeInput('')
+                              }}
                               className="px-6 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant font-button text-xs hover:bg-surface-container-low transition-colors"
                             >
                               Cancel
                             </button>
                             <button
                               type="submit"
-                              className="bg-primary hover:bg-primary-container text-white font-button py-2.5 px-8 rounded-xl shadow-md hover:shadow-lg transition-all text-xs"
+                              className="bg-primary hover:bg-primary/90 text-white font-button py-2.5 px-8 rounded-xl shadow-md hover:shadow-lg transition-all text-xs flex items-center gap-2"
                             >
-                              Create Group
+                              <Plus className="w-4 h-4" /> Create Group
                             </button>
                           </div>
                         </form>
                       </div>
                     )}
 
-                    {groupView === 'details' && (
-                      <div className="space-y-6 animate-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-4">
-                            <button
-                              onClick={() => setGroupView('list')}
-                              className="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant"
-                            >
-                              <ArrowLeft className="w-5 h-5" />
-                            </button>
-                            <div>
-                              <h3 className="font-bold text-base text-on-surface">{selectedGroup}</h3>
-                              <p className="text-xs text-on-surface-variant mt-0.5">Member Performance &amp; Roster</p>
+                    {groupView === 'details' && (() => {
+                      const rosterForGroup = groupRoster.filter(m => m.group === selectedGroup)
+                      const currentGroupData = groupsList.find(g => g.name === selectedGroup)
+                      return (
+                        <div className="space-y-6 animate-in zoom-in-95 duration-200">
+                          {/* Header */}
+                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => setGroupView('list')}
+                                className="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant"
+                              >
+                                <ArrowLeft className="w-5 h-5" />
+                              </button>
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-xl">
+                                  {currentGroupData?.avatar || '🎓'}
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-base text-on-surface">{selectedGroup}</h3>
+                                  <p className="text-xs text-on-surface-variant mt-0.5">
+                                    {rosterForGroup.length}{currentGroupData?.maxMember ? `/${currentGroupData.maxMember}` : ''} members
+                                    {currentGroupData?.code && <span className="ml-2 font-mono font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-lg">🔑 {currentGroupData.code}</span>}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 flex-wrap">
+                              <button
+                                onClick={() => alert('Exporting grades...')}
+                                className="bg-surface-container-low text-on-surface-variant font-button py-2 px-4 rounded-xl hover:bg-surface-container-high transition-colors flex items-center gap-1.5 text-xs font-bold border border-outline-variant/20"
+                              >
+                                <Upload className="w-4 h-4 rotate-180" /> Export Grades
+                              </button>
+                              <button
+                                onClick={() => { setAddRosterMemberOpen(true); setAddMemberError('') }}
+                                className="bg-primary hover:bg-primary/90 text-white font-button py-2 px-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all flex items-center gap-1.5 text-xs font-bold"
+                              >
+                                <Plus className="w-4 h-4" /> Add Member
+                              </button>
                             </div>
                           </div>
-                          <button
-                            onClick={() => alert('Exporting grades...')}
-                            className="bg-primary/10 text-primary font-button py-2 px-4 rounded-xl hover:bg-primary/20 transition-colors flex items-center gap-1.5 text-xs font-bold"
-                          >
-                            <Upload className="w-4 h-4 rotate-180" /> Export Grades
-                          </button>
-                        </div>
 
-                        <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
-                          <table className="w-full text-left border-collapse">
-                            <thead>
-                              <tr className="bg-surface-container-low/30 border-b border-outline-variant/10">
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Member</th>
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Email</th>
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider">Score Profile</th>
-                                <th className="py-4 px-6 font-bold text-xs text-outline uppercase tracking-wider text-right">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-outline-variant/10">
-                              {groupRoster.map((st) => (
-                                <tr key={st.id} className="hover:bg-primary/5 transition-colors">
-                                  <td className="py-4 px-6 font-semibold text-sm text-on-surface">{st.name}</td>
-                                  <td className="py-4 px-6 text-xs text-on-surface-variant">{st.email}</td>
-                                  <td className="py-4 px-6">
-                                    {(() => {
-                                      const avgScore = Math.round(st.scores.reduce((sum, val) => sum + val, 0) / st.scores.length)
-                                      return (
-                                        <div className="flex flex-col gap-2 text-left">
-                                          <div className="flex items-center gap-3">
-                                            <span className={`text-sm font-extrabold ${avgScore >= 85 ? 'text-secondary' : avgScore >= 70 ? 'text-primary' : 'text-error'}`}>
-                                              {avgScore}% Avg
-                                            </span>
-                                            <div className="flex gap-1 items-center">
-                                              {st.scores.slice(0, 4).map((score, sIdx) => (
-                                                <span 
-                                                  key={sIdx} 
-                                                  className="px-2 py-0.5 rounded bg-surface-container-highest text-[10px] font-bold text-on-surface-variant border border-outline-variant/25"
-                                                  title={`Quiz ${sIdx + 1}: ${score}%`}
-                                                >
-                                                  {score}
-                                                </span>
-                                              ))}
-                                              {st.scores.length > 4 && (
-                                                <span 
-                                                  className="px-2 py-0.5 rounded bg-primary/10 text-[10px] font-extrabold text-primary border border-primary/20 cursor-help"
-                                                  title={st.scores.slice(4).map((s, idx) => `Quiz ${5 + idx}: ${s}%`).join('\n')}
-                                                >
-                                                  +{st.scores.length - 4}
-                                                </span>
-                                              )}
-                                            </div>
+                          {/* Stats bar */}
+                          {rosterForGroup.length > 0 && (() => {
+                            const allScores = rosterForGroup.flatMap(m => m.scores)
+                            const avg = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : 0
+                            const topPerformer = [...rosterForGroup].sort((a, b) => {
+                              const avgA = a.scores.length > 0 ? a.scores.reduce((x, y) => x + y, 0) / a.scores.length : 0
+                              const avgB = b.scores.length > 0 ? b.scores.reduce((x, y) => x + y, 0) / b.scores.length : 0
+                              return avgB - avgA
+                            })[0]
+                            return (
+                              <div className="grid grid-cols-3 gap-4">
+                                <div className="bg-white rounded-2xl border border-outline-variant/10 p-4 text-left shadow-sm">
+                                  <p className="text-[10px] font-bold text-outline uppercase tracking-wider">Members</p>
+                                  <p className="text-2xl font-extrabold text-on-surface mt-1">{rosterForGroup.length}</p>
+                                  {currentGroupData?.maxMember && <p className="text-[10px] text-on-surface-variant">of {currentGroupData.maxMember} max</p>}
+                                </div>
+                                <div className="bg-white rounded-2xl border border-outline-variant/10 p-4 text-left shadow-sm">
+                                  <p className="text-[10px] font-bold text-outline uppercase tracking-wider">Avg. Score</p>
+                                  <p className={`text-2xl font-extrabold mt-1 ${avg >= 85 ? 'text-secondary' : avg >= 70 ? 'text-primary' : 'text-error'}`}>{avg}%</p>
+                                  <p className="text-[10px] text-on-surface-variant">across all quizzes</p>
+                                </div>
+                                <div className="bg-white rounded-2xl border border-outline-variant/10 p-4 text-left shadow-sm">
+                                  <p className="text-[10px] font-bold text-outline uppercase tracking-wider">Top Performer</p>
+                                  <p className="text-sm font-extrabold text-on-surface mt-1 truncate">{topPerformer?.name || '—'}</p>
+                                  <p className="text-[10px] text-on-surface-variant">
+                                    {topPerformer?.scores.length > 0
+                                      ? `${Math.round(topPerformer.scores.reduce((a, b) => a + b, 0) / topPerformer.scores.length)}% avg`
+                                      : 'No scores yet'}
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          })()}
+
+                          {/* Roster Table */}
+                          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
+                            <div className="px-6 py-4 border-b border-outline-variant/10 flex justify-between items-center">
+                              <h4 className="font-bold text-sm text-on-surface">Member Roster</h4>
+                              <span className="text-xs text-on-surface-variant">{rosterForGroup.length} members</span>
+                            </div>
+                            {rosterForGroup.length === 0 ? (
+                              <div className="py-16 text-center">
+                                <Users className="w-10 h-10 text-outline-variant mx-auto mb-3" />
+                                <h4 className="font-bold text-sm text-on-surface">No members yet</h4>
+                                <p className="text-xs text-on-surface-variant mt-1 mb-4">Add members to get started.</p>
+                                <button
+                                  onClick={() => { setAddRosterMemberOpen(true); setAddMemberError('') }}
+                                  className="bg-primary text-white font-button text-xs py-2 px-6 rounded-xl shadow-sm hover:shadow-md transition-all inline-flex items-center gap-2"
+                                >
+                                  <Plus className="w-4 h-4" /> Add First Member
+                                </button>
+                              </div>
+                            ) : (
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-surface-container-low/30 border-b border-outline-variant/10">
+                                    <th className="py-3.5 px-6 font-bold text-xs text-outline uppercase tracking-wider">Member</th>
+                                    <th className="py-3.5 px-6 font-bold text-xs text-outline uppercase tracking-wider">Email</th>
+                                    <th className="py-3.5 px-6 font-bold text-xs text-outline uppercase tracking-wider">Score Profile</th>
+                                    <th className="py-3.5 px-6 font-bold text-xs text-outline uppercase tracking-wider text-right">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-outline-variant/10">
+                                  {rosterForGroup.map((st) => (
+                                    <tr key={st.id} className="hover:bg-primary/5 transition-colors group">
+                                      <td className="py-4 px-6">
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-extrabold flex-shrink-0">
+                                            {st.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                                           </div>
-                                          <div className="w-44 h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
-                                            <div 
-                                              className={`h-full rounded-full ${avgScore >= 85 ? 'bg-secondary' : avgScore >= 70 ? 'bg-primary' : 'bg-error'}`} 
-                                              style={{ width: `${avgScore}%` }}
-                                            />
-                                          </div>
+                                          <span className="font-semibold text-sm text-on-surface">{st.name}</span>
                                         </div>
-                                      )
-                                    })()}
-                                  </td>
-                                  <td className="py-4 px-6 text-right">
-                                    <button
-                                      onClick={() => alert(`Viewing member profile: ${st.name}`)}
-                                      className="text-primary font-bold text-xs hover:underline"
-                                    >
-                                      View Profile
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                                      </td>
+                                      <td className="py-4 px-6 text-xs text-on-surface-variant">{st.email}</td>
+                                      <td className="py-4 px-6">
+                                        {st.scores.length === 0 ? (
+                                          <span className="text-xs text-outline italic">No scores yet</span>
+                                        ) : (() => {
+                                          const avgScore = Math.round(st.scores.reduce((sum, val) => sum + val, 0) / st.scores.length)
+                                          return (
+                                            <div className="flex flex-col gap-1.5 text-left">
+                                              <div className="flex items-center gap-3">
+                                                <span className={`text-sm font-extrabold ${avgScore >= 85 ? 'text-secondary' : avgScore >= 70 ? 'text-primary' : 'text-error'}`}>
+                                                  {avgScore}% Avg
+                                                </span>
+                                                <div className="flex gap-1 items-center">
+                                                  {st.scores.slice(0, 4).map((score, sIdx) => (
+                                                    <span
+                                                      key={sIdx}
+                                                      className="px-2 py-0.5 rounded bg-surface-container-highest text-[10px] font-bold text-on-surface-variant border border-outline-variant/25"
+                                                      title={`Quiz ${sIdx + 1}: ${score}%`}
+                                                    >
+                                                      {score}
+                                                    </span>
+                                                  ))}
+                                                  {st.scores.length > 4 && (
+                                                    <span
+                                                      className="px-2 py-0.5 rounded bg-primary/10 text-[10px] font-extrabold text-primary border border-primary/20 cursor-help"
+                                                      title={st.scores.slice(4).map((s, idx) => `Quiz ${5 + idx}: ${s}%`).join('\n')}
+                                                    >
+                                                      +{st.scores.length - 4}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="w-44 h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
+                                                <div
+                                                  className={`h-full rounded-full ${avgScore >= 85 ? 'bg-secondary' : avgScore >= 70 ? 'bg-primary' : 'bg-error'}`}
+                                                  style={{ width: `${avgScore}%` }}
+                                                />
+                                              </div>
+                                            </div>
+                                          )
+                                        })()}
+                                      </td>
+                                      <td className="py-4 px-6 text-right">
+                                        <div className="flex items-center justify-end gap-3">
+                                          <button
+                                            onClick={() => alert(`Viewing profile: ${st.name}`)}
+                                            className="text-primary font-bold text-xs hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                                          >
+                                            View Profile
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              if (window.confirm(`Remove ${st.name} from this group?`)) {
+                                                setGroupRoster(prev => prev.filter(m => m.id !== st.id))
+                                                setGroupsList(prev => prev.map(g =>
+                                                  g.name === selectedGroup ? { ...g, membersCount: Math.max(0, g.membersCount - 1) } : g
+                                                ))
+                                              }
+                                            }}
+                                            className="text-error font-bold text-xs hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
                   </div>
                 )}
 
@@ -2430,85 +3085,624 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Question Bank */}
-      {questionBankOpen && (() => {
-        const filteredQuestions = questionBank.filter(q => 
-          q.text.toLowerCase().includes(questionBankSearch.toLowerCase()) ||
-          q.category.toLowerCase().includes(questionBankSearch.toLowerCase())
+      {/* Modal: Add Member to Roster */}
+      {addRosterMemberOpen && (() => {
+        const availableMembers = groupRoster.filter(m => m.group !== selectedGroup)
+        const filteredAvailable = availableMembers.filter(m =>
+          m.name.toLowerCase().includes(memberSearchInModal.toLowerCase()) ||
+          m.email.toLowerCase().includes(memberSearchInModal.toLowerCase())
         )
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full m-4 border border-outline-variant/20 animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh] overflow-hidden">
+
+              {/* Header */}
+              <div className="flex justify-between items-center px-7 pt-6 pb-4 border-b border-outline-variant/10 flex-shrink-0">
+                <div>
+                  <h3 className="font-bold text-base text-on-surface flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Plus className="w-3.5 h-3.5 text-primary" />
+                    </div>
+                    Add Member
+                  </h3>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    Adding to <span className="font-bold text-primary">{selectedGroup}</span>
+                  </p>
+                </div>
+                <button onClick={closeAddMemberModal} className="text-on-surface-variant hover:text-error p-1.5 hover:bg-surface-container-low rounded-lg transition-all">
+                  <Plus className="w-5 h-5 rotate-45" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-outline-variant/10 flex-shrink-0 px-7">
+                {([
+                  { key: 'select' as const, label: '👥 Select Members' },
+                  { key: 'manual' as const, label: '✏️ Manual Entry' },
+                  { key: 'import' as const, label: '📂 Import File' },
+                ]).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setAddMemberTab(tab.key)}
+                    className={`py-3 px-3 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                      addMemberTab === tab.key
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab Content */}
+              <div className="flex-1 overflow-y-auto px-7 py-5">
+
+                {/* TAB 1: Select from Members Directory */}
+                {addMemberTab === 'select' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-on-surface-variant">Select existing members from your directory to add to this group.</p>
+
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={memberSearchInModal}
+                        onChange={e => setMemberSearchInModal(e.target.value)}
+                        placeholder="Search by name or email..."
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none"
+                      />
+                    </div>
+
+                    {filteredAvailable.length > 0 && (
+                      <div className="flex items-center justify-between px-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={filteredAvailable.length > 0 && filteredAvailable.every(m => selectedMemberIds.has(m.id))}
+                            onChange={e => {
+                              const newSet = new Set(selectedMemberIds)
+                              filteredAvailable.forEach(m => e.target.checked ? newSet.add(m.id) : newSet.delete(m.id))
+                              setSelectedMemberIds(newSet)
+                            }}
+                            className="w-4 h-4 rounded accent-primary"
+                          />
+                          <span className="text-xs font-bold text-on-surface-variant">Select all ({filteredAvailable.length})</span>
+                        </label>
+                        {selectedMemberIds.size > 0 && (
+                          <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{selectedMemberIds.size} selected</span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {filteredAvailable.length === 0 ? (
+                        <div className="py-10 text-center">
+                          <Users className="w-8 h-8 text-outline-variant mx-auto mb-2" />
+                          <p className="text-xs text-on-surface-variant">
+                            {availableMembers.length === 0 ? 'No other members in directory.' : 'No members match your search.'}
+                          </p>
+                        </div>
+                      ) : filteredAvailable.map(m => {
+                        const isSelected = selectedMemberIds.has(m.id)
+                        return (
+                          <label
+                            key={m.id}
+                            className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                              isSelected ? 'border-primary bg-primary/5' : 'border-outline-variant/20 bg-[#f9f9ff] hover:border-outline-variant'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={e => {
+                                const newSet = new Set(selectedMemberIds)
+                                e.target.checked ? newSet.add(m.id) : newSet.delete(m.id)
+                                setSelectedMemberIds(newSet)
+                              }}
+                              className="w-4 h-4 rounded accent-primary flex-shrink-0"
+                            />
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-extrabold flex-shrink-0">
+                              {m.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="text-left min-w-0">
+                              <p className="text-sm font-semibold text-on-surface truncate">{m.name}</p>
+                              <p className="text-[10px] text-on-surface-variant truncate">{m.email}</p>
+                            </div>
+                            <span className="ml-auto text-[9px] font-bold text-outline bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/20 flex-shrink-0 truncate max-w-[80px]">{m.group}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: Manual Entry */}
+                {addMemberTab === 'manual' && (
+                  <form id="manualAddForm" onSubmit={handleAddRosterMember} className="space-y-4">
+                    <p className="text-xs text-on-surface-variant">Manually enter a new member's details.</p>
+                    <div className="text-left">
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Full Name <span className="text-error">*</span></label>
+                      <input
+                        type="text"
+                        value={newMemberName}
+                        onChange={e => { setNewMemberName(e.target.value); setAddMemberError('') }}
+                        placeholder="e.g. Alex Johnson"
+                        className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-3 text-sm outline-none"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="text-left">
+                      <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">Email Address <span className="text-error">*</span></label>
+                      <input
+                        type="email"
+                        value={newMemberEmail}
+                        onChange={e => { setNewMemberEmail(e.target.value); setAddMemberError('') }}
+                        placeholder="e.g. alex.j@school.edu"
+                        className="w-full bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl px-4 py-3 text-sm outline-none"
+                      />
+                    </div>
+                    {addMemberError && (
+                      <div className="px-4 py-2.5 bg-error/10 border border-error/20 rounded-xl">
+                        <span className="text-error text-xs font-bold">{addMemberError}</span>
+                      </div>
+                    )}
+                  </form>
+                )}
+
+                {/* TAB 3: Import from File */}
+                {addMemberTab === 'import' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-on-surface-variant">
+                      Upload a <span className="font-bold">.csv</span> file with columns: <span className="font-mono bg-surface-container-low px-1.5 py-0.5 rounded text-[11px]">name, email</span>
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const csv = 'name,email\nAlex Johnson,alex.j@school.edu\nMaria Garcia,m.garcia@school.edu'
+                        const blob = new Blob([csv], { type: 'text/csv' })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url; a.download = 'member_import_template.csv'; a.click()
+                        URL.revokeObjectURL(url)
+                      }}
+                      className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+                    >
+                      <Upload className="w-3.5 h-3.5 rotate-180" /> Download CSV template
+                    </button>
+
+                    <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-outline-variant hover:border-primary rounded-2xl p-8 cursor-pointer transition-all bg-[#f9f9ff] hover:bg-primary/5 group">
+                      <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Upload className="w-6 h-6 text-primary" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-on-surface">Click to upload CSV</p>
+                        <p className="text-xs text-on-surface-variant mt-1">Supports .csv and .txt files</p>
+                      </div>
+                      {importFileName && (
+                        <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">📄 {importFileName}</span>
+                      )}
+                      <input type="file" accept=".csv,.txt" onChange={handleImportFile} className="hidden" />
+                    </label>
+
+                    {importPreviewVisible && importedFileMembers.length > 0 && (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-bold text-on-surface">{importedFileMembers.length} member{importedFileMembers.length !== 1 ? 's' : ''} found in file</p>
+                          <button
+                            type="button"
+                            onClick={() => { setImportedFileMembers([]); setImportFileName(''); setImportPreviewVisible(false) }}
+                            className="text-xs text-error hover:underline font-bold"
+                          >Clear</button>
+                        </div>
+                        <div className="border border-outline-variant/20 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead className="bg-surface-container-low/50 sticky top-0">
+                              <tr>
+                                <th className="py-2 px-3 text-[10px] font-bold text-outline uppercase tracking-wider">Name</th>
+                                <th className="py-2 px-3 text-[10px] font-bold text-outline uppercase tracking-wider">Email</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-outline-variant/10">
+                              {importedFileMembers.map((m, i) => (
+                                <tr key={i} className="hover:bg-primary/5">
+                                  <td className="py-2 px-3 text-xs font-semibold text-on-surface">{m.name}</td>
+                                  <td className="py-2 px-3 text-xs text-on-surface-variant">{m.email}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {importPreviewVisible && importedFileMembers.length === 0 && (
+                      <div className="px-4 py-3 bg-error/10 border border-error/20 rounded-xl text-center">
+                        <p className="text-xs font-bold text-error">No valid rows found. Make sure the file has columns: name, email</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-3 px-7 py-4 border-t border-outline-variant/10 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={closeAddMemberModal}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant font-button text-xs hover:bg-surface-container-low transition-colors font-bold"
+                >
+                  Cancel
+                </button>
+
+                {addMemberTab === 'select' && (
+                  <button
+                    type="button"
+                    onClick={handleAddSelectedMembers}
+                    disabled={selectedMemberIds.size === 0}
+                    className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-button py-2.5 px-4 rounded-xl shadow-sm hover:shadow-md transition-all text-xs font-bold flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add {selectedMemberIds.size > 0 ? `${selectedMemberIds.size} ` : ''}Member{selectedMemberIds.size !== 1 ? 's' : ''}
+                  </button>
+                )}
+                {addMemberTab === 'manual' && (
+                  <button
+                    type="submit"
+                    form="manualAddForm"
+                    className="flex-1 bg-primary hover:bg-primary/90 text-white font-button py-2.5 px-4 rounded-xl shadow-sm hover:shadow-md transition-all text-xs font-bold flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> Add Member
+                  </button>
+                )}
+                {addMemberTab === 'import' && (
+                  <button
+                    type="button"
+                    onClick={handleConfirmImport}
+                    disabled={importedFileMembers.length === 0}
+                    className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-button py-2.5 px-4 rounded-xl shadow-sm hover:shadow-md transition-all text-xs font-bold flex items-center justify-center gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Import {importedFileMembers.length > 0 ? `${importedFileMembers.length} ` : ''}Member{importedFileMembers.length !== 1 ? 's' : ''}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Modal: View Student Grades for Group */}
+      {viewingGroupScores && (() => {
+        const groupName = viewingGroupScores
+        const scores = getStudentScoresForGroup(groupName)
+        const avg = scores.length > 0
+          ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length)
+          : null
+        const passedCount = scores.filter(s => s.score >= 50).length
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full m-4 border border-outline-variant/20 animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full m-4 border border-outline-variant/20 animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh] overflow-hidden">
+              
+              {/* Header */}
+              <div className="flex justify-between items-center px-7 pt-6 pb-4 border-b border-outline-variant/10 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-xl">
+                    {groupsList.find(g => g.name === groupName)?.avatar || '🎓'}
+                  </div>
+                  <div className="text-left">
+                    <h3 className="font-bold text-base text-on-surface">My Grades</h3>
+                    <p className="text-xs text-on-surface-variant">Class: <span className="font-bold text-primary">{groupName}</span></p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setViewingGroupScores(null)}
+                  className="text-on-surface-variant hover:text-error p-1.5 hover:bg-surface-container-low rounded-lg transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-7 space-y-6">
+                {/* Stats Row */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-primary/5 border border-primary/10 p-3 rounded-xl text-center">
+                    <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">Average Score</p>
+                    <p className="text-xl font-black text-primary">{avg !== null ? `${avg}%` : '--'}</p>
+                  </div>
+                  <div className="bg-secondary/5 border border-secondary/10 p-3 rounded-xl text-center">
+                    <p className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-1">Completed</p>
+                    <p className="text-xl font-black text-secondary">{scores.length}</p>
+                  </div>
+                  <div className="bg-green-500/5 border border-green-500/10 p-3 rounded-xl text-center">
+                    <p className="text-[10px] font-bold text-green-600 uppercase tracking-wider mb-1">Status</p>
+                    <p className="text-xl font-black text-green-600">{scores.length > 0 ? (avg && avg >= 70 ? 'Passed' : 'Active') : 'No Data'}</p>
+                  </div>
+                </div>
+
+                {/* Score List */}
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-on-surface uppercase tracking-wider text-left">Completed Activities</p>
+                  
+                  {scores.length === 0 ? (
+                    <div className="py-12 text-center border border-dashed border-outline-variant/30 rounded-2xl bg-[#f9f9ff]">
+                      <Award className="w-8 h-8 text-outline-variant mx-auto mb-2 opacity-50" />
+                      <p className="text-xs text-on-surface-variant font-semibold">No scores available yet</p>
+                      <p className="text-[10px] text-outline mt-1">Scores will appear once you complete quizzes or exams assigned to this group.</p>
+                    </div>
+                  ) : (
+                    <div className="border border-outline-variant/10 rounded-xl overflow-hidden divide-y divide-outline-variant/10">
+                      {scores.map((item, index) => {
+                        const isHigh = item.score >= 90
+                        const isMid = item.score >= 70 && item.score < 90
+                        return (
+                          <div key={index} className="flex items-center justify-between p-3.5 hover:bg-[#f9f9ff] transition-colors">
+                            <div className="text-left min-w-0 pr-3">
+                              <p className="text-xs font-bold text-on-surface truncate">{item.title}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[9px] font-bold text-outline bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/10">{item.type}</span>
+                                <span className="text-[10px] text-on-surface-variant">{item.date}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex-shrink-0 text-right">
+                              <span className={`inline-block font-mono text-sm font-extrabold px-2.5 py-1 rounded-lg border ${
+                                isHigh
+                                  ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                                  : isMid
+                                    ? 'bg-primary/10 text-primary border-primary/20'
+                                    : 'bg-error/10 text-error border-error/20'
+                              }`}>
+                                {item.score}%
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-7 py-4 border-t border-outline-variant/10 flex-shrink-0 bg-white flex justify-end">
+                <button
+                  onClick={() => setViewingGroupScores(null)}
+                  className="px-6 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white font-button text-xs font-bold shadow-md hover:shadow-lg transition-all"
+                >
+                  Close
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Modal: Question Bank */}
+      {questionBankOpen && (() => {
+        // Lấy danh sách category duy nhất
+        const allCategories = Array.from(new Set(questionBank.map(q => q.category)))
+
+        // Filter theo category và search
+        const filteredQuestions = questionBank.filter(q => {
+          const matchesCategory = questionBankCategory === 'All' || q.category === questionBankCategory
+          const matchesSearch = q.text.toLowerCase().includes(questionBankSearch.toLowerCase()) ||
+            q.category.toLowerCase().includes(questionBankSearch.toLowerCase())
+          return matchesCategory && matchesSearch
+        })
+
+        // Nhóm câu hỏi theo category (khi đang ở All)
+        const groupedByCategory = allCategories.reduce<Record<string, typeof questionBank>>((acc, cat) => {
+          acc[cat] = filteredQuestions.filter(q => q.category === cat)
+          return acc
+        }, {})
+
+        // Màu sắc cho từng category
+        const categoryColors: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+          'HTML': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', icon: '🌐' },
+          'React': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: '⚛️' },
+          'CSS / Web Fundamentals': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', icon: '🎨' },
+          'Javascript Basics': { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', icon: '⚡' },
+          'TypeScript': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', icon: '📘' },
+        }
+        const defaultColor = { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', icon: '📂' }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full m-4 border border-outline-variant/20 animate-in zoom-in-95 duration-200 flex flex-col max-h-[88vh] overflow-hidden">
+
+              {/* Modal Header */}
+              <div className="flex justify-between items-center px-8 pt-7 pb-5 border-b border-outline-variant/10 flex-shrink-0">
                 <div className="text-left">
                   <h3 className="font-headline-md text-lg font-bold text-on-surface flex items-center gap-2">
                     <BookOpen className="w-5 h-5 text-primary" /> Question Bank
                   </h3>
-                  <p className="text-xs text-on-surface-variant mt-0.5">Browse and reuse questions you created across all your courses.</p>
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    {questionBank.length} questions across {allCategories.length} categories
+                  </p>
                 </div>
                 <button
-                  onClick={() => setQuestionBankOpen(false)}
+                  onClick={() => { setQuestionBankOpen(false); setQuestionBankCategory('All'); setQuestionBankSearch('') }}
                   className="text-on-surface-variant hover:text-error p-1.5 hover:bg-surface-container-low rounded-lg transition-all"
                 >
                   <Plus className="w-5 h-5 rotate-45" />
                 </button>
               </div>
 
-              {/* Search Bar for Questions */}
-              <div className="relative mb-6 flex-shrink-0 text-left">
-                <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input 
-                  type="text"
-                  value={questionBankSearch}
-                  onChange={(e) => setQuestionBankSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none text-on-surface"
-                  placeholder="Search by question text or category..."
-                />
-              </div>
+              {/* Body: Sidebar + Content */}
+              <div className="flex flex-1 overflow-hidden">
 
-              {/* Questions List Container */}
-              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-                {filteredQuestions.length > 0 ? (
-                  filteredQuestions.map((q) => (
-                    <div key={q.id} className="p-4 rounded-xl border border-outline-variant/15 hover:border-primary/30 bg-[#f9f9ff]/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
-                      <div className="space-y-1.5 flex-grow">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary uppercase tracking-wider">
-                          {q.type}
-                        </span>
-                        <span className="text-[10px] text-on-surface-variant font-semibold ml-2">
-                          Tag: {q.category}
-                        </span>
-                        <p className="text-sm font-semibold text-on-surface">{q.text}</p>
-                        <p className="text-[10px] text-outline">Created on {q.dateCreated}</p>
-                      </div>
+                {/* Left Sidebar: Category List */}
+                <div className="w-52 flex-shrink-0 border-r border-outline-variant/10 bg-[#f9f9ff] flex flex-col overflow-y-auto py-3 px-2">
+                  <p className="text-[9px] font-extrabold uppercase tracking-widest text-outline/70 px-2 mb-2">Categories</p>
+                  {/* All button */}
+                  <button
+                    onClick={() => setQuestionBankCategory('All')}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all mb-1 ${
+                      questionBankCategory === 'All'
+                        ? 'bg-primary text-white shadow-sm'
+                        : 'text-on-surface-variant hover:bg-white hover:text-on-surface'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>📚</span> All Questions
+                    </span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      questionBankCategory === 'All' ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                    }`}>
+                      {questionBank.length}
+                    </span>
+                  </button>
+
+                  {/* Category buttons */}
+                  {allCategories.map(cat => {
+                    const color = categoryColors[cat] || defaultColor
+                    const count = questionBank.filter(q => q.category === cat).length
+                    const isActive = questionBankCategory === cat
+                    return (
                       <button
-                        onClick={() => {
-                          setQuizzesList(prev => prev.map((quiz, idx) => idx === 0 ? { ...quiz, questions: quiz.questions + 1 } : quiz))
-                          alert(`"${q.text}" successfully added to your active Quiz Template!`)
-                        }}
-                        className="bg-primary hover:bg-primary-container text-white font-button text-xs py-2 px-4 rounded-lg shadow-sm hover:shadow-md transition-all font-bold shrink-0 self-start md:self-center"
+                        key={cat}
+                        onClick={() => setQuestionBankCategory(cat)}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all mb-1 ${
+                          isActive
+                            ? 'bg-primary text-white shadow-sm'
+                            : 'text-on-surface-variant hover:bg-white hover:text-on-surface'
+                        }`}
                       >
-                        Reuse Question
+                        <span className="flex items-center gap-2 truncate">
+                          <span>{color.icon}</span>
+                          <span className="truncate">{cat}</span>
+                        </span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                          isActive ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                        }`}>
+                          {count}
+                        </span>
                       </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-12 text-center">
-                    <BookOpen className="w-10 h-10 text-outline-variant mx-auto mb-3" />
-                    <h4 className="font-bold text-sm text-on-surface">No questions found</h4>
-                    <p className="text-xs text-on-surface-variant mt-1">Try matching other keywords.</p>
-                  </div>
-                )}
-              </div>
+                    )
+                  })}
+                </div>
 
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-outline-variant/10 flex-shrink-0">
-                <button
-                  onClick={() => setQuestionBankOpen(false)}
-                  className="px-6 py-2.5 rounded-xl bg-surface-container-high text-on-surface-variant font-button text-xs hover:bg-surface-container-highest transition-colors font-bold"
-                >
-                  Close
-                </button>
+                {/* Right Content Area */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Search bar */}
+                  <div className="px-6 pt-5 pb-4 flex-shrink-0">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-on-surface-variant absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={questionBankSearch}
+                        onChange={(e) => setQuestionBankSearch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-[#f9f9ff] border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none rounded-xl text-xs outline-none text-on-surface"
+                        placeholder={`Search in ${questionBankCategory === 'All' ? 'all categories' : questionBankCategory}...`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Questions grouped by category or flat list */}
+                  <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-6">
+                    {filteredQuestions.length === 0 ? (
+                      <div className="py-16 text-center">
+                        <BookOpen className="w-10 h-10 text-outline-variant mx-auto mb-3" />
+                        <h4 className="font-bold text-sm text-on-surface">No questions found</h4>
+                        <p className="text-xs text-on-surface-variant mt-1">Try searching with different keywords.</p>
+                      </div>
+                    ) : questionBankCategory === 'All' ? (
+                      // Show grouped by category
+                      allCategories.filter(cat => groupedByCategory[cat]?.length > 0).map(cat => {
+                        const color = categoryColors[cat] || defaultColor
+                        const questions = groupedByCategory[cat]
+                        return (
+                          <div key={cat}>
+                            {/* Category Header */}
+                            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${color.bg} ${color.border} mb-3`}>
+                              <span className="text-base">{color.icon}</span>
+                              <span className={`font-extrabold text-xs uppercase tracking-wider ${color.text}`}>{cat}</span>
+                              <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${color.bg} ${color.text} border ${color.border}`}>
+                                {questions.length} questions
+                              </span>
+                            </div>
+                            {/* Questions in this category */}
+                            <div className="space-y-2.5 pl-1">
+                              {questions.map(q => (
+                                <div key={q.id} className="p-4 rounded-xl border border-outline-variant/15 hover:border-primary/30 bg-white transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 text-left shadow-sm hover:shadow-md">
+                                  <div className="space-y-1 flex-grow">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                        q.type === 'Essay' ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'
+                                      }`}>
+                                        {q.type}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm font-semibold text-on-surface">{q.text}</p>
+                                    <p className="text-[10px] text-outline">Created on {q.dateCreated}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setQuizzesList(prev => prev.map((quiz, idx) => idx === 0 ? { ...quiz, questions: quiz.questions + 1 } : quiz))
+                                      alert(`"${q.text}" successfully added to your active Quiz Template!`)
+                                    }}
+                                    className="bg-primary hover:bg-primary/90 text-white font-button text-xs py-2 px-4 rounded-lg shadow-sm hover:shadow-md transition-all font-bold shrink-0 self-start md:self-center whitespace-nowrap"
+                                  >
+                                    + Reuse
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      // Show flat list for selected category
+                      <div className="space-y-2.5">
+                        {filteredQuestions.map(q => {
+                          const color = categoryColors[q.category] || defaultColor
+                          return (
+                            <div key={q.id} className="p-4 rounded-xl border border-outline-variant/15 hover:border-primary/30 bg-white transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 text-left shadow-sm hover:shadow-md">
+                              <div className="space-y-1 flex-grow">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                    q.type === 'Essay' ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'
+                                  }`}>
+                                    {q.type}
+                                  </span>
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold border ${color.bg} ${color.text} ${color.border}`}>
+                                    {color.icon} {q.category}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-semibold text-on-surface">{q.text}</p>
+                                <p className="text-[10px] text-outline">Created on {q.dateCreated}</p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setQuizzesList(prev => prev.map((quiz, idx) => idx === 0 ? { ...quiz, questions: quiz.questions + 1 } : quiz))
+                                  alert(`"${q.text}" successfully added to your active Quiz Template!`)
+                                }}
+                                className="bg-primary hover:bg-primary/90 text-white font-button text-xs py-2 px-4 rounded-lg shadow-sm hover:shadow-md transition-all font-bold shrink-0 self-start md:self-center whitespace-nowrap"
+                              >
+                                + Reuse
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex justify-end gap-3 px-6 py-4 border-t border-outline-variant/10 flex-shrink-0 bg-white">
+                    <button
+                      onClick={() => { setQuestionBankOpen(false); setQuestionBankCategory('All'); setQuestionBankSearch('') }}
+                      className="px-6 py-2.5 rounded-xl bg-surface-container-high text-on-surface-variant font-button text-xs hover:bg-surface-container-highest transition-colors font-bold"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
