@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Search, Users, Eye, XCircle } from 'lucide-react';
+import { Search, Users, Eye, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Dropdown } from '@/components/ui/Dropdown';
-import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { Pagination } from '@/components/ui/Pagination';
 import { RoomDetailsModal } from '@/components/ui/RoomDetailsModal';
 import { DUMMY_ROOMS, Room } from '@/data/mockDb';
 
@@ -9,15 +10,16 @@ interface RoomsProps {
   onNavigate?: (view: string, context?: any) => void;
 }
 
-export const Rooms: React.FC<RoomsProps> = () => {
+export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
+  const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>(DUMMY_ROOMS);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
-  const [confirmCloseModalOpen, setConfirmCloseModalOpen] = useState(false);
-  const [roomToClose, setRoomToClose] = useState<Room | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   const filteredRooms = rooms.filter((room) => {
     const matchesSearch =
@@ -34,17 +36,17 @@ export const Rooms: React.FC<RoomsProps> = () => {
     setDetailsModalOpen(true);
   };
 
-  const handleCloseRoomClick = (room: Room) => {
-    setRoomToClose(room);
-    setConfirmCloseModalOpen(true);
-  };
+  const totalPages = Math.ceil(filteredRooms.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedRooms = filteredRooms.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
 
-  const confirmCloseRoom = () => {
-    if (roomToClose) {
-      setRooms(rooms.map((r) => (r.id === roomToClose.id ? { ...r, status: 'FINISHED' } : r)));
-      setRoomToClose(null);
-    }
-  };
+  // Reset page to 1 when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
 
   return (
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
@@ -62,8 +64,8 @@ export const Rooms: React.FC<RoomsProps> = () => {
         </div>
 
         {/* Toolbar */}
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden flex flex-col">
-          <div className="px-4 md:px-6 py-4 border-b border-outline-variant/40 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white">
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm flex flex-col">
+          <div className="px-4 md:px-6 py-4 border-b border-outline-variant/40 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white rounded-t-xl">
             <div className="relative w-full sm:w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-4 h-4" />
               <input
@@ -103,8 +105,8 @@ export const Rooms: React.FC<RoomsProps> = () => {
                 </tr>
               </thead>
               <tbody className="text-body-md text-sm text-on-surface divide-y divide-outline-variant/20">
-                {filteredRooms.length > 0 ? (
-                  filteredRooms.map((room) => (
+                {paginatedRooms.length > 0 ? (
+                  paginatedRooms.map((room) => (
                     <tr key={room.id} className="hover:bg-surface-bright transition-colors">
                       <td className="px-6 py-4 font-bold text-primary whitespace-nowrap">{room.room_code}</td>
                       <td className="px-6 py-4 max-w-xs">
@@ -124,7 +126,7 @@ export const Rooms: React.FC<RoomsProps> = () => {
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
                             room.status === 'RUNNING'
-                              ? 'bg-green-100 text-green-700 animate-pulse'
+                              ? 'bg-green-100 text-green-700'
                               : room.status === 'WAITING'
                               ? 'bg-orange-100 text-orange-700'
                               : 'bg-surface-container text-on-surface-variant'
@@ -133,7 +135,7 @@ export const Rooms: React.FC<RoomsProps> = () => {
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
                               room.status === 'RUNNING'
-                                ? 'bg-green-600'
+                                ? 'bg-green-600 animate-pulse'
                                 : room.status === 'WAITING'
                                 ? 'bg-orange-600'
                                 : 'bg-outline'
@@ -144,6 +146,21 @@ export const Rooms: React.FC<RoomsProps> = () => {
                       </td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
+                          {room.status === 'FINISHED' && (
+                            <button
+                              onClick={() => {
+                                if (onNavigate) {
+                                  // Call the prop if it's doing something real, but in App.tsx it's dummy.
+                                  onNavigate('reports', { type: room.mode || 'ROOM', roomId: room.room_code, quizTitle: room.quiz_title, roomTitle: room.title });
+                                }
+                                navigate(`/admin/reports/${room.room_code}`, { state: { type: room.mode || 'ROOM', roomId: room.room_code, quizTitle: room.quiz_title, roomTitle: room.title } });
+                              }}
+                              className="p-1.5 text-on-surface-variant hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                              title="View Report"
+                            >
+                              <FileText className="w-5 h-5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleOpenDetails(room)}
                             className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
@@ -151,15 +168,6 @@ export const Rooms: React.FC<RoomsProps> = () => {
                           >
                             <Eye className="w-5 h-5" />
                           </button>
-                          {room.status !== 'FINISHED' && (
-                            <button
-                              onClick={() => handleCloseRoomClick(room)}
-                              className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/40 rounded-md transition-colors"
-                              title="Force End Room"
-                            >
-                              <XCircle className="w-5 h-5" />
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -174,6 +182,15 @@ export const Rooms: React.FC<RoomsProps> = () => {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={filteredRooms.length}
+            startIndex={startIndex}
+            itemsPerPage={itemsPerPage}
+            onPageChange={(page) => setCurrentPage(page)}
+          />
         </div>
 
         <RoomDetailsModal
@@ -183,19 +200,6 @@ export const Rooms: React.FC<RoomsProps> = () => {
             setSelectedRoom(null);
           }}
           room={selectedRoom}
-        />
-
-        <ConfirmModal
-          isOpen={confirmCloseModalOpen}
-          onClose={() => {
-            setConfirmCloseModalOpen(false);
-            setRoomToClose(null);
-          }}
-          onConfirm={confirmCloseRoom}
-          title="Force End Room"
-          message={`Are you sure you want to end Room #${roomToClose?.room_code}? Active participants will be disconnected.`}
-          confirmText="End Room"
-          variant="danger"
         />
       </div>
     </main>

@@ -14,7 +14,6 @@ export const ActiveRoomsTable: React.FC<ActiveRoomsTableProps> = ({ search, onSe
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRoomCode, setSelectedRoomCode] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<string>('ALL');
-  const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const itemsPerPage = 5;
 
   const [allRooms] = useState<Room[]>(DUMMY_ROOMS);
@@ -26,9 +25,9 @@ export const ActiveRoomsTable: React.FC<ActiveRoomsTableProps> = ({ search, onSe
       r.room_code.toLowerCase().includes(search.toLowerCase()) ||
       r.host_name.toLowerCase().includes(search.toLowerCase());
     const matchesMode = filterMode === 'ALL' || r.mode === filterMode;
-    const matchesStatus = filterStatus === 'ALL' || r.status === filterStatus;
+    const isActive = r.status === 'RUNNING' || r.status === 'WAITING';
 
-    return matchesSearch && matchesMode && matchesStatus;
+    return matchesSearch && matchesMode && isActive;
   });
 
   const totalPages = Math.ceil(filteredRooms.length / itemsPerPage);
@@ -63,18 +62,6 @@ export const ActiveRoomsTable: React.FC<ActiveRoomsTableProps> = ({ search, onSe
               { value: 'ALL', label: 'All Modes' },
               { value: 'EXAM', label: 'Exam' },
               { value: 'GAME', label: 'Game' },
-            ]}
-          />
-
-          <Dropdown
-            value={filterStatus}
-            onChange={(val) => {
-              setFilterStatus(val);
-              setCurrentPage(1);
-            }}
-            options={[
-              { value: 'ALL', label: 'All Status' },
-              { value: 'RUNNING', label: 'Running' },
             ]}
           />
         </div>
@@ -125,12 +112,17 @@ export const ActiveRoomsTable: React.FC<ActiveRoomsTableProps> = ({ search, onSe
                     </span>
                   </td>
                   <td className="px-4 md:px-6 py-4 text-center">
-                    {room.status === 'RUNNING' && (
+                    {room.status === 'RUNNING' ? (
                       <span
                         className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"
                         title="Running"
                       ></span>
-                    )}
+                    ) : room.status === 'WAITING' ? (
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
+                        title="Waiting"
+                      ></span>
+                    ) : null}
                   </td>
                   <td className="px-4 md:px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">

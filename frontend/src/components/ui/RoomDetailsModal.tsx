@@ -32,6 +32,11 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
     (p.user_id && p.user_id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const validScores = participants.map(p => p.score).filter(s => s !== undefined && typeof s === 'number');
+  const averageScore = validScores.length > 0 ? (validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(1) : '0';
+  const highestScore = validScores.length > 0 ? Math.max(...validScores) : 0;
+
+
   const getStatusBadge = (status: Room['status']) => {
     switch (status) {
       case 'RUNNING': return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200"><PlayCircle className="w-3.5 h-3.5" /> LIVE</span>;
@@ -102,12 +107,28 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
                 </div>
               </div>
             )}
+
+            {/* Room Statistics Box */}
+            <div className="mt-4 grid grid-cols-3 gap-3 sm:gap-4">
+              <div className="bg-surface-bright border border-outline-variant/50 rounded-lg p-3 flex flex-col items-center justify-center shadow-sm">
+                <span className="text-[10px] sm:text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Avg Score</span>
+                <span className="text-lg sm:text-xl font-black text-primary">{averageScore}</span>
+              </div>
+              <div className="bg-surface-bright border border-outline-variant/50 rounded-lg p-3 flex flex-col items-center justify-center shadow-sm">
+                <span className="text-[10px] sm:text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Highest Score</span>
+                <span className="text-lg sm:text-xl font-black text-green-600">{highestScore}</span>
+              </div>
+              <div className="bg-surface-bright border border-outline-variant/50 rounded-lg p-3 flex flex-col items-center justify-center shadow-sm">
+                <span className="text-[10px] sm:text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Total Joined</span>
+                <span className="text-lg sm:text-xl font-black text-blue-600">{participants.length}</span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto bg-surface-container-lowest p-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div className="flex-1 flex flex-col overflow-hidden bg-surface-container-lowest p-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 shrink-0">
             <h3 className="font-bold text-on-surface text-lg flex items-center gap-2">
               <Users className="w-5 h-5 text-primary" /> Participants ({participants.length})
             </h3>
@@ -123,10 +144,10 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
             </div>
           </div>
 
-          <div className="border border-outline-variant rounded-xl overflow-hidden bg-surface-bright shadow-sm">
-            <div className="overflow-x-auto">
+          <div className="border border-outline-variant rounded-xl flex flex-col flex-1 overflow-hidden bg-surface-bright shadow-sm">
+            <div className="overflow-auto flex-1 relative">
               <table className="w-full text-left text-sm text-on-surface">
-                <thead className="bg-surface-container-low text-on-surface-variant text-xs uppercase font-label-bold">
+                <thead className="bg-surface-container-low text-on-surface-variant text-xs uppercase font-label-bold sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="px-6 py-4 font-bold border-b border-outline-variant/50">Participant (Accounts)</th>
                     <th className="px-6 py-4 font-bold border-b border-outline-variant/50">Joined At</th>

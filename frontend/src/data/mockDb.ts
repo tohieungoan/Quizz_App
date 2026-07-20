@@ -133,8 +133,8 @@ export const DUMMY_ROOMS: Room[] = [
   { id: 'RM-103', room_code: '#EDU-9924', title: 'Intro to Python', host_name: 'T.A. Marcus', quiz_title: 'Python Fundamentals', status: 'RUNNING', created_at: '2026-07-13 14:00', participant_count: 45, mode: 'GAME' },
   { id: 'RM-104', room_code: '#EDU-1123', title: 'Advanced Calculus', host_name: 'Prof. J. Smith', quiz_title: 'Calculus III Integrals', status: 'RUNNING', created_at: '2026-07-14 11:30', participant_count: 30, mode: 'EXAM' },
   { id: 'RM-105', room_code: '#EDU-4452', title: 'Biology 101: Cells', host_name: 'Dr. M. Lee', quiz_title: 'Cellular Structures', status: 'RUNNING', created_at: '2026-07-12 16:20', participant_count: 18, mode: 'GAME' },
-  { id: 'RM-106', room_code: '#EDU-7731', title: 'Physics Basics', host_name: 'T.A. Marcus', quiz_title: 'Kinematics', status: 'RUNNING', created_at: '2026-07-14 12:00', participant_count: 22, mode: 'EXAM' },
-  { id: 'RM-107', room_code: '#EDU-8812', title: 'Literature: Shakespeare', host_name: 'Prof. D. Thorne', quiz_title: 'Hamlet & Macbeth', status: 'RUNNING', created_at: '2026-07-14 13:00', participant_count: 15, mode: 'GAME' },
+  { id: 'RM-106', room_code: '#EDU-7731', title: 'Physics Basics', host_name: 'T.A. Marcus', quiz_title: 'Kinematics', status: 'FINISHED', created_at: '2026-07-14 12:00', participant_count: 22, mode: 'EXAM' },
+  { id: 'RM-107', room_code: '#EDU-8812', title: 'Literature: Shakespeare', host_name: 'Prof. D. Thorne', quiz_title: 'Hamlet & Macbeth', status: 'WAITING', created_at: '2026-07-14 13:00', participant_count: 15, mode: 'GAME' },
 ];
 
 export const DUMMY_NOTIFICATIONS: NotificationItem[] = [

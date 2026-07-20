@@ -5,6 +5,7 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AssignQuizModal } from '@/components/ui/AssignQuizModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { Pagination } from '@/components/ui/Pagination';
+import { Dropdown } from '@/components/ui/Dropdown';
 import { DUMMY_USERS } from '@/data/mockDb';
 
 export const Users: React.FC = () => {
@@ -114,13 +115,33 @@ export const Users: React.FC = () => {
         assigned_quizzes: [],
       };
       setUsers([newUser, ...users]);
+      setAlertState({
+        isOpen: true,
+        title: 'User Created',
+        message: 'New user has been successfully created.',
+        type: 'success',
+      });
     } else if (modalMode === 'edit' && selectedUser) {
       setUsers(users.map((u) => (u.id === selectedUser.id ? { ...u, ...userData } : u)));
+      setAlertState({
+        isOpen: true,
+        title: 'User Updated',
+        message: 'User information has been successfully updated.',
+        type: 'success',
+      });
     }
+    setActionModalOpen(false);
   };
 
   const handleSaveAssignedQuizzes = (userId: string, quizIds: string[]) => {
-    setUsers(users.map((u) => (u.id === userId ? { ...u, assigned_quizzes: quizIds } : u)));
+    setUsers(users.map((u) => {
+      if (u.id === userId) {
+        const currentAssigned = u.assigned_quizzes || [];
+        const newAssigned = Array.from(new Set([...currentAssigned, ...quizIds]));
+        return { ...u, assigned_quizzes: newAssigned };
+      }
+      return u;
+    }));
     setAlertState({
       isOpen: true,
       title: 'Quizzes Assigned',
@@ -192,31 +213,31 @@ export const Users: React.FC = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2.5 w-full md:w-auto">
-            <select
+            <Dropdown
               value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value);
+              onChange={(val) => {
+                setRoleFilter(val);
                 setCurrentPage(1);
               }}
-              className="px-3 py-2 border border-outline-variant rounded-lg bg-surface-container-lowest text-sm text-on-surface focus:outline-none focus:border-primary font-medium"
-            >
-              <option value="ALL">All Roles</option>
-              <option value="SUPER_ADMIN">Super Admin</option>
-              <option value="USER">User</option>
-            </select>
+              options={[
+                { value: 'ALL', label: 'All Roles' },
+                { value: 'SUPER_ADMIN', label: 'Super Admin' },
+                { value: 'USER', label: 'User' },
+              ]}
+            />
 
-            <select
+            <Dropdown
               value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
+              onChange={(val) => {
+                setStatusFilter(val);
                 setCurrentPage(1);
               }}
-              className="px-3 py-2 border border-outline-variant rounded-lg bg-surface-container-lowest text-sm text-on-surface focus:outline-none focus:border-primary font-medium"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="SUSPENDED">Suspended</option>
-            </select>
+              options={[
+                { value: 'ALL', label: 'All Statuses' },
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'SUSPENDED', label: 'Suspended' },
+              ]}
+            />
           </div>
         </div>
 
