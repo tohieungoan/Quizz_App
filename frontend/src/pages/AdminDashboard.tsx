@@ -4,7 +4,7 @@ import { Dropdown } from '../components/ui/Dropdown';
 import { RoomDetailsModal } from '../components/ui/RoomDetailsModal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 
-export function Dashboard() {
+export function AdminDashboard() {
 
   const [roomSearch, setRoomSearch] = useState('');
   

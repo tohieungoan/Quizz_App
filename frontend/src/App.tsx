@@ -7,6 +7,7 @@ import { AboutUs } from './pages/AboutUs'
 import { Feedback } from './pages/Feedback'
 import { AuthPage } from './pages/AuthPage'
 import { Dashboard } from './pages/Dashboard'
+import { AdminDashboard } from './pages/AdminDashboard'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { LobbyWaiting } from './pages/LobbyWaiting'
 import { FormalExam } from './pages/FormalExam'
@@ -56,7 +57,7 @@ const App: React.FC = () => {
         <Route path="/powerups" element={<PowerUpSelection />} />
         <Route path="/host-panel" element={<HostLiveReview />} />
         <Route path="/admin" element={<AdminLayout />}>
-          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="quizzes" element={<Quizzes onCreateQuiz={() => {}} onEditQuiz={() => {}} />} />
           <Route path="quizzes/create" element={<QuizCreator onCancel={() => {}} />} />
           <Route path="quizzes/edit/:id" element={<QuizCreator onCancel={() => {}} />} />
