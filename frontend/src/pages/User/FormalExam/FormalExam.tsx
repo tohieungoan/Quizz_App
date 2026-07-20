@@ -121,7 +121,10 @@ export const FormalExam: React.FC = () => {
           setSuccessOverlayOpen(true);
         }}
         onCancelSubmit={() => setSubmitModalOpen(false)}
-        onReturnDashboard={() => navigate('/dashboard')}
+        onReturnDashboard={() => {
+          const returnTab = examData.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'assigned_exams';
+          navigate('/dashboard', { state: { activeTab: returnTab } });
+        }}
       />
     </div>
   );
