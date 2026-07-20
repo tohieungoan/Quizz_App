@@ -14,7 +14,14 @@ import { ParticipantAnswer } from './pages/ParticipantAnswer'
 import { LiveLeaderboard } from './pages/LiveLeaderboard'
 import { PowerUpSelection } from './pages/PowerUpSelection'
 import { HostLiveReview } from './pages/HostLiveReview'
-
+import { AdminLayout } from './layouts/AdminLayout'
+import { Quizzes } from './pages/Quizzes'
+import { QuizCreator } from './pages/QuizCreator'
+import { Users } from './pages/Users'
+import { Reports } from './pages/Reports'
+import { Rooms } from './pages/Rooms'
+import { Notifications } from './pages/Notifications'
+import { Settings } from './pages/Settings'
 const App: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
@@ -28,7 +35,8 @@ const App: React.FC = () => {
     location.pathname === '/play' ||
     location.pathname === '/leaderboard' ||
     location.pathname === '/powerups' ||
-    location.pathname === '/host-panel'
+    location.pathname === '/host-panel' ||
+    location.pathname.startsWith('/admin')
 
   const handleGetStarted = () => {
     navigate('/register')
@@ -47,6 +55,17 @@ const App: React.FC = () => {
         <Route path="/leaderboard" element={<LiveLeaderboard />} />
         <Route path="/powerups" element={<PowerUpSelection />} />
         <Route path="/host-panel" element={<HostLiveReview />} />
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="quizzes" element={<Quizzes onCreateQuiz={() => {}} onEditQuiz={() => {}} />} />
+          <Route path="quizzes/create" element={<QuizCreator onCancel={() => {}} />} />
+          <Route path="quizzes/edit/:id" element={<QuizCreator onCancel={() => {}} />} />
+          <Route path="rooms" element={<Rooms onNavigate={() => {}} />} />
+          <Route path="reports" element={<Reports context={null} onNavigate={() => {}} />} />
+          <Route path="users" element={<Users />} />
+          <Route path="notifications" element={<Notifications />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     )

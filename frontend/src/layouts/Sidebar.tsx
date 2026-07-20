@@ -26,7 +26,7 @@ export function Sidebar({ currentView, onNavigate, isOpen, onToggle }: SidebarPr
           onClick={onToggle}
         />
       )}
-      <nav aria-label="Sidebar Navigation" className={`bg-surface-container-low h-screen fixed left-0 top-0 flex flex-col py-base gap-2 z-30 shadow-[1px_0_10px_rgba(30,0,169,0.05)] border-r border-outline-variant/30 transition-all duration-300 group ${isOpen ? 'w-64 translate-x-0' : 'w-64 md:w-20 -translate-x-full md:translate-x-0'}`}>
+      <nav aria-label="Sidebar Navigation" className={`bg-surface-container-low h-screen fixed left-0 top-0 flex flex-col py-base gap-2 z-50 shadow-[1px_0_10px_rgba(30,0,169,0.05)] border-r border-outline-variant/30 transition-all duration-300 group ${isOpen ? 'w-64 translate-x-0' : 'w-64 md:w-20 -translate-x-full md:translate-x-0'}`}>
       <div className="px-6 py-6 mb-2 relative">
         <button onClick={onToggle} className="absolute -right-4 top-8 bg-primary text-on-primary w-8 h-8 rounded-full flex items-center justify-center shadow-md hover:bg-primary-container hover:text-on-primary-container transition-all duration-300 z-30 border-2 border-surface-bright">
           <ChevronLeft className={`w-5 h-5 transition-transform duration-300 ${!isOpen ? 'rotate-180' : ''}`} />
