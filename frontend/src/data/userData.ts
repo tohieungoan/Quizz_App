@@ -1,0 +1,285 @@
+export interface RecentActivity {
+  id: number;
+  name: string;
+  type: string;
+  date: string;
+  score: string;
+  status: 'completed' | 'missed';
+}
+
+export interface AssignedExam {
+  id: number;
+  title: string;
+  due: string;
+  subject: string;
+  rule: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  score: number;
+  accuracy: string;
+  isUser?: boolean;
+}
+
+export interface ExamHistoryItem {
+  id: number;
+  title: string;
+  type: 'Live Room' | 'Official Exam';
+  date: string;
+  score: string;
+  questionsCount?: number;
+  timeSpent?: string;
+  correctAnswers?: number;
+  hostName?: string;
+  hostFeedback?: string;
+  roomCode?: string;
+  leaderboard?: LeaderboardEntry[];
+}
+
+export interface ExamQuestionOption {
+  key: string;
+  label: string;
+  desc?: string;
+}
+
+export interface ExamQuestion {
+  id: number;
+  text: string;
+  points: number;
+  options: ExamQuestionOption[];
+  type: 'radio' | 'checkbox';
+}
+
+export interface AchievementBadge {
+  id: number;
+  title: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+  progress: string;
+  rarity: 'Common' | 'Rare' | 'Epic' | 'Legendary';
+}
+
+export interface HostQuiz {
+  id: string;
+  title: string;
+  questions: number;
+  level: string;
+  category: string;
+}
+
+export interface GroupMember {
+  id: string;
+  name: string;
+  email: string;
+  joinedDate: string;
+}
+
+export interface HostGroup {
+  id: string;
+  name: string;
+  joinCode: string;
+  isLocked: boolean;
+  membersCount: number;
+  description?: string;
+  members?: GroupMember[];
+  pendingRequests?: GroupMember[];
+}
+
+export const USER_RECENT_ACTIVITIES: RecentActivity[] = [
+  { id: 1, name: 'Advanced Physics Ch. 4', type: 'Exam', date: 'Oct 24, 2026', score: '92%', status: 'completed' },
+  { id: 2, name: 'World History Midterm', type: 'Live Quiz', date: 'Oct 22, 2026', score: '88%', status: 'completed' },
+  { id: 3, name: 'Calculus Practice Sets', type: 'Practice', date: 'Oct 20, 2026', score: '100%', status: 'completed' },
+  { id: 4, name: 'Biology Pop Quiz', type: 'Missed', date: 'Oct 18, 2026', score: '--', status: 'missed' },
+];
+
+export const USER_ASSIGNED_EXAMS: AssignedExam[] = [
+  { id: 1, title: 'Midterm Biology 101', due: 'Tomorrow, 11:59 PM', subject: 'Biology', rule: 'Strict / Locked' },
+  { id: 2, title: 'Calculus III - Chapter 4 Quiz', due: 'Oct 30, 2026', subject: 'Mathematics', rule: 'Free Navigation' },
+];
+
+export const USER_EXAM_HISTORY: ExamHistoryItem[] = [
+  {
+    id: 1,
+    title: 'Introduction to Psychology Final',
+    type: 'Official Exam',
+    date: 'Oct 15, 2026',
+    score: '95%',
+    questionsCount: 20,
+    timeSpent: '25m',
+    correctAnswers: 19,
+    hostName: 'Prof. David Thorne',
+    hostFeedback: 'Outstanding work! Excellent comprehension of cognitive behavior theories and experimental methods.',
+  },
+  {
+    id: 2,
+    title: 'European History Live Challenge',
+    type: 'Live Room',
+    date: 'Oct 10, 2026',
+    score: '88%',
+    questionsCount: 15,
+    timeSpent: '18m',
+    correctAnswers: 13,
+    hostName: 'Dr. Sarah Jenkins',
+    roomCode: '#EDU-3810',
+    leaderboard: [
+      { rank: 1, name: 'Liam Smith', score: 950, accuracy: '95%' },
+      { rank: 2, name: 'Alex Johnson (You)', score: 880, accuracy: '88%', isUser: true },
+      { rank: 3, name: 'Maria Garcia', score: 820, accuracy: '82%' },
+      { rank: 4, name: 'Emma Watson', score: 760, accuracy: '76%' },
+      { rank: 5, name: 'John Doe', score: 700, accuracy: '70%' },
+    ],
+  },
+  {
+    id: 3,
+    title: 'Chemistry Lab Safety Test',
+    type: 'Official Exam',
+    date: 'Oct 05, 2026',
+    score: '92%',
+    questionsCount: 25,
+    timeSpent: '30m',
+    correctAnswers: 23,
+    hostName: 'Dr. M. Lee',
+    hostFeedback: 'Great safety knowledge demonstrated. Make sure to double check chemical storage rules.',
+  },
+  {
+    id: 4,
+    title: 'Linear Algebra Live Battle',
+    type: 'Live Room',
+    date: 'Sep 28, 2026',
+    score: '78%',
+    questionsCount: 20,
+    timeSpent: '40m',
+    correctAnswers: 15,
+    hostName: 'Prof. R. Smith',
+    roomCode: '#EDU-1123',
+    leaderboard: [
+      { rank: 1, name: 'MathGenius', score: 980, accuracy: '98%' },
+      { rank: 2, name: 'Marcus T.', score: 850, accuracy: '85%' },
+      { rank: 3, name: 'Alex Johnson (You)', score: 780, accuracy: '78%', isUser: true },
+      { rank: 4, name: 'Emily White', score: 720, accuracy: '72%' },
+    ],
+  },
+  {
+    id: 5,
+    title: 'Biology Chapter 5 Quiz',
+    type: 'Official Exam',
+    date: 'Sep 22, 2026',
+    score: '85%',
+    questionsCount: 10,
+    timeSpent: '12m',
+    correctAnswers: 8,
+    hostName: 'Sarah Jenkins',
+    hostFeedback: 'Good effort. Review cell division mechanisms for the upcoming midterm.',
+  },
+  {
+    id: 6,
+    title: 'World Literature Live Room',
+    type: 'Live Room',
+    date: 'Sep 18, 2026',
+    score: '90%',
+    questionsCount: 10,
+    timeSpent: '20m',
+    correctAnswers: 9,
+    hostName: 'David Chen',
+    roomCode: '#EDU-7731',
+    leaderboard: [
+      { rank: 1, name: 'Alex Johnson (You)', score: 920, accuracy: '90%', isUser: true },
+      { rank: 2, name: 'BookWorm_99', score: 890, accuracy: '89%' },
+      { rank: 3, name: 'ShakespeareFan', score: 810, accuracy: '81%' },
+    ],
+  },
+];
+
+export const USER_ACHIEVEMENTS: AchievementBadge[] = [
+  { id: 1, title: 'Perfect Score', description: 'Score 100% on any live quiz or official exam.', icon: 'trophy', unlocked: true, progress: '100%', rarity: 'Legendary' },
+  { id: 2, title: 'Speed Demon', description: 'Answer 5 questions correctly in under 3 seconds each.', icon: 'zap', unlocked: true, progress: '100%', rarity: 'Epic' },
+  { id: 3, title: 'Unstoppable Streak', description: 'Maintain a 10-day active study streak.', icon: 'flame', unlocked: true, progress: '100%', rarity: 'Rare' },
+  { id: 4, title: 'Quiz Master', description: 'Complete over 50 quizzes across all subjects.', icon: 'award', unlocked: false, progress: '28/50', rarity: 'Legendary' },
+  { id: 5, title: 'Night Owl', description: 'Complete a study set after 10 PM.', icon: 'moon', unlocked: true, progress: '100%', rarity: 'Common' },
+  { id: 6, title: 'Group Champion', description: 'Rank 1st in a live group room session.', icon: 'star', unlocked: false, progress: 'Rank 2 Best', rarity: 'Epic' },
+];
+
+export const HOST_QUIZZES_LIST: HostQuiz[] = [
+  { id: 'QZ-101', title: 'Advanced Physics Chapter 4 - Thermodynamics', questions: 20, level: 'Medium', category: 'Physics' },
+  { id: 'QZ-102', title: 'World History Midterm Review', questions: 30, level: 'Hard', category: 'History' },
+  { id: 'QZ-103', title: 'Calculus III Vector Calculus', questions: 15, level: 'Hard', category: 'Mathematics' },
+  { id: 'QZ-104', title: 'Biology Cell Structure & Function', questions: 25, level: 'Easy', category: 'Biology' },
+];
+
+export const HOST_GROUPS_LIST: HostGroup[] = [
+  {
+    id: 'GRP-01',
+    name: 'Group 10A1 - Advanced Physics',
+    joinCode: 'PHYS-10A1',
+    isLocked: false,
+    membersCount: 3,
+    description: 'Class 10A1 students taking advanced physics coursework.',
+    members: [
+      { id: 'M-1', name: 'Alex Johnson', email: 'alex.j@school.edu', joinedDate: '2026-09-01' },
+      { id: 'M-2', name: 'Sarah Smith', email: 'sarah.s@school.edu', joinedDate: '2026-09-01' },
+      { id: 'M-3', name: 'Michael Brown', email: 'michael.b@school.edu', joinedDate: '2026-09-03' },
+    ],
+    pendingRequests: [
+      { id: 'P-1', name: 'Kevin Lee', email: 'kevin.l@school.edu', joinedDate: '2026-10-18' },
+      { id: 'P-2', name: 'Maria Garcia', email: 'maria.g@school.edu', joinedDate: '2026-10-19' },
+    ],
+  },
+  {
+    id: 'GRP-02',
+    name: 'English Intensive Class B',
+    joinCode: 'ENG-CLASSB',
+    isLocked: true,
+    membersCount: 2,
+    description: 'Intensive English language & literature study group.',
+    members: [
+      { id: 'M-4', name: 'Emily Davis', email: 'emily.d@school.edu', joinedDate: '2026-09-05' },
+      { id: 'M-5', name: 'David Wilson', email: 'david.w@school.edu', joinedDate: '2026-09-05' },
+    ],
+    pendingRequests: [],
+  },
+  {
+    id: 'GRP-03',
+    name: 'Computer Science Honors 2026',
+    joinCode: 'CS-HONORS',
+    isLocked: false,
+    membersCount: 2,
+    description: 'CS honors section focusing on algorithms and web dev.',
+    members: [
+      { id: 'M-6', name: 'Jessica Taylor', email: 'jessica.t@school.edu', joinedDate: '2026-09-10' },
+      { id: 'M-7', name: 'Daniel Martinez', email: 'daniel.m@school.edu', joinedDate: '2026-09-12' },
+    ],
+    pendingRequests: [
+      { id: 'P-3', name: 'Tommy Chen', email: 'tommy.c@school.edu', joinedDate: '2026-10-20' },
+    ],
+  },
+];
+
+export const USER_FORMAL_EXAM_QUESTIONS: ExamQuestion[] = [
+  {
+    id: 1,
+    text: 'What does HTML stand for in web development?',
+    points: 0.5,
+    options: [
+      { key: 'A', label: 'Hyper Text Markup Language', desc: 'Standard markup language for documents designed to be displayed in a web browser.' },
+      { key: 'B', label: 'High Tech Modern Language', desc: 'Incorrect non-standard term.' },
+      { key: 'C', label: 'Hyperlink and Text Management Language', desc: 'Descriptive but incorrect.' },
+      { key: 'D', label: 'Home Tool Markup Language', desc: 'Early misconception name.' }
+    ],
+    type: 'radio'
+  },
+  {
+    id: 2,
+    text: 'Which HTTP method is idempotent and primarily used to fetch data without side effects?',
+    points: 0.5,
+    options: [
+      { key: 'A', label: 'POST', desc: 'Creates new resources, not idempotent.' },
+      { key: 'B', label: 'GET', desc: 'Safe and idempotent method to request representation of specified resource.' },
+      { key: 'C', label: 'PUT', desc: 'Idempotent, but used to update/replace resources.' },
+      { key: 'D', label: 'DELETE', desc: 'Idempotent, but deletes specified resource.' }
+    ],
+    type: 'radio'
+  }
+];

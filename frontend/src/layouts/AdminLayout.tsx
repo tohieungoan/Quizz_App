@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header as AdminHeader } from './AdminHeader';
-import { Footer } from './Footer';
 import { ViewState } from '../types';
 
 export function AdminLayout() {
@@ -50,7 +49,6 @@ export function AdminLayout() {
           <main className="flex-1 overflow-auto">
             <Outlet />
           </main>
-          <Footer />
         </div>
       </div>
     </div>
