@@ -69,7 +69,8 @@ const App: React.FC = () => {
           <Route path="quizzes/create" element={<QuizCreator onCancel={() => navigate('/admin/quizzes')} />} />
           <Route path="quizzes/edit/:id" element={<QuizCreator onCancel={() => navigate('/admin/quizzes')} />} />
           <Route path="rooms" element={<Rooms onNavigate={() => {}} />} />
-          <Route path="reports" element={<Reports context={null} onNavigate={() => {}} />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="reports/:id" element={<Reports />} />
           <Route path="users" element={<Users />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="settings" element={<Settings />} />

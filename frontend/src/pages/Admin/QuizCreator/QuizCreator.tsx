@@ -2,6 +2,7 @@ import { ArrowLeft, Wrench, X, List, CheckSquare, AlignLeft, Sparkles, ArrowRigh
 import { useState } from 'react';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
+import { QuestionBankModal } from '@/components/ui/QuestionBankModal';
 import { DUMMY_QUIZZES } from '@/data/mockDb';
 
 export type QuestionType = 'multiple' | 'truefalse' | 'short';
@@ -58,6 +59,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);
   
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [bankModalOpen, setBankModalOpen] = useState(false);
   const [alertState, setAlertState] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
@@ -389,34 +391,44 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
               {/* Manual Creation Section */}
               <div className="mb-10">
                 <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-4">Manual Creation</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <button onClick={() => handleStartBuild('multiple')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-primary hover:shadow-md transition-all group">
-                    <div className="w-12 h-12 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                      <List className="w-6 h-6" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <button onClick={() => handleStartBuild('multiple')} className="flex items-center text-left gap-3 p-3 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-primary hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                      <List className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-base text-on-surface group-hover:text-primary transition-colors">Multiple Choice</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Options with one correct answer.</p>
+                      <h4 className="font-bold text-sm text-on-surface group-hover:text-primary transition-colors">Multiple Choice</h4>
+                      <p className="text-[10px] text-on-surface-variant mt-0.5 leading-tight">One correct answer.</p>
                     </div>
                   </button>
 
-                  <button onClick={() => handleStartBuild('truefalse')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-secondary hover:shadow-md transition-all group">
-                    <div className="w-12 h-12 shrink-0 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                      <CheckSquare className="w-6 h-6" />
+                  <button onClick={() => handleStartBuild('truefalse')} className="flex items-center text-left gap-3 p-3 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-secondary hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 shrink-0 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                      <CheckSquare className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-base text-on-surface group-hover:text-secondary transition-colors">True / False</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Quick binary choice assessments.</p>
+                      <h4 className="font-bold text-sm text-on-surface group-hover:text-secondary transition-colors">True / False</h4>
+                      <p className="text-[10px] text-on-surface-variant mt-0.5 leading-tight">Binary choice.</p>
                     </div>
                   </button>
 
-                  <button onClick={() => handleStartBuild('short')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-tertiary-fixed-dim hover:shadow-md transition-all group">
-                    <div className="w-12 h-12 shrink-0 rounded-xl bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
-                      <AlignLeft className="w-6 h-6" />
+                  <button onClick={() => handleStartBuild('short')} className="flex items-center text-left gap-3 p-3 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-tertiary-fixed-dim hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 shrink-0 rounded-xl bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                      <AlignLeft className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-base text-on-surface group-hover:text-tertiary-fixed-dim transition-colors">Short Answer</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Require exact text match answers.</p>
+                      <h4 className="font-bold text-sm text-on-surface group-hover:text-tertiary-fixed-dim transition-colors">Short Answer</h4>
+                      <p className="text-[10px] text-on-surface-variant mt-0.5 leading-tight">Exact text match.</p>
+                    </div>
+                  </button>
+
+                  <button onClick={() => setBankModalOpen(true)} className="flex items-center text-left gap-3 p-3 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-emerald-500 hover:shadow-md transition-all group">
+                    <div className="w-10 h-10 shrink-0 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                      <CopyPlus className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-on-surface group-hover:text-emerald-600 transition-colors">Question Bank</h4>
+                      <p className="text-[10px] text-on-surface-variant mt-0.5 leading-tight">Add from library.</p>
                     </div>
                   </button>
                 </div>
@@ -676,7 +688,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                             <span className="text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-2.5 py-1 rounded-full whitespace-nowrap">{getTypeName(q.type)}</span>
                           </td>
                           <td className="px-6 py-4 text-sm text-on-surface font-medium">
-                            <p className="line-clamp-2 max-w-md">{q.text || 'Untitled Question'}</p>
+                            <p className="line-clamp-2 max-w-md group-hover:line-clamp-none transition-all">{q.text || 'Untitled Question'}</p>
                           </td>
                           <td className="px-6 py-4 text-xs text-on-surface-variant font-medium">
                             {q.type === 'multiple' && (
@@ -744,6 +756,21 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         title={alertState.title}
         message={alertState.message}
         type={alertState.type}
+      />
+
+      <QuestionBankModal
+        isOpen={bankModalOpen}
+        onClose={() => setBankModalOpen(false)}
+        existingQuestionIds={questions.map(q => q.id)}
+        onAddQuestions={(newQuestions) => {
+          setQuestions([...questions, ...newQuestions]);
+          setAlertState({
+            isOpen: true,
+            title: 'Questions Added',
+            message: `Successfully added ${newQuestions.length} question(s) from the bank.`,
+            type: 'success'
+          });
+        }}
       />
     </div>
   );

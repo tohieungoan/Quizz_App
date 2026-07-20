@@ -1,10 +1,11 @@
-import { X, BookOpen, CheckCircle2, Search, Clock } from 'lucide-react';
+import { X, BookOpen, CheckCircle2, Search, Clock, AlertCircle } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { DUMMY_QUIZZES } from '../../data/mockDb';
 
 interface UserData {
   id: string;
   name: string;
+  assigned_quizzes?: string[];
 }
 
 interface AssignQuizModalProps {
@@ -17,11 +18,13 @@ interface AssignQuizModalProps {
 export function AssignQuizModal({ isOpen, onClose, user, onAssign }: AssignQuizModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedQuizzes, setSelectedQuizzes] = useState<string[]>([]);
+  const [conflictWarning, setConflictWarning] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setSearchTerm('');
       setSelectedQuizzes([]);
+      setConflictWarning(null);
     }
   }, [isOpen]);
 
@@ -80,30 +83,87 @@ export function AssignQuizModal({ isOpen, onClose, user, onAssign }: AssignQuizM
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto border border-outline-variant/40 rounded-xl bg-surface-bright p-2 space-y-1">
-            {filteredQuizzes.length > 0 ? filteredQuizzes.map(quiz => (
-              <label 
-                key={quiz.id} 
-                className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors border ${selectedQuizzes.includes(quiz.id) ? 'bg-primary/5 border-primary/30' : 'hover:bg-surface-container-low border-transparent'}`}
-              >
-                <div className="pt-0.5">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedQuizzes.includes(quiz.id)}
-                    onChange={() => toggleSelection(quiz.id)}
-                    className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary/50"
-                  />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm text-on-surface">{quiz.title}</p>
-                  <div className="flex flex-wrap gap-2 mt-1.5 items-center">
-                    <span className="text-[11px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">{quiz.id}</span>
-                    <span className="text-[11px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">{quiz.subject}</span>
-                    <span className="text-[11px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full flex items-center gap-1"><Clock className="w-3 h-3" /> {quiz.time}</span>
+          {conflictWarning && (
+            <div className="mx-0 mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <p className="font-medium">{conflictWarning}</p>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto border border-outline-variant/40 rounded-xl bg-surface-bright p-2 space-y-1 mt-3">
+            {filteredQuizzes.length > 0 ? filteredQuizzes.map(quiz => {
+              const isAlreadyAssigned = user?.assigned_quizzes?.includes(quiz.id);
+              const isSelected = selectedQuizzes.includes(quiz.id);
+              
+              const assignedTimes = (user?.assigned_quizzes || [])
+                .map(id => DUMMY_QUIZZES.find(q => q.id === id)?.time)
+                .filter(Boolean)
+                .filter(time => !time?.includes('Flexible'));
+                
+              const selectedTimes = selectedQuizzes
+                .map(id => DUMMY_QUIZZES.find(q => q.id === id)?.time)
+                .filter(Boolean)
+                .filter(time => !time?.includes('Flexible'));
+                
+              const isTimeConflict = !isAlreadyAssigned && !isSelected && !quiz.time.includes('Flexible') && (assignedTimes.includes(quiz.time) || selectedTimes.includes(quiz.time));
+              
+              return (
+                <label 
+                  key={quiz.id} 
+                  onClick={(e) => {
+                    if (isTimeConflict) {
+                      e.preventDefault();
+                      setConflictWarning(`Trùng giờ! Bài "${quiz.title}" có thời gian (${quiz.time}) bị trùng với bài khác.`);
+                      setTimeout(() => setConflictWarning(null), 3500);
+                    }
+                  }}
+                  className={`flex items-start gap-3 p-3 rounded-lg transition-colors border ${
+                    isAlreadyAssigned ? 'bg-surface-container-high opacity-70 cursor-not-allowed border-transparent' : 
+                    isTimeConflict ? 'bg-error-container/20 opacity-70 cursor-not-allowed border-error/20' :
+                    isSelected ? 'bg-primary/5 border-primary/30 cursor-pointer' : 
+                    'hover:bg-surface-container-low border-transparent cursor-pointer'
+                  }`}
+                >
+                  <div className="pt-0.5">
+                    {isAlreadyAssigned ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    ) : isTimeConflict ? (
+                      <div className="w-5 h-5 rounded-full bg-error-container text-error flex items-center justify-center">
+                        <span className="text-[12px] font-bold">!</span>
+                      </div>
+                    ) : (
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={(e) => {
+                          if (isAlreadyAssigned || isTimeConflict) {
+                            e.preventDefault();
+                            return;
+                          }
+                          toggleSelection(quiz.id);
+                        }}
+                        disabled={isAlreadyAssigned || isTimeConflict}
+                        className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary/50 cursor-pointer"
+                      />
+                    )}
                   </div>
-                </div>
-              </label>
-            )) : (
+                  <div className="flex-1">
+                    <div className="font-semibold text-sm text-on-surface flex justify-between items-start gap-2">
+                      <p className="leading-tight">{quiz.title}</p>
+                      {isAlreadyAssigned && <span className="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded uppercase mt-0.5 shrink-0">Assigned</span>}
+                      {isTimeConflict && <span className="text-[10px] font-bold text-error bg-error-container px-1.5 py-0.5 rounded uppercase mt-0.5 shrink-0">Time Conflict</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-1.5 items-center">
+                      <span className="text-[11px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">{quiz.id}</span>
+                      <span className="text-[11px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">{quiz.subject}</span>
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${isTimeConflict ? 'text-error bg-error-container' : 'text-primary bg-primary/10'}`}>
+                        <Clock className="w-3 h-3" /> {quiz.time}
+                      </span>
+                    </div>
+                  </div>
+                </label>
+              );
+            }) : (
               <div className="p-8 text-center text-on-surface-variant text-sm">
                 No quizzes found matching "{searchTerm}"
               </div>

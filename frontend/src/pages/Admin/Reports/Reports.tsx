@@ -1,351 +1,610 @@
-import React, { useState } from 'react';
-import { Search, Download, Percent, Users as UsersIcon, Library, TrendingUp, Clock, AlertTriangle, FileText } from 'lucide-react';
+import { Search, Download, Percent, Users as UsersIcon, Library, TrendingUp, Minus, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, MonitorPlay, BarChart2, Settings, AlertTriangle, Clock, Filter, FileText, Eye } from 'lucide-react';
+import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ViewState } from '@/types';
-import { DUMMY_PARTICIPANTS, DUMMY_EXAM_ASSIGNEES, DUMMY_REPORT_QUESTIONS, QuestionReport } from '@/data/mockDb';
+import { DUMMY_PARTICIPANTS, DUMMY_EXAM_ASSIGNEES, DUMMY_USERS } from '@/data/mockDb';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Pagination } from '@/components/ui/Pagination';
+import { UserActionModal, UserData } from '@/components/ui/UserActionModal';
 
-interface ReportsProps {
-  context?: any;
-  onNavigate?: (view: ViewState, context?: any) => void;
-}
+export function Reports({ context: propContext, onNavigate: propOnNavigate }: { context?: any, onNavigate?: (view: ViewState, context?: any) => void }) {
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  
+  const context = propContext || location.state;
+  
+  const handleNavigate = (view: ViewState, ctx?: any) => {
+    if (propOnNavigate) {
+      propOnNavigate(view, ctx);
+      return;
+    }
+    
+    if (view === 'reports') {
+      if (ctx && (ctx.roomId || ctx.id)) {
+        routerNavigate(`/admin/reports/${ctx.roomId || ctx.id}`, { state: ctx });
+      } else {
+        routerNavigate(`/admin/reports`);
+      }
+    }
+  };
 
-export const Reports: React.FC<ReportsProps> = ({ context }) => {
   const [activeTab, setActiveTab] = useState<'users' | 'questions'>('users');
+  const [globalSearch, setGlobalSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [questionSearch, setQuestionSearch] = useState('');
   const [questionDifficultyFilter, setQuestionDifficultyFilter] = useState('All');
 
   const [questionPage, setQuestionPage] = useState(1);
   const [userPage, setUserPage] = useState(1);
+  const [reportPage, setReportPage] = useState(1);
+  const reportsPerPage = 5;
+  
+  const [isQuestionDropdownOpen, setIsQuestionDropdownOpen] = useState(false);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  
+  const [selectedUserDetails, setSelectedUserDetails] = useState<UserData | null>(null);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
 
-  const [questionsData] = useState<QuestionReport[]>(DUMMY_REPORT_QUESTIONS);
-  const itemsPerPage = 5;
-
-  // Filtered Questions
-  const filteredQuestions = questionsData.filter((q) => {
-    const matchesSearch = q.question.toLowerCase().includes(questionSearch.toLowerCase());
-    const matchesDiff = questionDifficultyFilter === 'All' || q.difficulty === questionDifficultyFilter;
-    return matchesSearch && matchesDiff;
-  });
-
-  const questionTotalPages = Math.ceil(filteredQuestions.length / itemsPerPage);
-  const questionStartIndex = (questionPage - 1) * itemsPerPage;
-  const currentQuestions = filteredQuestions.slice(questionStartIndex, questionStartIndex + itemsPerPage);
-
-  // Filtered Users (Participants or Exam Assignees)
-  const isExam = context?.mode === 'EXAM';
-  const participantsList = isExam ? DUMMY_EXAM_ASSIGNEES : DUMMY_PARTICIPANTS;
-
-  const filteredUsers = participantsList.filter((u) => {
-    const name = (u as any).name || (u as any).user_name || (u as any).nickname || '';
-    return (
-      name.toLowerCase().includes(userSearch.toLowerCase()) ||
-      (u as any).rank?.toString().includes(userSearch)
-    );
-  });
-
-  const userTotalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const userStartIndex = (userPage - 1) * itemsPerPage;
-  const currentUsers = filteredUsers.slice(userStartIndex, userStartIndex + itemsPerPage);
-
-  const exportReport = (format: 'pdf' | 'csv') => {
-    const reportName = context?.title || 'System_Analytics_Report';
-    const content = `Report Title: ${reportName}\nDate: ${new Date().toLocaleDateString()}\n`;
-    const blob = new Blob([content], { type: format === 'pdf' ? 'application/pdf' : 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${reportName.replace(/\s+/g, '_')}_${Date.now()}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleViewUser = (userId?: string, userName?: string) => {
+    let foundUser = null;
+    if (userId) {
+      foundUser = DUMMY_USERS.find(u => u.id === userId);
+    }
+    if (!foundUser && userName) {
+      foundUser = DUMMY_USERS.find(u => u.name === userName || u.initials === userName);
+    }
+    
+    if (foundUser) {
+      setSelectedUserDetails(foundUser as UserData);
+      setIsUserModalOpen(true);
+    } else {
+      // Fallback for mock data without explicit matches
+      setSelectedUserDetails({
+        id: userId || `U-${Math.random().toString(36).substr(2, 5)}`,
+        name: userName || 'Unknown User',
+        email: 'user@example.com',
+        role: 'USER',
+        status: 'ACTIVE',
+        initials: userName ? userName.substring(0, 2).toUpperCase() : 'U',
+      });
+      setIsUserModalOpen(true);
+    }
   };
+
+  const questionsData = [
+    { id: 1, question: "What is the primary function of a reverse proxy in a microservices architecture?", correct: "35", incorrect: "5", rate: "87%", rateColor: "bg-green-100 text-green-700", difficulty: "Easy", diffColor: "bg-green-100 text-green-700" },
+    { id: 2, question: "Explain the difference between OAuth 2.0 and OpenID Connect in modern web authentication.", correct: "18", incorrect: "22", rate: "45%", rateColor: "bg-red-100 text-red-700", difficulty: "Hard", diffColor: "bg-red-100 text-red-700" },
+    { id: 3, question: "Which SQL constraint ensures unique values in a column while allowing exactly one NULL value?", correct: "30", incorrect: "8", rate: "79%", rateColor: "bg-green-100 text-green-700", difficulty: "Medium", diffColor: "bg-orange-100 text-orange-700" },
+    { id: 4, question: "Identify the correct sequence for a TCP 3-way handshake process.", correct: "28", incorrect: "10", rate: "73%", rateColor: "bg-orange-100 text-orange-700", difficulty: "Medium", diffColor: "bg-orange-100 text-orange-700" },
+    { id: 5, question: "In React, what hook is used to handle side effects and how does its dependency array work?", correct: "38", incorrect: "2", rate: "95%", rateColor: "bg-green-100 text-green-700", difficulty: "Easy", diffColor: "bg-green-100 text-green-700" },
+  ];
+
+  const usersData = [
+    { id: 1, name: "Sarah Jenkins", email: "s.jenkins@academy.edu", score: "92/100", progress: "Completed", progColor: "bg-indigo-100 text-indigo-700 border-indigo-200", status: "Passed", statColor: "bg-green-100 text-green-700", avatar: "SJ", timeTaken: "42m 15s", warnings: 0 },
+    { id: 2, name: "Marcus Thorne", email: "m.thorne@academy.edu", score: "45/100", progress: "In Progress", progColor: "bg-surface-variant text-on-surface-variant", status: "Pending", statColor: "bg-surface-variant text-on-surface-variant", avatar: "MT", timeTaken: "55m 02s", warnings: 2 },
+    { id: 3, name: "David Chen", email: "d.chen@academy.edu", score: "88/100", progress: "Completed", progColor: "bg-indigo-100 text-indigo-700 border-indigo-200", status: "Passed", statColor: "bg-green-100 text-green-700", avatar: "DC", timeTaken: "38m 45s", warnings: 0 },
+    { id: 4, name: "Elena Rostova", email: "e.rostova@academy.edu", score: "62/100", progress: "Completed", progColor: "bg-indigo-100 text-indigo-700 border-indigo-200", status: "Failed", statColor: "bg-red-100 text-red-700", avatar: "ER", timeTaken: "60m 00s", warnings: 1 },
+  ];
+
+  const recentReportsData = [
+    { id: 'RM-103', type: 'ROOM', roomCode: 'L3M4N', roomTitle: 'Math Practice', quizTitle: 'Calculus III Midterm', host: 'Dr. Evelyn Hayes', date: '2026-07-13 14:00', participants: 42, avgScore: '78.5%' },
+    { id: 'EX-101', type: 'EXAM', roomCode: 'EX-101', roomTitle: 'Advanced Particle Physics Exam', quizTitle: 'Advanced Particle Physics', host: 'Prof. R. Smith', date: '2026-07-14 09:00', participants: 120, avgScore: '85.2%' },
+    { id: 'RM-098', type: 'ROOM', roomCode: 'Z9A1B', roomTitle: 'Physics Study Group', quizTitle: 'Physics 101 Final', host: 'Marcus Thorne', date: '2026-07-12 09:30', participants: 124, avgScore: '82.0%' },
+    { id: 'RM-095', type: 'ROOM', roomCode: 'C4D5E', roomTitle: 'Bio Freshman Session', quizTitle: 'Introduction to Biology', host: 'Sarah Jenkins', date: '2026-07-10 15:00', participants: 85, avgScore: '65.4%' },
+    { id: 'EX-102', type: 'EXAM', roomCode: 'EX-102', roomTitle: 'History Midterm', quizTitle: 'World History 101', host: 'Dr. John Doe', date: '2026-07-15 10:00', participants: 95, avgScore: '72.1%' },
+    { id: 'RM-092', type: 'ROOM', roomCode: 'F8G9H', roomTitle: 'Chemistry Prep', quizTitle: 'Organic Chem Review', host: 'Jane Smith', date: '2026-07-09 13:00', participants: 50, avgScore: '88.3%' }
+  ];
+
+  const reportTotalPages = Math.ceil(recentReportsData.length / reportsPerPage);
+  const reportStartIndex = (reportPage - 1) * reportsPerPage;
+  const paginatedReports = recentReportsData.slice(reportStartIndex, reportStartIndex + reportsPerPage);
+
+  const filteredUsers = usersData.filter(u => 
+    u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+    u.email.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
+  const filteredParticipants = DUMMY_PARTICIPANTS.filter(p => p.nickname.toLowerCase().includes(userSearch.toLowerCase()));
+  const filteredAssignees = DUMMY_EXAM_ASSIGNEES.filter(a => a.user_name.toLowerCase().includes(userSearch.toLowerCase()));
+
+  const filteredQuestions = questionsData.filter(q => {
+    const matchesSearch = q.question.toLowerCase().includes(questionSearch.toLowerCase());
+    const matchesDifficulty = questionDifficultyFilter === 'All' || q.difficulty === questionDifficultyFilter;
+    return matchesSearch && matchesDifficulty;
+  });
 
   return (
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
-      <div className="py-gutter w-full flex flex-col gap-6 pb-20">
-        {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="py-gutter w-full flex flex-col gap-8">
+        
+        {/* Header Section */}
+        <div className="flex flex-col sm:flex-row justify-between items-start w-full gap-4 sm:gap-0">
           <div>
-            <h1 className="font-headline-xl text-[28px] text-[#3a1b7e] font-extrabold tracking-tight">
-              {context ? `Room Report: ${context.title}` : 'Analytics & System Reports'}
-            </h1>
-            <p className="font-body-lg text-[15px] text-on-surface-variant">
-              {context
-                ? `Room Code: ${context.room_code || context.code || 'N/A'} • Host: ${
-                    context.host_name || context.host || 'Admin'
-                  }`
-                : 'Comprehensive metrics across live rooms, quiz performance, and user engagement.'}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <button
-              onClick={() => exportReport('csv')}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-outline-variant/60 rounded-xl text-sm font-bold text-on-surface hover:bg-surface-container transition-colors shadow-sm"
-            >
-              <Download className="w-4 h-4 text-primary" />
-              Export CSV
-            </button>
-            <button
-              onClick={() => exportReport('pdf')}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors shadow-sm"
-            >
-              <FileText className="w-4 h-4" />
-              Export PDF
-            </button>
-          </div>
-        </div>
-
-        {/* Global Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <div className="bg-white p-5 rounded-2xl border border-outline-variant/40 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-              <UsersIcon className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Total Participants</p>
-              <h3 className="text-2xl font-black text-on-surface mt-0.5">
-                {context?.part || context?.participant_count || '1,420'}
-              </h3>
-              <span className="text-xs text-green-600 font-semibold inline-flex items-center gap-1 mt-1">
-                <TrendingUp className="w-3 h-3" /> +14.2% vs last month
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-outline-variant/40 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-secondary-container/40 flex items-center justify-center text-on-secondary-container shrink-0">
-              <Percent className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Average Score</p>
-              <h3 className="text-2xl font-black text-on-surface mt-0.5">78.5%</h3>
-              <span className="text-xs text-green-600 font-semibold inline-flex items-center gap-1 mt-1">
-                <TrendingUp className="w-3 h-3" /> +3.1% overall
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-outline-variant/40 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center text-purple-700 shrink-0">
-              <Library className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Total Quizzes Played</p>
-              <h3 className="text-2xl font-black text-on-surface mt-0.5">384</h3>
-              <span className="text-xs text-on-surface-variant font-medium inline-flex items-center gap-1 mt-1">
-                <Clock className="w-3 h-3" /> Across 42 live rooms
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-outline-variant/40 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-orange-700 shrink-0">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Completion Rate</p>
-              <h3 className="text-2xl font-black text-on-surface mt-0.5">92.4%</h3>
-              <span className="text-xs text-green-600 font-semibold inline-flex items-center gap-1 mt-1">
-                <TrendingUp className="w-3 h-3" /> High engagement
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex border-b border-outline-variant/40 gap-8">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`pb-3 text-base font-bold transition-all relative ${
-              activeTab === 'users' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
-            }`}
-          >
-            User Performance ({participantsList.length})
-            {activeTab === 'users' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"></span>}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('questions')}
-            className={`pb-3 text-base font-bold transition-all relative ${
-              activeTab === 'questions' ? 'text-primary' : 'text-on-surface-variant hover:text-on-surface'
-            }`}
-          >
-            Question Breakdown ({questionsData.length})
-            {activeTab === 'questions' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"></span>}
-          </button>
-        </div>
-
-        {/* Tab Content: Users Performance */}
-        {activeTab === 'users' && (
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden flex flex-col">
-            <div className="px-4 md:px-6 py-4 border-b border-outline-variant/40 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white">
-              <h3 className="text-headline-md text-base text-on-surface">Participant Scores & Ranks</h3>
-              <div className="relative w-full sm:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search user name or rank..."
-                  value={userSearch}
-                  onChange={(e) => {
-                    setUserSearch(e.target.value);
-                    setUserPage(1);
-                  }}
-                  className="w-full pl-9 pr-4 py-1.5 border border-outline-variant rounded-lg bg-surface-container-lowest text-sm focus:outline-none focus:border-primary text-on-surface"
-                />
+            {context ? (
+              <div className="flex flex-col gap-2.5">
+                <button 
+                  onClick={() => handleNavigate('reports')}
+                  className="flex items-center gap-1.5 text-[13px] font-bold text-on-surface-variant bg-white border border-outline-variant/60 hover:border-primary hover:text-primary px-3 py-1.5 rounded-lg transition-all shadow-sm mb-1.5 w-fit group"
+                >
+                  <ChevronLeft className="w-4 h-4 text-on-surface-variant group-hover:text-primary group-hover:-translate-x-0.5 transition-all" /> 
+                  Back to Reports
+                </button>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className={`p-2 rounded-lg flex items-center justify-center ${context.type === 'EXAM' ? 'bg-indigo-100 text-indigo-700' : 'bg-green-100 text-green-700'}`}>
+                    {context.type === 'EXAM' ? <FileText className="w-5 h-5" /> : <MonitorPlay className="w-5 h-5" />}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-on-surface-variant">
+                      {context.type === 'EXAM' ? 'Exam: ' : 'Room: '} <strong className="text-on-surface text-base">{context.roomTitle || 'N/A'}</strong>
+                    </span>
+                    <span className="text-on-surface-variant/50">•</span>
+                    <span className="text-sm font-medium text-on-surface-variant">
+                      ID: <strong className="text-on-surface tracking-wide text-base">{context.roomId}</strong>
+                    </span>
+                  </div>
+                </div>
+                <h1 className="text-3xl sm:text-[34px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-600 tracking-tight pb-1 mt-1 leading-tight truncate">
+                  {context.quizTitle}
+                </h1>
               </div>
-            </div>
+            ) : (
+              <div>
+                <h1 className="font-headline-xl text-[32px] text-on-surface font-bold mb-1 tracking-tight">
+                  Reports
+                </h1>
+                <p className="font-body-lg text-[16px] text-on-surface-variant">
+                  Platform-wide quiz reports and analytics
+                </p>
+              </div>
+            )}
+          </div>
+          
+          <div className="w-full sm:w-auto">
+            <button className="w-full sm:w-auto bg-[#1a0b82] hover:bg-[#2a1b92] text-white font-medium text-sm px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-colors">
+              <Download className="w-4 h-4" /> Export
+            </button>
+          </div>
+        </div>
 
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-left border-collapse min-w-[700px]">
-                <thead>
-                  <tr className="bg-surface-container/50 text-label-bold text-on-surface-variant uppercase text-xs tracking-wider">
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30">User Name</th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">Score / Points</th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                      Correct Answers
-                    </th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">Accuracy</th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="text-body-md text-sm text-on-surface divide-y divide-outline-variant/20">
-                  {currentUsers.length > 0 ? (
-                    currentUsers.map((u: any, i) => (
-                      <tr key={i} className="hover:bg-surface-bright transition-colors">
-                        <td className="px-6 py-4 font-semibold text-on-surface flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs">
-                            {(u.user_name || u.nickname || u.name || 'User').substring(0, 2).toUpperCase()}
+        {/* KPI Cards */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 flex flex-col gap-4 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="font-label-bold text-[11px] text-on-surface-variant font-bold uppercase tracking-wider">Average Score</span>
+              <Percent className="w-5 h-5 text-[#1a0b82]" />
+            </div>
+            <div>
+              <div className="text-3xl font-extrabold text-[#1a0b82] mb-1">78.5%</div>
+              <p className="text-green-600 flex items-center gap-1 text-sm font-medium"><TrendingUp className="w-4 h-4" /> +2.4% from last month</p>
+            </div>
+          </div>
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 flex flex-col gap-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-label-bold text-[11px] text-on-surface-variant font-bold uppercase tracking-wider">{context?.type === 'EXAM' ? 'Total Assignees' : 'Total Participants'}</span>
+              <UsersIcon className="w-5 h-5 text-[#1a0b82]" />
+            </div>
+            <div>
+              <div className="text-3xl font-extrabold text-[#1a0b82] mb-1">{context ? '42' : '1,240'}</div>
+              <p className="text-on-surface-variant flex items-center gap-1 text-sm font-medium"><Minus className="w-4 h-4" /> Steady enrollment</p>
+            </div>
+          </div>
+          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 flex flex-col gap-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-label-bold text-[11px] text-on-surface-variant font-bold uppercase tracking-wider">Total Questions</span>
+              <Library className="w-5 h-5 text-[#1a0b82]" />
+            </div>
+            <div>
+              <div className="text-3xl font-extrabold text-[#1a0b82] mb-1">50</div>
+              <p className="text-on-surface-variant flex items-center gap-1 text-sm font-medium">Across 4 active modules</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Tabs Navigation */}
+        <div className="flex overflow-x-auto whitespace-nowrap border-b border-outline-variant/50 mb-4 relative z-10">
+          {!context ? (
+            <button className="px-6 py-3 font-bold text-sm border-b-2 border-primary text-primary transition-colors">
+              Recent Reports
+            </button>
+          ) : (
+            <>
+              <button 
+                onClick={() => setActiveTab('users')}
+                className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors ${activeTab === 'users' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface hover:border-outline-variant'}`}
+              >
+                User Progress
+              </button>
+              <button 
+                onClick={() => setActiveTab('questions')}
+                className={`px-6 py-3 font-bold text-sm border-b-2 transition-colors ${activeTab === 'questions' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface hover:border-outline-variant'}`}
+              >
+                Question Analysis
+              </button>
+            </>
+          )}
+        </div>
+
+        {!context ? (
+          <section className="flex flex-col gap-4 animate-in fade-in duration-300">
+            <div className="bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col mt-2">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead>
+                    <tr className="bg-surface-container-lowest border-b border-outline-variant/50">
+                      <th className="px-4 md:px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Exam Title</th>
+                      <th className="px-4 md:px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Date & Time</th>
+                      <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Host</th>
+                      <th className="px-4 md:px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Participants</th>
+                      <th className="px-4 md:px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Avg Score</th>
+                      <th className="px-3 md:px-4 py-4 w-10 md:w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/20">
+                    {paginatedReports.map(r => (
+                      <tr key={r.id} className="hover:bg-surface-bright transition-colors cursor-pointer group" onClick={() => handleNavigate('reports', { type: r.type, roomId: r.roomCode, quizTitle: r.quizTitle, roomTitle: r.roomTitle })}>
+                        <td className="px-4 md:px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="text-[15px] font-bold text-on-surface leading-tight mb-1.5 group-hover:text-primary transition-colors flex items-center flex-wrap gap-2">
+                              {r.quizTitle}
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${r.type === 'EXAM' ? 'bg-indigo-100 text-indigo-700' : 'bg-green-100 text-green-700'}`}>
+                                {r.type}
+                              </span>
+                            </span>
+                            <span className="text-xs text-on-surface-variant leading-relaxed flex items-center flex-wrap gap-x-2 gap-y-1">
+                              <span>{r.type === 'EXAM' ? 'Exam:' : 'Room:'} <strong className="font-semibold text-on-surface">{r.roomTitle || r.roomCode}</strong></span>
+                              <span className="text-outline-variant/50">•</span>
+                              <span>ID: <strong className="font-semibold">{r.roomCode}</strong></span>
+                            </span>
                           </div>
-                          {u.user_name || u.nickname || u.name || 'User'}
                         </td>
-                        <td className="px-6 py-4 text-center font-bold text-primary">{u.score || u.points || 'N/A'}</td>
-                        <td className="px-6 py-4 text-center text-on-surface-variant">
-                          {u.correct || u.correct_count || 'N/A'}
+                        <td className="px-4 md:px-6 py-4 text-sm text-on-surface-variant whitespace-nowrap">{r.date}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-on-surface text-center whitespace-nowrap">
+                          {r.host}
                         </td>
-                        <td className="px-6 py-4 text-center font-semibold">
-                          <span className="px-2.5 py-1 rounded-full text-xs bg-green-100 text-green-700">
-                            {u.accuracy || '85%'}
+                        <td className="px-4 md:px-6 py-4 text-sm font-bold text-on-surface text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <UsersIcon className="w-3.5 h-3.5 opacity-70" /> {r.participants}
+                          </div>
+                        </td>
+                        <td className="px-4 md:px-6 py-4 text-center">
+                          <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-12 sm:w-16 bg-surface-container-high text-on-surface-variant">
+                            {r.avgScore}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-primary-container/30 text-primary">
-                            Completed
-                          </span>
+                        <td className="px-3 md:px-4 py-4 text-right">
+                          <button className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-full transition-colors">
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
                         </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                        No participants found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                currentPage={reportPage}
+                totalPages={reportTotalPages}
+                totalItems={recentReportsData.length}
+                startIndex={reportStartIndex}
+                itemsPerPage={reportsPerPage}
+                onPageChange={(page) => setReportPage(page)}
+              />
             </div>
-
-            <Pagination
-              currentPage={userPage}
-              totalPages={userTotalPages}
-              totalItems={filteredUsers.length}
-              startIndex={userStartIndex}
-              itemsPerPage={itemsPerPage}
-              onPageChange={(page) => setUserPage(page)}
-            />
-          </div>
-        )}
-
-        {/* Tab Content: Questions Breakdown */}
-        {activeTab === 'questions' && (
-          <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden flex flex-col">
-            <div className="px-4 md:px-6 py-4 border-b border-outline-variant/40 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white">
-              <h3 className="text-headline-md text-base text-on-surface">Question Difficulty & Success Rate</h3>
+          </section>
+        ) : (
+          <>
+            {activeTab === 'questions' && (
+          <section className="flex flex-col gap-4 animate-in fade-in duration-300">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full p-1">
+              <h2 className="text-xl font-bold text-on-surface hidden sm:block">Question Analysis</h2>
               <div className="flex items-center gap-3 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-4 h-4" />
-                  <input
-                    type="text"
-                    placeholder="Search question text..."
+                <div className="relative flex-1 sm:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+                  <input 
                     value={questionSearch}
-                    onChange={(e) => {
-                      setQuestionSearch(e.target.value);
-                      setQuestionPage(1);
-                    }}
-                    className="w-full pl-9 pr-4 py-1.5 border border-outline-variant rounded-lg bg-surface-container-lowest text-sm focus:outline-none focus:border-primary text-on-surface"
+                    onChange={(e) => setQuestionSearch(e.target.value)}
+                    className="w-full pl-9 px-4 py-2.5 rounded-lg border border-outline-variant/50 bg-surface-container-low text-on-surface focus:outline-none focus:border-primary transition-colors text-sm shadow-sm" 
+                    placeholder="Search questions..." 
+                    type="text" 
                   />
                 </div>
-
                 <Dropdown
                   value={questionDifficultyFilter}
-                  onChange={(val) => {
-                    setQuestionDifficultyFilter(val);
-                    setQuestionPage(1);
-                  }}
+                  onChange={(val) => setQuestionDifficultyFilter(val)}
                   options={[
-                    { value: 'All', label: 'All Difficulty' },
+                    { value: 'All', label: 'All Levels' },
                     { value: 'Easy', label: 'Easy' },
                     { value: 'Medium', label: 'Medium' },
-                    { value: 'Hard', label: 'Hard' },
+                    { value: 'Hard', label: 'Hard' }
                   ]}
+                  icon={<Filter className="w-4 h-4" />}
+                  className="w-36"
                 />
               </div>
             </div>
 
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-left border-collapse min-w-[750px]">
-                <thead>
-                  <tr className="bg-surface-container/50 text-label-bold text-on-surface-variant uppercase text-xs tracking-wider">
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30">Question</th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">Difficulty</th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                      Correct Answers
-                    </th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                      Incorrect Answers
-                    </th>
-                    <th className="px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">Success Rate</th>
-                  </tr>
-                </thead>
-                <tbody className="text-body-md text-sm text-on-surface divide-y divide-outline-variant/20">
-                  {currentQuestions.length > 0 ? (
-                    currentQuestions.map((q) => (
-                      <tr key={q.id} className="hover:bg-surface-bright transition-colors">
-                        <td className="px-6 py-4 font-medium max-w-md">{q.question}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${q.diffColor}`}>{q.difficulty}</span>
-                        </td>
-                        <td className="px-6 py-4 text-center font-bold text-green-600">{q.correct}</td>
-                        <td className="px-6 py-4 text-center font-bold text-red-600">{q.incorrect}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${q.rateColor}`}>{q.rate}</span>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
+            <div className="bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col mt-2">
+            <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead>
+                <tr className="bg-surface-container-lowest border-b border-outline-variant/50">
+                  <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Question</th>
+                  <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Correct</th>
+                  <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Incorrect</th>
+                  <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Correct Rate</th>
+                  <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Difficulty</th>
+                </tr>
+              </thead>
+                <tbody className="divide-y divide-outline-variant/20">
+                  {filteredQuestions.length > 0 ? filteredQuestions.map(q => (
+                    <tr key={q.id} className="hover:bg-surface-bright transition-colors group">
+                      <td className="px-6 py-4 cursor-pointer">
+                        <div className="text-[15px] font-bold text-on-surface max-w-[200px] sm:max-w-[300px] md:max-w-[400px] line-clamp-1 group-hover:line-clamp-none transition-all duration-300">
+                          {q.question}
+                        </div>
+                      </td>
+                    <td className="px-6 py-4 text-sm text-on-surface-variant text-center">{q.correct}</td>
+                    <td className="px-6 py-4 text-sm text-on-surface-variant text-center">{q.incorrect}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold w-14 ${q.rateColor}`}>
+                        {q.rate}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-20 border border-current/10 ${q.diffColor}`}>
+                        {q.difficulty}
+                      </span>
+                      </td>
+                    </tr>
+                  )) : (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                        No questions matched search criteria.
+                      <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant">
+                        No questions match your search criteria.
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
-
-            <Pagination
-              currentPage={questionPage}
-              totalPages={questionTotalPages}
-              totalItems={filteredQuestions.length}
-              startIndex={questionStartIndex}
-              itemsPerPage={itemsPerPage}
-              onPageChange={(page) => setQuestionPage(page)}
-            />
+            {/* Question Table Pagination */}
+            <div className="px-6 py-4 border-t border-outline-variant/30 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-0">
+              <span className="text-sm text-on-surface-variant">Showing 1 to {filteredQuestions.length} of 50 entries</span>
+              <div className="flex items-center gap-2">
+              <button className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+              <div className="relative">
+                <button 
+                  onClick={() => setIsQuestionDropdownOpen(!isQuestionDropdownOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-outline-variant/50 text-sm font-medium text-on-surface hover:border-outline-variant transition-colors bg-white shadow-sm"
+                >
+                  Page {questionPage} of 10 <ChevronDown className="w-4 h-4 text-on-surface-variant" />
+                </button>
+                {isQuestionDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsQuestionDropdownOpen(false)}></div>
+                    <div className="absolute bottom-full left-0 mb-2 w-full min-w-[120px] bg-white border border-outline-variant/30 shadow-lg rounded-lg overflow-hidden z-20 py-1 max-h-48 overflow-y-auto">
+                      {[...Array(10)].map((_, i) => (
+                        <button key={i} onClick={() => { setQuestionPage(i+1); setIsQuestionDropdownOpen(false); }} className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-container-low transition-colors ${questionPage === i+1 ? 'bg-primary/5 text-primary font-semibold' : 'text-on-surface'}`}>Page {i+1}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <button className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors"><ChevronRight className="w-5 h-5" /></button>
+            </div>
           </div>
+          </div>
+        </section>
+        )}
+
+        {activeTab === 'users' && (
+        <section className="mt-2 flex flex-col gap-4 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full p-1">
+            <h2 className="text-xl font-bold text-on-surface hidden sm:block">User Progress Directory</h2>
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant w-4 h-4" />
+              <input 
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                className="w-full pl-9 px-4 py-2.5 rounded-lg border border-outline-variant/50 bg-surface-container-low text-on-surface focus:outline-none focus:border-primary transition-colors text-sm shadow-sm" 
+                placeholder="Search user by name or email..." 
+                type="text" 
+              />
+            </div>
+          </div>
+
+          <div className="bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col mt-2">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="bg-surface-container-lowest border-b border-outline-variant/50">
+                    {context?.type === 'EXAM' ? (
+                      <>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Score</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Started At</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Submitted At</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Status</th>
+                      </>
+                    ) : context?.type === 'ROOM' ? (
+                      <>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Participant</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Score</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Joined At</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Status</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Score</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Time Taken</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Progress</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-center">Status</th>
+                      </>
+                    )}
+                    <th className="px-4 md:px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/20">
+                  {context?.type === 'EXAM' ? (
+                    filteredAssignees.length > 0 ? filteredAssignees.map(a => (
+                      <tr key={a.id} className="hover:bg-surface-bright transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                              {a.user_name.charAt(0)}
+                            </div>
+                            <span className="text-sm font-bold text-on-surface leading-tight">{a.user_name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-bold text-on-surface text-center">{a.score !== undefined ? `${a.score}/100` : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-on-surface-variant text-center font-medium">
+                          {a.started_at ? <div className="flex items-center justify-center gap-1.5"><Clock className="w-3.5 h-3.5 opacity-70" /> {a.started_at}</div> : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-on-surface-variant text-center font-medium">
+                          {a.submitted_at ? <div className="flex items-center justify-center gap-1.5"><Clock className="w-3.5 h-3.5 opacity-70" /> {a.submitted_at}</div> : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-24 border border-current/10 ${
+                            a.status === 'SUBMITTED' ? 'bg-green-100 text-green-700' :
+                            a.status === 'IN_PROGRESS' ? 'bg-indigo-100 text-indigo-700' :
+                            'bg-surface-variant text-on-surface-variant'
+                          }`}>
+                            {a.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <button onClick={() => handleViewUser(a.user_id, a.user_name)} className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"><Eye className="w-5 h-5" /></button>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan={6} className="px-6 py-12 text-center text-on-surface-variant font-medium">No assignees found matching "{userSearch}"</td></tr>
+                    )
+                  ) : context?.type === 'ROOM' ? (
+                    filteredParticipants.length > 0 ? filteredParticipants.map(p => (
+                      <tr key={p.id} className="hover:bg-surface-bright transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-xs shrink-0">
+                              {p.nickname.charAt(0)}
+                            </div>
+                            <span className="text-sm font-bold text-on-surface leading-tight">{p.nickname}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-bold text-on-surface text-center">{p.score}</td>
+                        <td className="px-6 py-4 text-sm text-on-surface-variant text-center font-medium">
+                          <div className="flex items-center justify-center gap-1.5"><Clock className="w-3.5 h-3.5 opacity-70" /> {p.joined_at}</div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-20 border border-current/10 ${
+                            p.status === 'FINISHED' ? 'bg-green-100 text-green-700' :
+                            p.status === 'JOINED' ? 'bg-indigo-100 text-indigo-700' :
+                            p.status === 'LEFT' ? 'bg-orange-100 text-orange-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <button onClick={() => handleViewUser(p.user_id, p.nickname)} className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"><Eye className="w-5 h-5" /></button>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant font-medium">No participants found matching "{userSearch}"</td></tr>
+                    )
+                  ) : (
+                    filteredUsers.length > 0 ? filteredUsers.map(u => (
+                      <tr key={u.id} className="hover:bg-surface-bright transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-surface-container-highest text-on-surface flex items-center justify-center font-bold overflow-hidden shadow-sm shrink-0">
+                              {u.id === 1 ? <img src="https://i.pravatar.cc/150?u=sarah" alt="avatar" /> : 
+                               u.id === 2 ? <img src="https://i.pravatar.cc/150?u=marcus" alt="avatar" /> :
+                               u.id === 3 ? <img src="https://i.pravatar.cc/150?u=david" alt="avatar" /> :
+                               <img src="https://i.pravatar.cc/150?u=elena" alt="avatar" />}
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-on-surface leading-tight mb-0.5">{u.name}</span>
+                              <span className="text-xs text-on-surface-variant leading-tight">{u.email}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-bold text-on-surface text-center">{u.score}</td>
+                        <td className="px-6 py-4 text-sm text-on-surface-variant text-center font-medium">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 opacity-70" /> {u.timeTaken}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold border border-current/20 ${u.progColor}`}>
+                            {u.progress}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-20 border border-current/10 ${u.statColor}`}>
+                            {u.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <button onClick={() => handleViewUser(undefined, u.name)} className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors">
+                            <Eye className="w-5 h-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-on-surface-variant font-medium">
+                          No users found matching "{userSearch}"
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {/* User Table Pagination */}
+            <div className="px-6 py-4 border-t border-outline-variant/30 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-0">
+              <span className="text-sm text-on-surface-variant">
+                Showing 1 to {context?.type === 'EXAM' ? filteredAssignees.length : context?.type === 'ROOM' ? filteredParticipants.length : filteredUsers.length} of {context?.type === 'EXAM' ? '120' : context?.type === 'ROOM' ? '42' : '1,240'} entries
+              </span>
+              <div className="flex items-center gap-2">
+                <button className="p-1.5 rounded-md text-on-surface-variant/50 cursor-not-allowed"><ChevronLeft className="w-5 h-5" /></button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-outline-variant/50 text-sm font-medium text-on-surface hover:border-outline-variant transition-colors bg-white shadow-sm"
+                  >
+                    Page {userPage} of {context?.type === 'ROOM' ? '7' : context?.type === 'EXAM' ? '20' : '1'} <ChevronDown className="w-4 h-4 text-on-surface-variant" />
+                  </button>
+                  {isUserDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsUserDropdownOpen(false)}></div>
+                      <div className="absolute bottom-full left-0 mb-2 w-full min-w-[120px] bg-white border border-outline-variant/30 shadow-lg rounded-lg overflow-hidden z-20 py-1 max-h-40 overflow-y-auto">
+                        <button onClick={() => { setUserPage(1); setIsUserDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm bg-primary/5 text-primary font-semibold">Page 1</button>
+                        <button onClick={() => { setUserPage(2); setIsUserDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-surface-container-low text-on-surface">Page 2</button>
+                        <button onClick={() => { setUserPage(3); setIsUserDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-surface-container-low text-on-surface">Page 3</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <button className={`p-1.5 rounded-md transition-colors ${context?.type === 'ROOM' || context?.type === 'EXAM' ? 'text-primary hover:bg-surface-container cursor-pointer' : 'text-on-surface-variant/50 cursor-not-allowed'}`}><ChevronRight className="w-5 h-5" /></button>
+              </div>
+            </div>
+          </div>
+        </section>
+        )}
+          </>
+        )}
+
+        {/* User Details Modal */}
+        {selectedUserDetails && (
+          <UserActionModal
+            isOpen={isUserModalOpen}
+            onClose={() => setIsUserModalOpen(false)}
+            mode="view"
+            user={selectedUserDetails}
+          />
         )}
       </div>
     </main>
   );
-};
+}

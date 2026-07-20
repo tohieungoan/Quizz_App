@@ -43,10 +43,28 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
 
   // Actions
   const handleDuplicate = (quiz: Quiz) => {
+    const baseTitle = quiz.title.replace(/\s*\(Copy( \d+)?\)$/, '');
+    
+    let maxCopyNum = 0;
+    quizzes.forEach(q => {
+      if (q.title.startsWith(baseTitle)) {
+        if (q.title === `${baseTitle} (Copy)`) {
+          maxCopyNum = Math.max(maxCopyNum, 1);
+        } else {
+          const match = q.title.match(new RegExp(`${baseTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\(Copy (\\d+)\\)$`));
+          if (match) {
+            maxCopyNum = Math.max(maxCopyNum, parseInt(match[1], 10));
+          }
+        }
+      }
+    });
+
+    const newCopyNum = maxCopyNum + 1;
+    
     const newQuiz: Quiz = {
       ...quiz,
       id: `QZ-${Math.floor(Math.random() * 900) + 100}`,
-      title: `${quiz.title} (Copy)`,
+      title: `${baseTitle} (Copy ${newCopyNum})`,
       date: 'Just now',
     };
     setQuizzes([newQuiz, ...quizzes]);
