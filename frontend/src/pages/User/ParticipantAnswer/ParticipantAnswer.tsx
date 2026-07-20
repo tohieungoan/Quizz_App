@@ -61,6 +61,8 @@ export const ParticipantAnswer: React.FC = () => {
     streak?: number 
     activePowerUp?: string | null
     questionNumber?: number
+    fromSource?: 'landing' | 'dashboard'
+    activeTab?: string
   } | null
 
   const nickname = state?.nickname || 'Guest'
@@ -69,6 +71,8 @@ export const ParticipantAnswer: React.FC = () => {
   const currentStreak = state?.streak ?? 0
   const activePowerUp = state?.activePowerUp || null
   const questionNumber = state?.questionNumber || 1
+  const fromSource = state?.fromSource || 'landing'
+  const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room'
 
   // Get active question details based on current index (loop 1-3)
   const activeQuestionIndex = ((questionNumber - 1) % 3) + 1
@@ -139,36 +143,39 @@ export const ParticipantAnswer: React.FC = () => {
   }
 
   // Helper colors for option letters
-  const getLetterBgColor = (key: string) => {
+  const getLetterBgColor = (key: string, isSelected: boolean = false) => {
+    if (isAnswered && (selectedKey === key || key === activeQuestion.correctKey)) {
+      return 'bg-white text-slate-900 font-black shadow-md';
+    }
     switch (key) {
-      case 'A': return 'bg-red-650 text-white'
-      case 'B': return 'bg-blue-655 text-white'
-      case 'C': return 'bg-amber-650 text-white'
-      case 'D': return 'bg-emerald-650 text-white'
-      default: return 'bg-outline-variant text-on-surface'
+      case 'A': return 'bg-rose-600 text-white font-black shadow-sm';
+      case 'B': return 'bg-blue-600 text-white font-black shadow-sm';
+      case 'C': return 'bg-amber-500 text-white font-black shadow-sm';
+      case 'D': return 'bg-emerald-600 text-white font-black shadow-sm';
+      default: return 'bg-slate-700 text-white font-black';
     }
   }
 
   const getOptionStyle = (key: string) => {
     if (isAnswered) {
-      const isSelected = selectedKey === key
-      const isCorrectOption = key === activeQuestion.correctKey
+      const isSelected = selectedKey === key;
+      const isCorrectOption = key === activeQuestion.correctKey;
 
       if (isCorrectOption) {
-        return 'border-emerald-500 bg-emerald-100 text-emerald-950 ring-4 ring-emerald-500/20 scale-[1.01] font-bold'
+        return 'border-2 border-emerald-500 bg-emerald-600 text-white ring-4 ring-emerald-500/30 scale-[1.02] shadow-lg font-bold';
       }
       if (isSelected && !isCorrectOption) {
-        return 'border-red-500 bg-red-100 text-red-950 ring-4 ring-red-500/20 font-bold'
+        return 'border-2 border-rose-500 bg-rose-600 text-white ring-4 ring-rose-500/30 shadow-lg font-bold';
       }
-      return 'border-outline-variant/20 bg-white opacity-30'
+      return 'border border-slate-200 bg-slate-50 text-slate-400 opacity-40';
     }
 
     switch (key) {
-      case 'A': return 'border-red-200 hover:border-red-500 bg-gradient-to-br from-red-50 to-red-100/50 text-red-950'
-      case 'B': return 'border-blue-200 hover:border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100/50 text-blue-950'
-      case 'C': return 'border-amber-200 hover:border-amber-500 bg-gradient-to-br from-amber-50 to-amber-100/50 text-amber-950'
-      case 'D': return 'border-emerald-200 hover:border-emerald-500 bg-gradient-to-br from-emerald-50 to-emerald-100/50 text-emerald-950'
-      default: return 'border-outline-variant hover:border-outline'
+      case 'A': return 'border-2 border-rose-200 bg-gradient-to-r from-rose-50 via-white to-rose-100/60 hover:border-rose-500 hover:bg-rose-100/80 text-rose-950 font-bold hover:shadow-md hover:-translate-y-0.5';
+      case 'B': return 'border-2 border-blue-200 bg-gradient-to-r from-blue-50 via-white to-blue-100/60 hover:border-blue-500 hover:bg-blue-100/80 text-blue-950 font-bold hover:shadow-md hover:-translate-y-0.5';
+      case 'C': return 'border-2 border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-100/60 hover:border-amber-500 hover:bg-amber-100/80 text-amber-950 font-bold hover:shadow-md hover:-translate-y-0.5';
+      case 'D': return 'border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-100/60 hover:border-emerald-500 hover:bg-emerald-100/80 text-emerald-950 font-bold hover:shadow-md hover:-translate-y-0.5';
+      default: return 'border-2 border-slate-200 hover:border-slate-400 bg-white text-slate-800';
     }
   }
 
@@ -188,7 +195,9 @@ export const ParticipantAnswer: React.FC = () => {
           streak: nextStreak,
           lastPointsEarned: pointsEarned,
           lastIsCorrect: isCorrect,
-          questionNumber: questionNumber
+          questionNumber: questionNumber,
+          fromSource,
+          activeTab,
         }
       })
     } else {
@@ -200,7 +209,9 @@ export const ParticipantAnswer: React.FC = () => {
           score: nextScore,
           streak: nextStreak,
           activePowerUp: null,
-          questionNumber: questionNumber + 1
+          questionNumber: questionNumber + 1,
+          fromSource,
+          activeTab,
         }
       })
     }

@@ -22,8 +22,59 @@ import {
   UserX,
   Clock,
   Key,
+  Calendar,
+  Shield,
+  ClipboardList,
+  AlertCircle,
+  Download,
+  BarChart2,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { HOST_QUIZZES_LIST, HOST_GROUPS_LIST, HostGroup, GroupMember } from '@/data/userData';
+import { HOST_QUIZZES_LIST, HOST_GROUPS_LIST, HostGroup, GroupMember, USER_ASSIGNED_EXAMS, AssignedExam } from '@/data/userData';
+
+export interface HostAssignedExam {
+  id: number;
+  title: string;
+  due: string;
+  subject: string;
+  quizId: string;
+  duration: number; // phút
+  groupId: string;
+  groupName: string;
+  totalStudents: number;
+  submittedCount: number;
+  status: 'Pending' | 'Active' | 'Closed';
+  submissions?: {
+    studentId: string;
+    studentName: string;
+    studentEmail: string;
+    status: 'Submitted' | 'In Progress' | 'Not Started';
+    score?: string;
+    submittedAt?: string;
+  }[];
+}
+
+export interface QuestionAnalytics {
+  id: number;
+  question: string;
+  wrongCount: number;
+  totalCount: number;
+  wrongPercentage: number;
+  commonWrongAnswer: string;
+  correctAnswer: string;
+}
+
+export const MOCK_QUESTION_ANALYTICS: Record<number, QuestionAnalytics[]> = {
+  1: [
+    { id: 1, question: "Khái niệm về phản ứng nhiệt hóa sinh trong tế bào?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Phản ứng phân giải protein", correctAnswer: "C. Phản ứng tổng hợp ATP" },
+    { id: 2, question: "Cấu trúc ti thể gồm mấy lớp màng bao bọc?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 lớp màng đơn", correctAnswer: "B. 2 lớp màng đôi" },
+    { id: 3, question: "Quá trình hô hấp tế bào xảy ra chủ yếu ở đâu?", wrongCount: 1, totalCount: 3, wrongPercentage: 33, commonWrongAnswer: "D. Nhân tế bào", correctAnswer: "A. Ti thể" }
+  ],
+  2: [
+    { id: 1, question: "Công thức tính tích phân đường loại 2 trên cung tròn?", wrongCount: 2, totalCount: 2, wrongPercentage: 100, commonWrongAnswer: "A. Dùng công thức Green trực tiếp", correctAnswer: "B. Đổi sang tọa độ cực" },
+    { id: 2, question: "Điều kiện cần để chuỗi số hội tụ theo tiêu chuẩn D'Alembert?", wrongCount: 1, totalCount: 2, wrongPercentage: 50, commonWrongAnswer: "C. L = 1", correctAnswer: "A. L < 1" }
+  ]
+};
 
 interface HostStudioTabProps {
   onOpenHostRoomModal: () => void;
@@ -36,7 +87,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   onCreateQuiz,
   onEditQuiz,
 }) => {
-  const [subTab, setSubTab] = useState<'quizzes' | 'groups'>('quizzes');
+  const [subTab, setSubTab] = useState<'quizzes' | 'groups' | 'exams'>('quizzes');
   const [groups, setGroups] = useState<HostGroup[]>(HOST_GROUPS_LIST);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -56,6 +107,272 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const [rosterTab, setRosterTab] = useState<'enrolled' | 'pending'>('enrolled');
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
+
+  // Exams State
+  const [exams, setExams] = useState<HostAssignedExam[]>([
+    {
+      id: 1,
+      title: 'Midterm Biology 101',
+      due: '2026-07-25T23:59',
+      subject: 'Biology',
+      quizId: 'QZ-101',
+      duration: 60,
+      groupId: 'GRP-01',
+      groupName: 'Group 10A1 - Advanced Physics',
+      totalStudents: 3,
+      submittedCount: 2,
+      status: 'Active',
+      submissions: [
+        { studentId: 'M-1', studentName: 'Alex Johnson', studentEmail: 'alex.j@school.edu', status: 'Submitted', score: '85%', submittedAt: '2026-07-20 09:30' },
+        { studentId: 'M-2', studentName: 'Sarah Smith', studentEmail: 'sarah.s@school.edu', status: 'Submitted', score: '92%', submittedAt: '2026-07-20 10:15' },
+        { studentId: 'M-3', studentName: 'Michael Brown', studentEmail: 'michael.b@school.edu', status: 'In Progress' }
+      ]
+    },
+    {
+      id: 2,
+      title: 'Calculus III Vector Calculus',
+      due: '2026-07-30T18:00',
+      subject: 'Mathematics',
+      quizId: 'QZ-103',
+      duration: 90,
+      groupId: 'GRP-02',
+      groupName: 'English Intensive Class B',
+      totalStudents: 2,
+      submittedCount: 0,
+      status: 'Active',
+      submissions: [
+        { studentId: 'M-4', studentName: 'Emily Davis', studentEmail: 'emily.d@school.edu', status: 'Not Started' },
+        { studentId: 'M-5', studentName: 'David Wilson', studentEmail: 'david.w@school.edu', status: 'Not Started' }
+      ]
+    }
+  ]);
+  const [examSearchTerm, setExamSearchTerm] = useState('');
+
+  // Exam Modal State
+  const [isExamModalOpen, setIsExamModalOpen] = useState(false);
+  const [editingExam, setEditingExam] = useState<HostAssignedExam | null>(null);
+  const [examTitle, setExamTitle] = useState('');
+  const [selectedQuizId, setSelectedQuizId] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [examDue, setExamDue] = useState('');
+  const [examDuration, setExamDuration] = useState<number>(60);
+  const [examStatus, setExamStatus] = useState<'Pending' | 'Active' | 'Closed'>('Pending');
+
+  // Submissions Modal State
+  const [submissionsModalExam, setSubmissionsModalExam] = useState<HostAssignedExam | null>(null);
+  const [submissionsViewTab, setSubmissionsViewTab] = useState<'roster' | 'analytics'>('roster');
+  const [editingSubmissionStudentId, setEditingSubmissionStudentId] = useState<string | null>(null);
+  const [tempScore, setTempScore] = useState('');
+
+  // Export Excel Helpers (.xls HTML Table Spreadsheet)
+  const handleExportGroupExcel = (group: HostGroup) => {
+    const htmlTemplate = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>Danh Sách Nhóm</x:Name>
+                <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          th { background-color: #059669; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #d1d5db; padding: 8px; }
+          td { border: 1px solid #e5e7eb; padding: 6px; }
+          .title { font-size: 16pt; font-weight: bold; color: #047857; text-align: center; }
+          .header-bg { background-color: #ecfdf5; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr><td colspan="5" class="title">DANH SÁCH HỌC SINH NHÓM LỚP</td></tr>
+          <tr><td colspan="5" style="text-align: center; font-style: italic; color: #6b7280;">Xuất lúc: ${new Date().toLocaleString('vi-VN')}</td></tr>
+          <tr></tr>
+          <tr class="header-bg">
+            <td>Tên nhóm:</td>
+            <td colspan="2"><b>${group.name}</b></td>
+            <td>Mã Join Code:</td>
+            <td><b>${group.joinCode || group.id}</b></td>
+          </tr>
+          <tr>
+            <td>Mô tả:</td>
+            <td colspan="2">${group.description || 'Không có mô tả'}</td>
+            <td>Tổng số học sinh:</td>
+            <td>${group.members?.length || 0} Học sinh</td>
+          </tr>
+          <tr></tr>
+          <thead>
+            <tr>
+              <th style="width: 40px;">STT</th>
+              <th style="width: 100px;">Mã Sinh Viên</th>
+              <th style="width: 180px;">Họ và Tên</th>
+              <th style="width: 220px;">Email Học Sinh</th>
+              <th style="width: 110px;">Số Bài Đã Làm</th>
+              <th style="width: 110px;">Điểm Trung Bình</th>
+              <th style="width: 320px;">Chi Tiết Điểm Từng Bài Exam</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(group.members || []).map((m, idx) => {
+              const scoresText = (m.examScores || [])
+                .map((s) => `${s.examTitle}: ${s.score}`)
+                .join(' | ');
+
+              return `
+                <tr>
+                  <td style="text-align: center;">${idx + 1}</td>
+                  <td style="text-align: center;">${m.id}</td>
+                  <td><b>${m.name}</b></td>
+                  <td>${m.email}</td>
+                  <td style="text-align: center; font-weight: bold;">${m.examsCompleted || 0} / ${m.totalExamsAssigned || 3}</td>
+                  <td style="text-align: center; font-weight: bold; color: #047857;">${m.averageScore || 'N/A'}</td>
+                  <td style="font-size: 10pt;">${scoresText || 'Chưa làm bài nào'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Danh_Sach_Nhom_${group.name.replace(/[^a-zA-Z0-9]/g, '_')}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportExamExcel = (exam: HostAssignedExam) => {
+    const analytics = MOCK_QUESTION_ANALYTICS[exam.id] || [
+      { id: 1, question: "Khái niệm về phản ứng nhiệt hóa sinh trong tế bào?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Phản ứng phân giải protein", correctAnswer: "C. Phản ứng tổng hợp ATP" },
+      { id: 2, question: "Cấu trúc ti thể gồm mấy lớp màng bao bọc?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 lớp màng đơn", correctAnswer: "B. 2 lớp màng đôi" }
+    ];
+
+    const htmlTemplate = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>Báo Cáo Bài Thi</x:Name>
+                <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          th { background-color: #059669; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #d1d5db; padding: 8px; }
+          td { border: 1px solid #e5e7eb; padding: 6px; }
+          .title { font-size: 16pt; font-weight: bold; color: #047857; text-align: center; }
+          .header-bg { background-color: #ecfdf5; font-weight: bold; }
+          .section-title { font-size: 13pt; font-weight: bold; color: #065f46; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr><td colspan="7" class="title">BÁO CÁO THỐNG KÊ VÀ BẢNG ĐIỂM BÀI THI EXAM</td></tr>
+          <tr><td colspan="7" style="text-align: center; font-style: italic; color: #6b7280;">Thời gian xuất file: ${new Date().toLocaleString('vi-VN')}</td></tr>
+          <tr></tr>
+          <tr class="header-bg">
+            <td colspan="2">Tên bài thi:</td>
+            <td colspan="5"><b>${exam.title}</b></td>
+          </tr>
+          <tr>
+            <td colspan="2">Môn học:</td>
+            <td colspan="2">${exam.subject}</td>
+            <td colspan="2">Thời gian làm bài:</td>
+            <td>${exam.duration} phút</td>
+          </tr>
+          <tr>
+            <td colspan="2">Nhóm học sinh:</td>
+            <td colspan="2">${exam.groupName}</td>
+            <td colspan="2">Trạng thái:</td>
+            <td>${exam.status}</td>
+          </tr>
+          <tr>
+            <td colspan="2">Hạn nộp bài:</td>
+            <td colspan="2">${exam.due}</td>
+            <td colspan="2">Tỷ lệ nộp:</td>
+            <td>${exam.submittedCount} / ${exam.totalStudents} SV</td>
+          </tr>
+          <tr></tr>
+          <tr><td colspan="7" class="section-title">I. BẢNG ĐIỂM CHI TIẾT HỌC SINH (STUDENT GRADEBOOK)</td></tr>
+          <thead>
+            <tr>
+              <th style="width: 50px;">STT</th>
+              <th style="width: 100px;">Mã SV</th>
+              <th style="width: 180px;">Họ và Tên</th>
+              <th style="width: 220px;">Email Học Sinh</th>
+              <th style="width: 120px;">Trạng Thái</th>
+              <th style="width: 100px;">Điểm Số</th>
+              <th style="width: 150px;">Thời Gian Nộp</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(exam.submissions || []).map((sub, idx) => `
+              <tr>
+                <td style="text-align: center;">${idx + 1}</td>
+                <td style="text-align: center;">${sub.studentId}</td>
+                <td><b>${sub.studentName}</b></td>
+                <td>${sub.studentEmail}</td>
+                <td style="text-align: center;">${sub.status}</td>
+                <td style="text-align: center; font-weight: bold; color: #047857;">${sub.score || 'N/A'}</td>
+                <td style="text-align: center;">${sub.submittedAt || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+          <tr></tr>
+          <tr><td colspan="7" class="section-title">II. THỐNG KÊ CÁC CÂU HỎI SAI NHIỀU NHẤT (MOST MISSED QUESTIONS)</td></tr>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th colspan="2">Nội Dung Câu Hỏi</th>
+              <th>Số SV Sai</th>
+              <th>Tỷ Lệ Sai</th>
+              <th>Lỗi Sai Phổ Biến</th>
+              <th>Đáp Án Đúng</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${analytics.map((q, idx) => `
+              <tr>
+                <td style="text-align: center;">${idx + 1}</td>
+                <td colspan="2"><b>${q.question}</b></td>
+                <td style="text-align: center;">${q.wrongCount} / ${q.totalCount}</td>
+                <td style="text-align: center; font-weight: bold; color: #dc2626;">${q.wrongPercentage}%</td>
+                <td style="color: #991b1b;">${q.commonWrongAnswer}</td>
+                <td style="color: #065f46; font-weight: bold;">${q.correctAnswer}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Bang_Diem_Exam_${exam.title.replace(/[^a-zA-Z0-9]/g, '_')}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Copy Code Handler
   const handleCopyCode = (code: string) => {
@@ -239,6 +556,130 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       (g.description && g.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // Exam Handlers
+  const handleOpenAssignExamModal = () => {
+    setEditingExam(null);
+    setExamTitle('');
+    setSelectedQuizId(HOST_QUIZZES_LIST[0]?.id || '');
+    setSelectedGroupId(groups[0]?.id || '');
+    setExamDue('');
+    setExamDuration(60);
+    setExamStatus('Pending');
+    setIsExamModalOpen(true);
+  };
+
+  const handleOpenEditExamModal = (exam: HostAssignedExam) => {
+    setEditingExam(exam);
+    setExamTitle(exam.title);
+    setSelectedQuizId(exam.quizId);
+    setSelectedGroupId(exam.groupId);
+    setExamDue(exam.due);
+    setExamDuration(exam.duration);
+    setExamStatus(exam.status);
+    setIsExamModalOpen(true);
+  };
+
+  const handleToggleExamStatus = (examId: number) => {
+    setExams((prev) =>
+      prev.map((ex) => {
+        if (ex.id !== examId) return ex;
+        const nextStatus: 'Pending' | 'Active' | 'Closed' =
+          ex.status === 'Pending' ? 'Active' : ex.status === 'Active' ? 'Closed' : 'Pending';
+        return { ...ex, status: nextStatus };
+      })
+    );
+  };
+
+  const handleSaveExam = (e: React.FormEvent) => {
+    e.preventDefault();
+    const selectedQuiz = HOST_QUIZZES_LIST.find((q) => q.id === selectedQuizId);
+    const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+    if (!selectedGroup || !selectedQuiz) return;
+
+    if (editingExam) {
+      setExams((prev) =>
+        prev.map((ex) =>
+          ex.id === editingExam.id
+            ? {
+                ...ex,
+                title: selectedQuiz.title,
+                subject: selectedQuiz.category,
+                quizId: selectedQuiz.id,
+                due: examDue,
+                duration: examDuration,
+                status: examStatus,
+                groupId: selectedGroup.id,
+                groupName: selectedGroup.name,
+              }
+            : ex
+        )
+      );
+    } else {
+      const members = selectedGroup.members || [];
+      const newExam: HostAssignedExam = {
+        id: Date.now(),
+        title: selectedQuiz.title,
+        due: examDue,
+        subject: selectedQuiz.category,
+        quizId: selectedQuiz.id,
+        duration: examDuration,
+        status: examStatus,
+        groupId: selectedGroup.id,
+        groupName: selectedGroup.name,
+        totalStudents: members.length,
+        submittedCount: 0,
+        submissions: members.map((m) => ({
+          studentId: m.id,
+          studentName: m.name,
+          studentEmail: m.email,
+          status: 'Not Started' as const,
+        })),
+      };
+      setExams((prev) => [...prev, newExam]);
+    }
+    setIsExamModalOpen(false);
+  };
+
+  const handleDeleteExam = (examId: number) => {
+    if (window.confirm('Bạn có chắc chắn muốn hủy bài thi này không?')) {
+      setExams((prev) => prev.filter((ex) => ex.id !== examId));
+    }
+  };
+
+  const handleResetSubmission = (studentId: string) => {
+    if (!submissionsModalExam) return;
+    const updated = {
+      ...submissionsModalExam,
+      submissions: (submissionsModalExam.submissions || []).map((s) =>
+        s.studentId === studentId ? { ...s, status: 'Not Started' as const, score: undefined, submittedAt: undefined } : s
+      ),
+      submittedCount: Math.max(0, submissionsModalExam.submittedCount - 1),
+    };
+    setSubmissionsModalExam(updated);
+    setExams((prev) => prev.map((ex) => (ex.id === updated.id ? updated : ex)));
+  };
+
+  const handleSaveScore = (studentId: string) => {
+    if (!submissionsModalExam) return;
+    const updated = {
+      ...submissionsModalExam,
+      submissions: (submissionsModalExam.submissions || []).map((s) =>
+        s.studentId === studentId ? { ...s, score: tempScore } : s
+      ),
+    };
+    setSubmissionsModalExam(updated);
+    setExams((prev) => prev.map((ex) => (ex.id === updated.id ? updated : ex)));
+    setEditingSubmissionStudentId(null);
+    setTempScore('');
+  };
+
+  const filteredExams = exams.filter(
+    (ex) =>
+      ex.title.toLowerCase().includes(examSearchTerm.toLowerCase()) ||
+      ex.subject.toLowerCase().includes(examSearchTerm.toLowerCase()) ||
+      ex.groupName.toLowerCase().includes(examSearchTerm.toLowerCase())
+  );
+
   return (
     <div className="space-y-8 text-left">
       {/* Host Header Banner */}
@@ -290,6 +731,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           My Student Groups ({groups.length})
           {subTab === 'groups' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
         </button>
+        <button
+          onClick={() => setSubTab('exams')}
+          className={`pb-3 text-sm font-bold transition-all relative ${
+            subTab === 'exams' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          My Assigned Exams ({exams.length})
+          {subTab === 'exams' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
+        </button>
+
+
       </div>
 
       {/* Quizzes Tab Content */}
@@ -332,6 +784,583 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Exams Tab Content */}
+      {subTab === 'exams' && (
+        <div className="space-y-6">
+          {/* Controls */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
+              <input
+                type="text"
+                placeholder="Search by title, subject, or group..."
+                value={examSearchTerm}
+                onChange={(e) => setExamSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+              />
+            </div>
+            <button
+              onClick={handleOpenAssignExamModal}
+              className="px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Assign New Exam
+            </button>
+          </div>
+
+          {/* Exam Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {filteredExams.map((exam) => {
+              const progressPct = exam.totalStudents > 0 ? Math.round((exam.submittedCount / exam.totalStudents) * 100) : 0;
+              const inProgressCount = (exam.submissions || []).filter((s) => s.status === 'In Progress').length;
+              const notStartedCount = (exam.submissions || []).filter((s) => s.status === 'Not Started').length;
+              const formattedDue = exam.due ? new Date(exam.due).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }) : 'No deadline';
+
+              return (
+                <div
+                  key={exam.id}
+                  className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col hover:border-secondary/40 hover:shadow-md transition-all overflow-hidden"
+                >
+                  {/* Card Header */}
+                  <div className="p-5 pb-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold text-secondary uppercase tracking-wider">{exam.subject}</span>
+                          {/* Status Badge — click để toggle trạng thái */}
+                          <button
+                            onClick={() => handleToggleExamStatus(exam.id)}
+                            title="Click to toggle status (Pending → Active → Closed)"
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full transition-all flex items-center gap-1.5 ${
+                              exam.status === 'Active'
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                : exam.status === 'Pending'
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full inline-block ${
+                              exam.status === 'Active'
+                                ? 'bg-emerald-500'
+                                : exam.status === 'Pending'
+                                ? 'bg-amber-500 animate-pulse'
+                                : 'bg-slate-400'
+                            }`} />
+                            {exam.status === 'Pending' ? 'Pending (Đang chờ)' : exam.status}
+                          </button>
+                        </div>
+                        <h3 className="font-bold text-base text-on-surface leading-tight">{exam.title}</h3>
+                      </div>
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleOpenEditExamModal(exam)}
+                          className="p-1.5 text-on-surface-variant hover:text-secondary hover:bg-surface-container rounded-lg transition-all"
+                          title="Edit Exam"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteExam(exam.id)}
+                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all"
+                          title="Delete Exam"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Meta info */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                        <Users className="w-3.5 h-3.5 text-outline shrink-0" />
+                        <span className="font-medium truncate">{exam.groupName}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                        <Calendar className="w-3.5 h-3.5 text-outline shrink-0" />
+                        <span>Due: <span className="font-semibold text-error">{formattedDue}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                        <Clock className="w-3.5 h-3.5 text-outline shrink-0" />
+                        <span>Duration: <span className="font-semibold text-on-surface">{exam.duration} minutes</span></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Submission Progress */}
+                  <div className="px-5 py-3 bg-surface-container/50 border-t border-outline-variant/20 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-on-surface-variant">Submissions</span>
+                      <span className="font-bold text-on-surface">{exam.submittedCount} / {exam.totalStudents} Submitted</span>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="w-full h-2 bg-outline-variant/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    {/* Status badges */}
+                    <div className="flex items-center gap-3 text-[11px]">
+                      <span className="flex items-center gap-1 text-emerald-700 font-medium">
+                        <CheckCircle2 className="w-3 h-3" />{exam.submittedCount} Submitted
+                      </span>
+                      {inProgressCount > 0 && (
+                        <span className="flex items-center gap-1 text-amber-700 font-medium">
+                          <Clock className="w-3 h-3" />{inProgressCount} In Progress
+                        </span>
+                      )}
+                      {notStartedCount > 0 && (
+                        <span className="flex items-center gap-1 text-on-surface-variant font-medium">
+                          <AlertCircle className="w-3 h-3" />{notStartedCount} Not Started
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer CTA & Export */}
+                  <div className="p-4 border-t border-outline-variant/20 grid grid-cols-5 gap-2">
+                    <button
+                      onClick={() => {
+                        setSubmissionsModalExam(exam);
+                        setSubmissionsViewTab('roster');
+                      }}
+                      className="col-span-4 py-2.5 bg-secondary/10 hover:bg-secondary/20 text-secondary text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+                    >
+                      <ClipboardList className="w-4 h-4" /> Submissions & Analytics ({exam.totalStudents})
+                    </button>
+                    <button
+                      onClick={() => handleExportExamExcel(exam)}
+                      className="col-span-1 py-2.5 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1"
+                      title="Export Exam & Grade Report (Excel .xls)"
+                    >
+                      <Download className="w-4 h-4 text-emerald-600" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filteredExams.length === 0 && (
+              <div className="col-span-full py-16 text-center text-on-surface-variant space-y-4 bg-white rounded-2xl border border-dashed border-outline-variant/40">
+                <ClipboardList className="w-12 h-12 mx-auto text-outline/40" />
+                <div>
+                  <p className="text-sm font-bold text-on-surface">No assigned exams yet</p>
+                  <p className="text-xs mt-1">Assign an exam to a student group to track submissions here.</p>
+                </div>
+                <button
+                  onClick={handleOpenAssignExamModal}
+                  className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all inline-flex items-center gap-1.5 shadow-sm"
+                >
+                  <Plus className="w-4 h-4" /> Assign First Exam
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Assign / Edit Exam Modal */}
+      {isExamModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-xl space-y-6 text-left animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-4">
+              <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-secondary" />
+                {editingExam ? 'Edit Exam Assignment' : 'Assign New Exam'}
+              </h3>
+              <button
+                onClick={() => setIsExamModalOpen(false)}
+                className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveExam} className="space-y-4">
+              {/* Quiz Selection (luôn hiện, cả new lẫn edit) */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
+                  Select Quiz <span className="text-error">*</span>
+                </label>
+                <select
+                  value={selectedQuizId}
+                  onChange={(e) => setSelectedQuizId(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                >
+                  <option value="">-- Select a Quiz --</option>
+                  {HOST_QUIZZES_LIST.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.title} ({q.questions} Qs · {q.level})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Group Selection */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
+                  Assign to Group <span className="text-error">*</span>
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                >
+                  <option value="">-- Select a Group --</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name} ({g.membersCount} students)</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Due Date + Duration — cùng hàng */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
+                    Deadline <span className="text-error">*</span>
+                  </label>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="datetime-local"
+                      required
+                      value={examDue}
+                      onChange={(e) => setExamDue(e.target.value)}
+                      className="w-full pl-9 pr-2 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
+                    Duration (minutes) <span className="text-error">*</span>
+                  </label>
+                  <div className="relative">
+                    <Clock className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="number"
+                      required
+                      min={5}
+                      max={300}
+                      step={5}
+                      placeholder="e.g. 60"
+                      value={examDuration}
+                      onChange={(e) => setExamDuration(Number(e.target.value))}
+                      className="w-full pl-9 pr-2 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                    />
+                  </div>
+                  <p className="text-[11px] text-on-surface-variant mt-1">5 – 300 phút</p>
+                </div>
+              </div>
+
+              {/* Status Selector */}
+              <div className="p-4 bg-surface-container/50 rounded-2xl border border-outline-variant/20 space-y-2">
+                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider">
+                  Exam Status (Trạng thái)
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Pending', 'Active', 'Closed'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setExamStatus(s)}
+                      className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                        examStatus === s
+                          ? s === 'Active'
+                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                            : s === 'Pending'
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                            : 'bg-slate-500 text-white border-slate-500 shadow-sm'
+                          : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-secondary/40'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        examStatus === s
+                          ? 'bg-white'
+                          : s === 'Active'
+                          ? 'bg-emerald-400'
+                          : s === 'Pending'
+                          ? 'bg-amber-400'
+                          : 'bg-slate-400'
+                      }`} />
+                      {s === 'Pending' ? 'Pending' : s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
+                <button
+                  type="button"
+                  onClick={() => setIsExamModalOpen(false)}
+                  className="px-4 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center gap-1.5 shadow-sm"
+                >
+                  <Check className="w-4 h-4" />
+                  {editingExam ? 'Save Changes' : 'Assign Exam'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Submissions Detail Modal */}
+      {submissionsModalExam && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-xl text-left max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-6 pb-4 border-b border-outline-variant/20">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-secondary uppercase tracking-wider">{submissionsModalExam.subject}</span>
+                    <button
+                      onClick={() => handleExportExamExcel(submissionsModalExam)}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg transition-all flex items-center gap-1 shadow-xs"
+                      title="Export Excel File (.xls)"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" /> Export Excel (.xls)
+                    </button>
+                  </div>
+                  <h3 className="text-xl font-bold text-on-surface">{submissionsModalExam.title}</h3>
+                  <div className="flex items-center gap-3 text-xs text-on-surface-variant flex-wrap">
+                    <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{submissionsModalExam.groupName}</span>
+                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{submissionsModalExam.duration} minutes</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setSubmissionsModalExam(null); setEditingSubmissionStudentId(null); }}
+                  className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Sub-tab Navigation (Gradebook vs Most Missed Questions) */}
+              <div className="flex border-b border-outline-variant/30 gap-6 mt-4">
+                <button
+                  onClick={() => setSubmissionsViewTab('roster')}
+                  className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${
+                    submissionsViewTab === 'roster' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <ClipboardList className="w-3.5 h-3.5" /> Student Gradebook ({submissionsModalExam.totalStudents})
+                  {submissionsViewTab === 'roster' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
+                </button>
+                <button
+                  onClick={() => setSubmissionsViewTab('analytics')}
+                  className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${
+                    submissionsViewTab === 'analytics' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <BarChart2 className="w-3.5 h-3.5 text-amber-600" /> Most Missed Questions (Phân tích lỗi sai)
+                  {submissionsViewTab === 'analytics' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
+                </button>
+              </div>
+
+              {/* Summary stats */}
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                <div className="bg-emerald-50 border border-emerald-200/60 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-black text-emerald-700">{submissionsModalExam.submittedCount}</p>
+                  <p className="text-[11px] text-emerald-600 font-medium">Submitted</p>
+                </div>
+                <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-black text-amber-700">
+                    {(submissionsModalExam.submissions || []).filter(s => s.status === 'In Progress').length}
+                  </p>
+                  <p className="text-[11px] text-amber-600 font-medium">In Progress</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-black text-slate-600">
+                    {(submissionsModalExam.submissions || []).filter(s => s.status === 'Not Started').length}
+                  </p>
+                  <p className="text-[11px] text-slate-500 font-medium">Not Started</p>
+                </div>
+              </div>
+            </div>
+
+            {/* View Tab 1: Student Gradebook Roster */}
+            {submissionsViewTab === 'roster' && (
+              <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                {(submissionsModalExam.submissions || []).length === 0 && (
+                  <div className="py-10 text-center text-on-surface-variant text-xs">
+                    <Users className="w-8 h-8 mx-auto text-outline/40 mb-2" />
+                    <p>No students in this group.</p>
+                  </div>
+                )}
+                {(submissionsModalExam.submissions || []).map((sub) => (
+                  <div
+                    key={sub.studentId}
+                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all gap-3 ${
+                      sub.status === 'Submitted'
+                        ? 'bg-emerald-50/40 border-emerald-200/60'
+                        : sub.status === 'In Progress'
+                        ? 'bg-amber-50/40 border-amber-200/60'
+                        : 'bg-slate-50/60 border-slate-200/40'
+                    }`}
+                  >
+                    {/* Student info */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className={`w-10 h-10 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 ${
+                        sub.status === 'Submitted' ? 'bg-emerald-200 text-emerald-900'
+                        : sub.status === 'In Progress' ? 'bg-amber-200 text-amber-900 animate-pulse'
+                        : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {sub.studentName.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <h5 className="font-bold text-xs text-on-surface">{sub.studentName}</h5>
+                        <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5">
+                          <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 text-outline" />{sub.studentEmail}</span>
+                          {sub.submittedAt && <span>• {sub.submittedAt}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status + Actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Status badge */}
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                        sub.status === 'Submitted' ? 'bg-emerald-100 text-emerald-800'
+                        : sub.status === 'In Progress' ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {sub.status}
+                      </span>
+
+                      {/* Score display / edit */}
+                      {sub.status === 'Submitted' && (
+                        editingSubmissionStudentId === sub.studentId ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={tempScore}
+                              onChange={(e) => setTempScore(e.target.value)}
+                              placeholder="e.g. 90%"
+                              className="w-16 px-2 py-1 border border-secondary/40 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-secondary"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleSaveScore(sub.studentId)}
+                              className="p-1 bg-secondary text-white rounded-lg hover:bg-secondary/90 transition-all"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => { setEditingSubmissionStudentId(null); setTempScore(''); }}
+                              className="p-1 text-on-surface-variant hover:text-error rounded-lg transition-all"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setEditingSubmissionStudentId(sub.studentId); setTempScore(sub.score || ''); }}
+                            className="text-xs font-bold text-secondary bg-secondary/10 hover:bg-secondary/20 px-2.5 py-1 rounded-lg transition-all"
+                          >
+                            {sub.score || 'Grade'}
+                          </button>
+                        )
+                      )}
+
+                      {/* Reset button */}
+                      {(sub.status === 'Submitted' || sub.status === 'In Progress') && (
+                        <button
+                          onClick={() => handleResetSubmission(sub.studentId)}
+                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all"
+                          title="Reset attempt"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* View Tab 2: Most Missed Questions Analytics */}
+            {submissionsViewTab === 'analytics' && (
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex items-center justify-between bg-amber-50 p-3.5 rounded-2xl border border-amber-200 text-xs text-amber-900">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Top những câu hỏi sinh viên thường trả lời sai nhiều nhất trong bài thi này.</span>
+                  </div>
+                  <button
+                    onClick={() => handleExportExamExcel(submissionsModalExam)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shrink-0 flex items-center gap-1.5 text-[11px] shadow-xs"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" /> Export Excel Report
+                  </button>
+                </div>
+
+                {((MOCK_QUESTION_ANALYTICS[submissionsModalExam.id] || [
+                  { id: 1, question: "Khái niệm về phản ứng nhiệt hóa sinh trong tế bào?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Phản ứng phân giải protein", correctAnswer: "C. Phản ứng tổng hợp ATP" },
+                  { id: 2, question: "Cấu trúc ti thể gồm mấy lớp màng bao bọc?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 lớp màng đơn", correctAnswer: "B. 2 lớp màng đôi" }
+                ])).map((item, idx) => (
+                  <div key={item.id} className="bg-white p-4 rounded-2xl border border-outline-variant/30 space-y-3 text-xs shadow-xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="w-6 h-6 rounded-lg bg-rose-100 text-rose-800 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                          #{idx + 1}
+                        </span>
+                        <div>
+                          <h5 className="font-bold text-on-surface text-sm">{item.question}</h5>
+                          <p className="text-on-surface-variant text-[11px] mt-0.5">
+                            Có <strong className="text-rose-600">{item.wrongCount} / {item.totalCount}</strong> sinh viên làm sai bài này ({item.wrongPercentage}% tỷ lệ sai)
+                          </p>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-extrabold rounded-lg shrink-0 text-xs">
+                        {item.wrongPercentage}% Sai
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-rose-500 rounded-full" style={{ width: `${item.wrongPercentage}%` }} />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+                      <div className="bg-rose-50/60 p-2.5 rounded-xl border border-rose-100">
+                        <span className="font-bold text-rose-800 uppercase tracking-wider block text-[10px] mb-0.5">Lỗi sai phổ biến:</span>
+                        <span className="text-rose-900 font-medium">{item.commonWrongAnswer}</span>
+                      </div>
+                      <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
+                        <span className="font-bold text-emerald-800 uppercase tracking-wider block text-[10px] mb-0.5">Đáp án đúng chính xác:</span>
+                        <span className="text-emerald-900 font-medium">{item.correctAnswer}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-outline-variant/20 flex items-center justify-between bg-surface-container/30">
+              <p className="text-xs text-on-surface-variant">
+                <span className="font-bold text-on-surface">{submissionsModalExam.submittedCount}</span> of{' '}
+                <span className="font-bold text-on-surface">{submissionsModalExam.totalStudents}</span> students submitted
+              </p>
+              <button
+                onClick={() => { setSubmissionsModalExam(null); setEditingSubmissionStudentId(null); }}
+                className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all shadow-sm"
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -403,6 +1432,13 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                           title="Edit Group"
                         >
                           <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleExportGroupExcel(group)}
+                          className="p-2 text-on-surface-variant hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                          title="Export Group Roster (Excel .xls)"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                         </button>
                         <button
                           onClick={() => handleDeleteGroup(group.id)}
@@ -687,34 +1723,75 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 </form>
 
                 {/* Members List */}
-                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                   {(rosterGroup.members || []).map((member) => (
                     <div
                       key={member.id}
-                      className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-outline-variant/20 hover:border-outline-variant/50 transition-all"
+                      className="p-4 bg-white rounded-2xl border border-outline-variant/20 hover:border-outline-variant/50 transition-all space-y-3 shadow-xs"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-secondary/10 text-secondary font-bold text-xs flex items-center justify-center">
-                          {member.name.charAt(0)}
-                        </div>
-                        <div>
-                          <h5 className="font-bold text-xs text-on-surface">{member.name}</h5>
-                          <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5">
-                            <span className="flex items-center gap-1">
-                              <Mail className="w-3 h-3 text-outline" /> {member.email}
-                            </span>
-                            <span>• Joined {member.joinedDate}</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-secondary/10 text-secondary font-extrabold text-xs flex items-center justify-center">
+                            {member.name.charAt(0)}
                           </div>
+                          <div>
+                            <h5 className="font-bold text-xs text-on-surface">{member.name}</h5>
+                            <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5">
+                              <span className="flex items-center gap-1">
+                                <Mail className="w-3 h-3 text-outline" /> {member.email}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant" title="Số bài exam đã làm">
+                            Exams: {member.examsCompleted || 0}/{member.totalExamsAssigned || 3}
+                          </span>
+                          <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800" title="Điểm trung bình">
+                            AVG: {member.averageScore || 'N/A'}
+                          </span>
+                          <button
+                            onClick={() => handleRemoveMember(member.id)}
+                            className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all"
+                            title="Remove Student"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => handleRemoveMember(member.id)}
-                        className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all"
-                        title="Remove Student"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {/* Exam Scores Breakdown */}
+                      {(member.examScores || []).length > 0 && (
+                        <div className="pt-2 border-t border-outline-variant/15 space-y-1.5">
+                          <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
+                            Chi tiết điểm các bài Exam:
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {member.examScores?.map((scoreItem, sIdx) => (
+                              <div
+                                key={sIdx}
+                                className={`px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center justify-between ${
+                                  scoreItem.status === 'Completed'
+                                    ? 'bg-emerald-50/50 border-emerald-200/60'
+                                    : scoreItem.status === 'In Progress'
+                                    ? 'bg-amber-50/50 border-amber-200/60'
+                                    : 'bg-slate-50 border-slate-200/60'
+                                }`}
+                              >
+                                <span className="font-medium truncate text-on-surface max-w-[110px]" title={scoreItem.examTitle}>
+                                  {scoreItem.examTitle}
+                                </span>
+                                <span className={`font-extrabold ml-1 ${
+                                  scoreItem.status === 'Completed' ? 'text-emerald-700' : 'text-slate-500'
+                                }`}>
+                                  {scoreItem.score}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
 
