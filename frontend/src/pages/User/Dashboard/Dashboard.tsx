@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, LogOut, LayoutDashboard, DoorOpen, ClipboardList, History, Trophy, SlidersHorizontal, Settings } from 'lucide-react';
 import { DashboardHeader } from './components/DashboardHeader';
 import { DashboardSidebar } from './components/DashboardSidebar';
@@ -8,29 +8,52 @@ import { JoinRoomTab } from './components/JoinRoomTab';
 import { HistoryTab } from './components/HistoryTab';
 import { AchievementsTab } from './components/AchievementsTab';
 import { HostStudioTab } from './components/HostStudioTab';
+import { SettingsTab } from './components/SettingsTab';
 import { HostRoomModal } from './components/HostRoomModal';
 import { USER_ASSIGNED_EXAMS } from '@/data/userData';
 
+type TabType = 'overview' | 'join_room' | 'assigned_exams' | 'history' | 'achievements' | 'host_studio' | 'settings';
+
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'join_room' | 'assigned_exams' | 'history' | 'achievements' | 'host_studio' | 'settings'
-  >('overview');
+  const location = useLocation();
+
+  const locationState = location.state as { activeTab?: TabType } | null;
+
+  const [activeTab, setActiveTabState] = useState<TabType>(() => {
+    if (locationState?.activeTab) return locationState.activeTab;
+    const saved = sessionStorage.getItem('dashboard_active_tab');
+    return (saved as TabType) || 'overview';
+  });
+
+  useEffect(() => {
+    if (locationState?.activeTab) {
+      setActiveTabState(locationState.activeTab);
+      sessionStorage.setItem('dashboard_active_tab', locationState.activeTab);
+    }
+  }, [locationState?.activeTab]);
+
+  const setActiveTab = (tab: TabType) => {
+    setActiveTabState(tab);
+    sessionStorage.setItem('dashboard_active_tab', tab);
+  };
 
   const [activeTitle, setActiveTitle] = useState<string | null>('Perfect Score');
   const [hostRoomModalOpen, setHostRoomModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleStartExam = (exam: any) => {
-    navigate('/exam', { state: exam });
+    sessionStorage.setItem('dashboard_active_tab', activeTab);
+    navigate('/exam', { state: { ...exam, activeTab } });
   };
 
   const handleCreateQuiz = () => {
-    navigate('/create-quiz');
+    sessionStorage.setItem('dashboard_active_tab', activeTab);
+    navigate('/create-quiz', { state: { activeTab } });
   };
 
   return (
-    <div className="min-h-screen bg-surface-bright text-on-surface flex font-sans antialiased">
+    <div className="min-h-screen bg-surface-bright text-on-surface flex font-sans antialiased md:ml-64">
       {/* Desktop Sidebar */}
       <DashboardSidebar
         activeTab={activeTab}
@@ -190,32 +213,7 @@ export const Dashboard: React.FC = () => {
             />
           )}
 
-          {activeTab === 'settings' && (
-            <div className="bg-white p-8 rounded-2xl border border-outline-variant/30 shadow-sm max-w-2xl text-left space-y-6">
-              <h2 className="text-2xl font-bold text-on-surface">Account Settings</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-on-surface mb-1">Display Name</label>
-                  <input
-                    type="text"
-                    defaultValue="Alex Johnson"
-                    className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-on-surface mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    defaultValue="alex.j@student.edu"
-                    className="w-full border border-outline-variant rounded-xl px-4 py-2.5 text-sm"
-                  />
-                </div>
-                <button className="px-6 py-2.5 bg-primary text-white rounded-xl font-bold text-sm">
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          )}
+          {activeTab === 'settings' && <SettingsTab />}
         </main>
       </div>
 

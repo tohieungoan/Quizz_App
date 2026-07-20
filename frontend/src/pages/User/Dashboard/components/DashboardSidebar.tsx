@@ -23,7 +23,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onLogout,
 }) => {
   return (
-    <aside className="w-64 bg-surface-container-low border-r border-outline-variant/30 hidden md:flex flex-col justify-between shrink-0 min-h-screen">
+    <aside className="fixed inset-y-0 left-0 w-64 bg-surface-container-low border-r border-outline-variant/30 flex flex-col justify-between shrink-0 min-h-screen z-10 hidden md:flex">
       <div className="p-6">
         <div className="flex items-center gap-3 text-primary mb-8">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-md text-white">

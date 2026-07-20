@@ -70,11 +70,23 @@ export interface HostQuiz {
   category: string;
 }
 
+export interface StudentExamRecord {
+  examId: string | number;
+  examTitle: string;
+  score: string;
+  date: string;
+  status: 'Completed' | 'In Progress' | 'Missed';
+}
+
 export interface GroupMember {
   id: string;
   name: string;
   email: string;
   joinedDate: string;
+  examsCompleted?: number;
+  totalExamsAssigned?: number;
+  averageScore?: string;
+  examScores?: StudentExamRecord[];
 }
 
 export interface HostGroup {
@@ -218,9 +230,48 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
     membersCount: 3,
     description: 'Class 10A1 students taking advanced physics coursework.',
     members: [
-      { id: 'M-1', name: 'Alex Johnson', email: 'alex.j@school.edu', joinedDate: '2026-09-01' },
-      { id: 'M-2', name: 'Sarah Smith', email: 'sarah.s@school.edu', joinedDate: '2026-09-01' },
-      { id: 'M-3', name: 'Michael Brown', email: 'michael.b@school.edu', joinedDate: '2026-09-03' },
+      {
+        id: 'M-1',
+        name: 'Alex Johnson',
+        email: 'alex.j@school.edu',
+        joinedDate: '2026-09-01',
+        examsCompleted: 3,
+        totalExamsAssigned: 3,
+        averageScore: '92%',
+        examScores: [
+          { examId: 1, examTitle: 'Midterm Biology 101', score: '85%', date: '2026-07-20', status: 'Completed' },
+          { examId: 2, examTitle: 'Advanced Physics Ch. 4', score: '95%', date: '2026-07-15', status: 'Completed' },
+          { examId: 3, examTitle: 'Calculus III Vector Calculus', score: '96%', date: '2026-07-10', status: 'Completed' },
+        ],
+      },
+      {
+        id: 'M-2',
+        name: 'Sarah Smith',
+        email: 'sarah.s@school.edu',
+        joinedDate: '2026-09-01',
+        examsCompleted: 2,
+        totalExamsAssigned: 3,
+        averageScore: '89%',
+        examScores: [
+          { examId: 1, examTitle: 'Midterm Biology 101', score: '92%', date: '2026-07-20', status: 'Completed' },
+          { examId: 2, examTitle: 'Advanced Physics Ch. 4', score: '86%', date: '2026-07-15', status: 'Completed' },
+          { examId: 3, examTitle: 'Calculus III Vector Calculus', score: '--', date: '2026-07-10', status: 'In Progress' },
+        ],
+      },
+      {
+        id: 'M-3',
+        name: 'Michael Brown',
+        email: 'michael.b@school.edu',
+        joinedDate: '2026-09-03',
+        examsCompleted: 1,
+        totalExamsAssigned: 3,
+        averageScore: '78%',
+        examScores: [
+          { examId: 1, examTitle: 'Midterm Biology 101', score: '--', date: '2026-07-20', status: 'In Progress' },
+          { examId: 2, examTitle: 'Advanced Physics Ch. 4', score: '78%', date: '2026-07-15', status: 'Completed' },
+          { examId: 3, examTitle: 'Calculus III Vector Calculus', score: '--', date: '2026-07-10', status: 'Missed' },
+        ],
+      },
     ],
     pendingRequests: [
       { id: 'P-1', name: 'Kevin Lee', email: 'kevin.l@school.edu', joinedDate: '2026-10-18' },
@@ -235,8 +286,32 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
     membersCount: 2,
     description: 'Intensive English language & literature study group.',
     members: [
-      { id: 'M-4', name: 'Emily Davis', email: 'emily.d@school.edu', joinedDate: '2026-09-05' },
-      { id: 'M-5', name: 'David Wilson', email: 'david.w@school.edu', joinedDate: '2026-09-05' },
+      {
+        id: 'M-4',
+        name: 'Emily Davis',
+        email: 'emily.d@school.edu',
+        joinedDate: '2026-09-05',
+        examsCompleted: 2,
+        totalExamsAssigned: 2,
+        averageScore: '94%',
+        examScores: [
+          { examId: 1, examTitle: 'English Literature Midterm', score: '95%', date: '2026-07-18', status: 'Completed' },
+          { examId: 2, examTitle: 'Grammar & Vocabulary Test', score: '93%', date: '2026-07-12', status: 'Completed' },
+        ],
+      },
+      {
+        id: 'M-5',
+        name: 'David Wilson',
+        email: 'david.w@school.edu',
+        joinedDate: '2026-09-05',
+        examsCompleted: 1,
+        totalExamsAssigned: 2,
+        averageScore: '82%',
+        examScores: [
+          { examId: 1, examTitle: 'English Literature Midterm', score: '82%', date: '2026-07-18', status: 'Completed' },
+          { examId: 2, examTitle: 'Grammar & Vocabulary Test', score: '--', date: '2026-07-12', status: 'Missed' },
+        ],
+      },
     ],
     pendingRequests: [],
   },
@@ -248,8 +323,32 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
     membersCount: 2,
     description: 'CS honors section focusing on algorithms and web dev.',
     members: [
-      { id: 'M-6', name: 'Jessica Taylor', email: 'jessica.t@school.edu', joinedDate: '2026-09-10' },
-      { id: 'M-7', name: 'Daniel Martinez', email: 'daniel.m@school.edu', joinedDate: '2026-09-12' },
+      {
+        id: 'M-6',
+        name: 'Jessica Taylor',
+        email: 'jessica.t@school.edu',
+        joinedDate: '2026-09-10',
+        examsCompleted: 2,
+        totalExamsAssigned: 2,
+        averageScore: '98%',
+        examScores: [
+          { examId: 1, examTitle: 'Data Structures & Algorithms', score: '100%', date: '2026-07-19', status: 'Completed' },
+          { examId: 2, examTitle: 'Web Development Basics', score: '96%', date: '2026-07-14', status: 'Completed' },
+        ],
+      },
+      {
+        id: 'M-7',
+        name: 'Daniel Martinez',
+        email: 'daniel.m@school.edu',
+        joinedDate: '2026-09-12',
+        examsCompleted: 2,
+        totalExamsAssigned: 2,
+        averageScore: '91%',
+        examScores: [
+          { examId: 1, examTitle: 'Data Structures & Algorithms', score: '90%', date: '2026-07-19', status: 'Completed' },
+          { examId: 2, examTitle: 'Web Development Basics', score: '92%', date: '2026-07-14', status: 'Completed' },
+        ],
+      },
     ],
     pendingRequests: [
       { id: 'P-3', name: 'Tommy Chen', email: 'tommy.c@school.edu', joinedDate: '2026-10-20' },

@@ -81,11 +81,14 @@ export const JoinRoomTab: React.FC = () => {
       return;
     }
     setRoomError('');
+    sessionStorage.setItem('dashboard_active_tab', 'join_room');
     navigate('/lobby', {
       state: {
         roomCode: fullCode,
         nickname: nickname.trim() || 'Alex Johnson',
         isHost: false,
+        fromSource: 'dashboard',
+        activeTab: 'join_room',
       },
     });
   };
