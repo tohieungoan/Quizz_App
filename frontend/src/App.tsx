@@ -23,6 +23,9 @@ import { Reports } from './pages/Admin/Reports/Reports';
 import { Users } from './pages/Admin/Users/Users';
 import { Notifications } from './pages/Admin/Notifications/Notifications';
 import { Settings } from './pages/Admin/Settings/Settings';
+import { Achievements } from './pages/Admin/Achievements/Achievements';
+import { Broadcast } from './pages/Admin/Broadcast/Broadcast';
+import { Profile } from './pages/User/Profile/Profile';
 
 const App: React.FC = () => {
   const navigate = useNavigate();
@@ -79,6 +82,9 @@ const App: React.FC = () => {
           <Route path="reports/:id" element={<Reports />} />
           <Route path="users" element={<Users />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="achievements" element={<Achievements />} />
+          <Route path="broadcast" element={<Broadcast />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />

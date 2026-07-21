@@ -33,6 +33,7 @@ export function AdminLayout() {
   else if (currentPath.includes('/admin/notifications')) currentView = 'notifications';
   else if (currentPath.includes('/admin/broadcast')) currentView = 'broadcast';
   else if (currentPath.includes('/admin/settings')) currentView = 'settings';
+  else if (currentPath.includes('/admin/profile')) currentView = 'profile';
 
   return (
     <div className="antialiased min-h-screen flex text-on-surface bg-surface-bright font-sans flex-col">
