@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { Search, Plus, Edit2, Trash2, Eye, Upload, BookOpen } from 'lucide-react';
 import { UserActionModal, UserData, UserMode } from '@/components/ui/UserActionModal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
-import { AssignQuizModal } from '@/components/ui/AssignQuizModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { Pagination } from '@/components/ui/Pagination';
 import { Dropdown } from '@/components/ui/Dropdown';
@@ -25,9 +24,6 @@ export const Users: React.FC = () => {
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
-
-  const [assignQuizModalOpen, setAssignQuizModalOpen] = useState(false);
-  const [userToAssign, setUserToAssign] = useState<UserData | null>(null);
 
   const [alertState, setAlertState] = useState<{
     isOpen: boolean;
@@ -78,11 +74,6 @@ export const Users: React.FC = () => {
     setActionModalOpen(true);
   };
 
-  const handleOpenAssignQuiz = (user: UserData) => {
-    setUserToAssign(user);
-    setAssignQuizModalOpen(true);
-  };
-
   const handleDeleteClick = (id: string) => {
     setUserToDelete(id);
     setDeleteConfirmOpen(true);
@@ -131,23 +122,6 @@ export const Users: React.FC = () => {
       });
     }
     setActionModalOpen(false);
-  };
-
-  const handleSaveAssignedQuizzes = (userId: string, quizIds: string[]) => {
-    setUsers(users.map((u) => {
-      if (u.id === userId) {
-        const currentAssigned = u.assigned_quizzes || [];
-        const newAssigned = Array.from(new Set([...currentAssigned, ...quizIds]));
-        return { ...u, assigned_quizzes: newAssigned };
-      }
-      return u;
-    }));
-    setAlertState({
-      isOpen: true,
-      title: 'Quizzes Assigned',
-      message: `Successfully assigned ${quizIds.length} quiz(zes) to the user.`,
-      type: 'success',
-    });
   };
 
   const handleBatchImport = () => {
@@ -249,9 +223,6 @@ export const Users: React.FC = () => {
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">User</th>
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">Role</th>
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                  Assigned Quizzes
-                </th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
                   Status
                 </th>
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">Last Login</th>
@@ -285,15 +256,6 @@ export const Users: React.FC = () => {
                       >
                         {user.role}
                       </span>
-                    </td>
-                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => handleOpenAssignQuiz(user)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface-container hover:bg-primary/10 hover:text-primary transition-colors text-xs font-semibold text-on-surface-variant"
-                      >
-                        <BookOpen className="w-3.5 h-3.5" />
-                        {user.assigned_quizzes?.length || 0} Assigned
-                      </button>
                     </td>
                     <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
                       <span
@@ -341,7 +303,7 @@ export const Users: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-on-surface-variant">
+                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
                     No users found matching filters.
                   </td>
                 </tr>
@@ -366,13 +328,6 @@ export const Users: React.FC = () => {
         user={selectedUser}
         onClose={() => setActionModalOpen(false)}
         onSave={handleSaveUser}
-      />
-
-      <AssignQuizModal
-        isOpen={assignQuizModalOpen}
-        onClose={() => setAssignQuizModalOpen(false)}
-        user={userToAssign}
-        onAssign={handleSaveAssignedQuizzes}
       />
 
       <ConfirmModal

@@ -24,115 +24,7 @@ interface AchievementsTabProps {
   setActiveTitle: (title: string | null) => void;
 }
 
-export type RarityType = 'All' | 'Common' | 'Rare' | 'Epic' | 'Legendary';
-
-interface ProfileTitle {
-  id: string;
-  name: string;
-  rarity: 'Common' | 'Rare' | 'Epic' | 'Legendary';
-  description: string;
-  unlocked: boolean;
-  icon: string;
-}
-
-const DISPLAY_TITLES: ProfileTitle[] = [
-  {
-    id: 't1',
-    name: 'Perfect Score',
-    rarity: 'Legendary',
-    description: 'Scored 100% accuracy on 5 official midterm exams',
-    unlocked: true,
-    icon: 'crown',
-  },
-  {
-    id: 't2',
-    name: 'Speed Demon',
-    rarity: 'Rare',
-    description: 'Answered 10 consecutive questions in under 3 seconds',
-    unlocked: true,
-    icon: 'zap',
-  },
-  {
-    id: 't3',
-    name: 'Unstoppable Streak',
-    rarity: 'Epic',
-    description: 'Achieved a 10+ question correct streak in Live Quiz',
-    unlocked: true,
-    icon: 'flame',
-  },
-  {
-    id: 't4',
-    name: 'Quiz Master',
-    rarity: 'Legendary',
-    description: 'Hosted over 20 live room quiz sessions for students',
-    unlocked: true,
-    icon: 'trophy',
-  },
-  {
-    id: 't5',
-    name: 'Night Owl',
-    rarity: 'Common',
-    description: 'Completed an exam session past midnight',
-    unlocked: true,
-    icon: 'moon',
-  },
-  {
-    id: 't6',
-    name: 'Bullseye Titan',
-    rarity: 'Epic',
-    description: 'Maintained 95%+ overall average score across all subjects',
-    unlocked: true,
-    icon: 'target',
-  },
-  {
-    id: 't7',
-    name: 'Shield Master',
-    rarity: 'Rare',
-    description: 'Successfully deployed 10 Streak Shields in live rooms',
-    unlocked: true,
-    icon: 'shield',
-  },
-  {
-    id: 't8',
-    name: 'Grandmaster Strategist',
-    rarity: 'Legendary',
-    description: 'Finished #1 on the leaderboard 15 times in a row',
-    unlocked: false,
-    icon: 'sparkles',
-  },
-  {
-    id: 't9',
-    name: 'Academic Scholar',
-    rarity: 'Common',
-    description: 'Joined 5 active student study groups',
-    unlocked: true,
-    icon: 'book',
-  },
-  {
-    id: 't10',
-    name: 'Early Bird',
-    rarity: 'Common',
-    description: 'Completed a quiz before 7:00 AM in the morning',
-    unlocked: true,
-    icon: 'zap',
-  },
-  {
-    id: 't11',
-    name: 'Precision Scholar',
-    rarity: 'Rare',
-    description: 'Answered 50 questions without making a single mistake',
-    unlocked: true,
-    icon: 'target',
-  },
-  {
-    id: 't12',
-    name: 'Legendary Host',
-    rarity: 'Legendary',
-    description: 'Created 10+ custom quiz templates for the community',
-    unlocked: false,
-    icon: 'crown',
-  },
-];
+export type RarityType = 'All' | 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
 
 export const AchievementsTab: React.FC<AchievementsTabProps> = ({
   activeTitle,
@@ -148,10 +40,11 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
   const [badgePage, setBadgePage] = useState(1);
   const BADGES_PER_PAGE = 6;
 
-  // Filter Titles by Selected Tier
-  const filteredTitles = DISPLAY_TITLES.filter((t) => {
+  // Filter Titles by Category === 'TITLE' and Tier
+  const titlesList = USER_ACHIEVEMENTS.filter((a) => a.category === 'TITLE');
+  const filteredTitles = titlesList.filter((t) => {
     if (selectedTier === 'All') return true;
-    return t.rarity === selectedTier;
+    return t.tier === selectedTier;
   });
 
   // Calculate Paginated Titles
@@ -159,10 +52,11 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
   const titleStartIndex = (titlePage - 1) * TITLES_PER_PAGE;
   const paginatedTitles = filteredTitles.slice(titleStartIndex, titleStartIndex + TITLES_PER_PAGE);
 
-  // Filter Badges by Category/Status
-  const filteredBadges = USER_ACHIEVEMENTS.filter((b) => {
-    if (badgeFilter === 'Unlocked') return b.unlocked;
-    if (badgeFilter === 'Locked') return !b.unlocked;
+  // Filter Badges by Category === 'BADGE' and Status
+  const badgesList = USER_ACHIEVEMENTS.filter((a) => a.category === 'BADGE');
+  const filteredBadges = badgesList.filter((b) => {
+    if (badgeFilter === 'Unlocked') return b.is_unlocked;
+    if (badgeFilter === 'Locked') return !b.is_unlocked;
     return true;
   });
 
@@ -183,13 +77,13 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
 
   const getRarityBadgeStyle = (rarity: string) => {
     switch (rarity) {
-      case 'Legendary':
+      case 'LEGENDARY':
         return 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-xs font-black';
-      case 'Epic':
+      case 'EPIC':
         return 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black';
-      case 'Rare':
+      case 'RARE':
         return 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold';
-      case 'Common':
+      case 'COMMON':
         return 'bg-slate-200 text-slate-700 font-bold';
       default:
         return 'bg-slate-100 text-slate-600';
@@ -219,8 +113,8 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
     }
   };
 
-  const unlockedTitlesCount = DISPLAY_TITLES.filter((t) => t.unlocked).length;
-  const unlockedBadgesCount = USER_ACHIEVEMENTS.filter((b) => b.unlocked).length;
+  const unlockedTitlesCount = titlesList.filter((t) => t.is_unlocked).length;
+  const unlockedBadgesCount = badgesList.filter((b) => b.is_unlocked).length;
 
   return (
     <div className="space-y-8 text-left max-w-6xl mx-auto">
@@ -247,13 +141,13 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
           <div className="text-center px-3 border-r border-white/10">
             <span className="text-xs text-slate-300 block font-medium">Unlocked Badges</span>
             <span className="text-sm font-black text-emerald-400">
-              {unlockedBadgesCount}/{USER_ACHIEVEMENTS.length}
+              {unlockedBadgesCount}/{badgesList.length}
             </span>
           </div>
           <div className="text-center px-3">
             <span className="text-xs text-slate-300 block font-medium">Unlocked Titles</span>
             <span className="text-sm font-black text-indigo-300">
-              {unlockedTitlesCount}/{DISPLAY_TITLES.length}
+              {unlockedTitlesCount}/{titlesList.length}
             </span>
           </div>
         </div>
@@ -283,7 +177,7 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
             <span className="text-[11px] font-bold text-outline px-2 flex items-center gap-1">
               <Filter className="w-3 h-3" /> Tier:
             </span>
-            {(['All', 'Common', 'Rare', 'Epic', 'Legendary'] as RarityType[]).map((tier) => {
+            {(['All', 'COMMON', 'RARE', 'EPIC', 'LEGENDARY'] as RarityType[]).map((tier) => {
               const isSelected = selectedTier === tier;
               return (
                 <button
@@ -295,7 +189,7 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-white/60'
                   }`}
                 >
-                  {tier}
+                  {tier === 'All' ? 'All' : tier.charAt(0) + tier.slice(1).toLowerCase()}
                 </button>
               );
             })}
@@ -312,12 +206,12 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
                 <div
                   key={title.id}
                   onClick={() => {
-                    if (title.unlocked) {
+                    if (title.is_unlocked) {
                       setActiveTitle(isEquipped ? null : title.name);
                     }
                   }}
                   className={`p-5 rounded-2xl border-2 transition-all flex flex-col justify-between relative ${
-                    !title.unlocked
+                    !title.is_unlocked
                       ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
                       : isEquipped
                       ? 'bg-amber-50/90 border-amber-400 ring-4 ring-amber-400/20 shadow-md cursor-pointer scale-[1.01]'
@@ -332,10 +226,10 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
                         </div>
                         <span
                           className={`text-[11px] uppercase px-2.5 py-0.5 rounded-lg ${getRarityBadgeStyle(
-                            title.rarity
+                            title.tier
                           )}`}
                         >
-                          {title.rarity}
+                          {title.tier}
                         </span>
                       </div>
 
@@ -344,7 +238,7 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
                         <span className="flex items-center gap-1 bg-amber-500 text-white px-2.5 py-1 rounded-lg text-[11px] font-black shadow-xs shrink-0">
                           <CheckCircle2 className="w-3.5 h-3.5 fill-current text-amber-500" /> EQUIPPED
                         </span>
-                      ) : title.unlocked ? (
+                      ) : title.is_unlocked ? (
                         <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg hover:bg-amber-100 hover:text-amber-800 transition-colors shrink-0">
                           Click to Equip
                         </span>
@@ -375,14 +269,16 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
         )}
 
         {/* Titles Pagination */}
-        <Pagination
-          currentPage={titlePage}
-          totalPages={totalTitlePages}
-          totalItems={filteredTitles.length}
-          startIndex={titleStartIndex}
-          itemsPerPage={TITLES_PER_PAGE}
-          onPageChange={(p) => setTitlePage(p)}
-        />
+        {totalTitlePages > 1 && (
+          <Pagination
+            currentPage={titlePage}
+            totalPages={totalTitlePages}
+            totalItems={filteredTitles.length}
+            startIndex={titleStartIndex}
+            itemsPerPage={TITLES_PER_PAGE}
+            onPageChange={(p) => setTitlePage(p)}
+          />
+        )}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
@@ -421,49 +317,86 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
         {/* Badges Grid */}
         {paginatedBadges.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {paginatedBadges.map((badge) => (
+            {paginatedBadges.map((badge) => {
+              // Parse progress for progress bar
+              const currentProgress = badge.current_progress || 0;
+              const targetValue = badge.target_value || 1;
+              const progressPercentage = Math.min(100, Math.round((currentProgress / targetValue) * 100));
+
+              return (
               <div
                 key={badge.id}
-                className={`p-6 rounded-3xl border shadow-sm transition-all flex flex-col justify-between ${
-                  badge.unlocked
-                    ? 'bg-white border-outline-variant/30 hover:border-primary/40'
-                    : 'bg-slate-50/80 border-slate-200 opacity-60'
+                className={`p-6 rounded-[24px] border transition-all flex flex-col justify-between overflow-hidden relative group hover:-translate-y-1 ${
+                  badge.is_unlocked
+                    ? 'bg-white border-slate-200 hover:shadow-xl'
+                    : 'bg-slate-50 border-slate-200 hover:shadow-md grayscale-[0.5]'
                 }`}
               >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                {/* Decorative background glow for Legendary/Epic */}
+                {badge.is_unlocked && (badge.tier === 'LEGENDARY' || badge.tier === 'EPIC') && (
+                  <div className={`absolute -top-10 -right-10 w-32 h-32 blur-3xl opacity-20 rounded-full pointer-events-none ${badge.tier === 'LEGENDARY' ? 'bg-amber-500' : 'bg-purple-500'}`}></div>
+                )}
+                
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between">
                     <div
-                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold ${
-                        badge.unlocked ? 'bg-amber-100 text-amber-600 shadow-xs' : 'bg-slate-200 text-slate-400'
+                      className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold shadow-sm shrink-0 border-2 ${
+                        badge.is_unlocked ? (
+                          badge.tier === 'LEGENDARY' ? 'bg-amber-100 text-amber-600 border-amber-200' :
+                          badge.tier === 'EPIC' ? 'bg-purple-100 text-purple-600 border-purple-200' :
+                          badge.tier === 'RARE' ? 'bg-blue-100 text-blue-600 border-blue-200' :
+                          'bg-slate-100 text-slate-600 border-slate-200'
+                        ) : 'bg-slate-200 text-slate-400 border-slate-300'
                       }`}
                     >
-                      {badge.icon === 'trophy' && <Trophy className="w-6 h-6" />}
-                      {badge.icon === 'zap' && <Zap className="w-6 h-6" />}
-                      {badge.icon === 'flame' && <Flame className="w-6 h-6" />}
-                      {badge.icon === 'award' && <Award className="w-6 h-6" />}
-                      {badge.icon === 'moon' && <Moon className="w-6 h-6" />}
-                      {badge.icon === 'star' && <Star className="w-6 h-6" />}
+                      {getTitleIcon(badge.icon)}
                     </div>
-                    <span className={`text-[10px] uppercase px-2.5 py-1 rounded-full ${getRarityBadgeStyle(badge.rarity)}`}>
-                      {badge.rarity}
+                    <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg shadow-sm border border-black/5 ${badge.is_unlocked ? getRarityBadgeStyle(badge.tier) : 'bg-slate-300 text-slate-600'}`}>
+                      {badge.tier}
                     </span>
                   </div>
 
                   <div>
-                    <h4 className="font-bold text-base text-on-surface">{badge.title}</h4>
-                    <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">{badge.description}</p>
+                    <h4 className={`font-extrabold text-lg leading-tight mb-1.5 ${badge.is_unlocked ? 'text-slate-800' : 'text-slate-500'}`}>{badge.name}</h4>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">{badge.description}</p>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-outline-variant/20 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-on-surface-variant">Progress</span>
-                  <span className={badge.unlocked ? 'text-emerald-700 font-black flex items-center gap-1' : 'text-primary'}>
-                    {badge.unlocked && <Check className="w-3.5 h-3.5" />}
-                    {badge.progress}
-                  </span>
+                <div className={`mt-5 pt-5 border-t -mx-6 -mb-6 p-6 ${badge.is_unlocked ? 'bg-slate-50/50 border-slate-100' : 'bg-slate-100/50 border-slate-200/60'}`}>
+                  <div className="flex flex-col gap-2 mb-4">
+                    <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                      <Target className={`w-3.5 h-3.5 ${badge.is_unlocked ? 'text-blue-500' : 'text-slate-400'}`} />
+                      Target: <span className={badge.is_unlocked ? "text-blue-500" : ""}>{badge.target_value} {badge.type_value}</span>
+                    </div>
+                    {badge.points_required > 0 && (
+                      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                        <Star className={`w-3.5 h-3.5 ${badge.is_unlocked ? 'text-amber-500' : 'text-slate-400'}`} />
+                        Points: <span className={badge.is_unlocked ? "text-amber-500" : ""}>{badge.points_required}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500">Progress</span>
+                    <span className={`text-[11px] font-black bg-white px-2 py-0.5 rounded-md shadow-sm border border-slate-200/60 flex items-center gap-1 ${badge.is_unlocked ? 'text-emerald-600' : 'text-slate-600'}`}>
+                      {badge.is_unlocked && <CheckCircle2 className="w-3 h-3" />}
+                      {currentProgress}/{targetValue}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200/70 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-1000 ${
+                        !badge.is_unlocked ? 'bg-slate-400' :
+                        progressPercentage === 100 
+                          ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' 
+                          : 'bg-gradient-to-r from-primary to-indigo-500'
+                      }`}
+                      style={{ width: `${progressPercentage}%` }}
+                    ></div>
+                  </div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         ) : (
           <div className="p-8 text-center bg-surface-bright rounded-2xl border border-dashed border-outline-variant">
@@ -472,14 +405,16 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
         )}
 
         {/* Badges Pagination */}
-        <Pagination
-          currentPage={badgePage}
-          totalPages={totalBadgePages}
-          totalItems={filteredBadges.length}
-          startIndex={badgeStartIndex}
-          itemsPerPage={BADGES_PER_PAGE}
-          onPageChange={(p) => setBadgePage(p)}
-        />
+        {totalBadgePages > 1 && (
+          <Pagination
+            currentPage={badgePage}
+            totalPages={totalBadgePages}
+            totalItems={filteredBadges.length}
+            startIndex={badgeStartIndex}
+            itemsPerPage={BADGES_PER_PAGE}
+            onPageChange={(p) => setBadgePage(p)}
+          />
+        )}
       </div>
     </div>
   );
