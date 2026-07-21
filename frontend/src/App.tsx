@@ -18,6 +18,11 @@ import { QuizCreator } from './pages/Admin/QuizCreator/QuizCreator';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboard } from './pages/Admin/AdminDashboard/AdminDashboard';
 import { Quizzes } from './pages/Admin/Quizzes/Quizzes';
+import { Rooms } from './pages/Admin/Rooms/Rooms';
+import { Reports } from './pages/Admin/Reports/Reports';
+import { Users } from './pages/Admin/Users/Users';
+import { Notifications } from './pages/Admin/Notifications/Notifications';
+import { Settings } from './pages/Admin/Settings/Settings';
 
 const App: React.FC = () => {
   const navigate = useNavigate();

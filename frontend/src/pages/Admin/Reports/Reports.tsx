@@ -600,6 +600,7 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
           <UserActionModal
             isOpen={isUserModalOpen}
             onClose={() => setIsUserModalOpen(false)}
+            onSave={() => setIsUserModalOpen(false)}
             mode="view"
             user={selectedUserDetails}
           />
