@@ -66,13 +66,13 @@ export interface QuestionAnalytics {
 
 export const MOCK_QUESTION_ANALYTICS: Record<number, QuestionAnalytics[]> = {
   1: [
-    { id: 1, question: "Khái niệm về phản ứng nhiệt hóa sinh trong tế bào?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Phản ứng phân giải protein", correctAnswer: "C. Phản ứng tổng hợp ATP" },
-    { id: 2, question: "Cấu trúc ti thể gồm mấy lớp màng bao bọc?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 lớp màng đơn", correctAnswer: "B. 2 lớp màng đôi" },
-    { id: 3, question: "Quá trình hô hấp tế bào xảy ra chủ yếu ở đâu?", wrongCount: 1, totalCount: 3, wrongPercentage: 33, commonWrongAnswer: "D. Nhân tế bào", correctAnswer: "A. Ti thể" }
+    { id: 1, question: "Biochemical reactions concepts in cells?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Protein breakdown reaction", correctAnswer: "C. ATP synthesis reaction" },
+    { id: 2, question: "How many membrane layers does a mitochondrion have?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 single membrane", correctAnswer: "B. 2 double membranes" },
+    { id: 3, question: "Where does cellular respiration mainly occur?", wrongCount: 1, totalCount: 3, wrongPercentage: 33, commonWrongAnswer: "D. Cell nucleus", correctAnswer: "A. Mitochondria" }
   ],
   2: [
-    { id: 1, question: "Công thức tính tích phân đường loại 2 trên cung tròn?", wrongCount: 2, totalCount: 2, wrongPercentage: 100, commonWrongAnswer: "A. Dùng công thức Green trực tiếp", correctAnswer: "B. Đổi sang tọa độ cực" },
-    { id: 2, question: "Điều kiện cần để chuỗi số hội tụ theo tiêu chuẩn D'Alembert?", wrongCount: 1, totalCount: 2, wrongPercentage: 50, commonWrongAnswer: "C. L = 1", correctAnswer: "A. L < 1" }
+    { id: 1, question: "Formula for line integral of second kind on circular arc?", wrongCount: 2, totalCount: 2, wrongPercentage: 100, commonWrongAnswer: "A. Apply Green's theorem directly", correctAnswer: "B. Convert to polar coordinates" },
+    { id: 2, question: "Condition for series convergence according to D'Alembert test?", wrongCount: 1, totalCount: 2, wrongPercentage: 50, commonWrongAnswer: "C. L = 1", correctAnswer: "A. L < 1" }
   ]
 };
 
@@ -175,7 +175,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           <x:ExcelWorkbook>
             <x:ExcelWorksheets>
               <x:ExcelWorksheet>
-                <x:Name>Danh Sách Nhóm</x:Name>
+                <x:Name>Group Roster</x:Name>
                 <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
               </x:ExcelWorksheet>
             </x:ExcelWorksheets>
@@ -191,40 +191,40 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       </head>
       <body>
         <table>
-          <tr><td colspan="5" class="title">DANH SÁCH HỌC SINH NHÓM LỚP</td></tr>
-          <tr><td colspan="5" style="text-align: center; font-style: italic; color: #6b7280;">Xuất lúc: ${new Date().toLocaleString('vi-VN')}</td></tr>
+          <tr><td colspan="5" class="title">STUDENT GROUP ROSTER LIST</td></tr>
+          <tr><td colspan="5" style="text-align: center; font-style: italic; color: #6b7280;">Exported at: ${new Date().toLocaleString('en-US')}</td></tr>
           <tr></tr>
           <tr class="header-bg">
-            <td>Tên nhóm:</td>
+            <td>Group Name:</td>
             <td colspan="2"><b>${group.name}</b></td>
-            <td>Mã Join Code:</td>
+            <td>Join Code:</td>
             <td><b>${group.joinCode || group.id}</b></td>
           </tr>
           <tr>
-            <td>Mô tả:</td>
-            <td colspan="2">${group.description || 'Không có mô tả'}</td>
-            <td>Tổng số học sinh:</td>
-            <td>${group.members?.length || 0} Học sinh</td>
+            <td>Description:</td>
+            <td colspan="2">${group.description || 'No description provided'}</td>
+            <td>Total Students:</td>
+            <td>${group.members?.length || 0} Students</td>
           </tr>
           <tr></tr>
           <thead>
             <tr>
-              <th style="width: 40px;">STT</th>
-              <th style="width: 100px;">Mã Sinh Viên</th>
-              <th style="width: 180px;">Họ và Tên</th>
-              <th style="width: 220px;">Email Học Sinh</th>
-              <th style="width: 110px;">Số Bài Đã Làm</th>
-              <th style="width: 110px;">Điểm Trung Bình</th>
-              <th style="width: 320px;">Chi Tiết Điểm Từng Bài Exam</th>
+              <th style="width: 40px;">No.</th>
+              <th style="width: 100px;">Student ID</th>
+              <th style="width: 180px;">Full Name</th>
+              <th style="width: 220px;">Student Email</th>
+              <th style="width: 110px;">Exams Completed</th>
+              <th style="width: 110px;">Average Score</th>
+              <th style="width: 320px;">Detailed Exam Scores</th>
             </tr>
           </thead>
           <tbody>
             ${(group.members || []).map((m, idx) => {
-              const scoresText = (m.examScores || [])
-                .map((s) => `${s.examTitle}: ${s.score}`)
-                .join(' | ');
+      const scoresText = (m.examScores || [])
+        .map((s) => `${s.examTitle}: ${s.score}`)
+        .join(' | ');
 
-              return `
+      return `
                 <tr>
                   <td style="text-align: center;">${idx + 1}</td>
                   <td style="text-align: center;">${m.id}</td>
@@ -232,10 +232,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <td>${m.email}</td>
                   <td style="text-align: center; font-weight: bold;">${m.examsCompleted || 0} / ${m.totalExamsAssigned || 3}</td>
                   <td style="text-align: center; font-weight: bold; color: #047857;">${m.averageScore || 'N/A'}</td>
-                  <td style="font-size: 10pt;">${scoresText || 'Chưa làm bài nào'}</td>
+                  <td style="font-size: 10pt;">${scoresText || 'No exams taken'}</td>
                 </tr>
               `;
-            }).join('')}
+    }).join('')}
           </tbody>
         </table>
       </body>
@@ -246,7 +246,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Danh_Sach_Nhom_${group.name.replace(/[^a-zA-Z0-9]/g, '_')}.xls`);
+    link.setAttribute('download', `Group_Roster_${group.name.replace(/[^a-zA-Z0-9]/g, '_')}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -267,7 +267,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           <x:ExcelWorkbook>
             <x:ExcelWorksheets>
               <x:ExcelWorksheet>
-                <x:Name>Báo Cáo Bài Thi</x:Name>
+                <x:Name>Exam Report</x:Name>
                 <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
               </x:ExcelWorksheet>
             </x:ExcelWorksheets>
@@ -284,42 +284,42 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       </head>
       <body>
         <table>
-          <tr><td colspan="7" class="title">BÁO CÁO THỐNG KÊ VÀ BẢNG ĐIỂM BÀI THI EXAM</td></tr>
-          <tr><td colspan="7" style="text-align: center; font-style: italic; color: #6b7280;">Thời gian xuất file: ${new Date().toLocaleString('vi-VN')}</td></tr>
+          <tr><td colspan="7" class="title">EXAM STATISTICAL REPORT AND GRADEBOOK</td></tr>
+          <tr><td colspan="7" style="text-align: center; font-style: italic; color: #6b7280;">Exported at: ${new Date().toLocaleString('en-US')}</td></tr>
           <tr></tr>
           <tr class="header-bg">
-            <td colspan="2">Tên bài thi:</td>
+            <td colspan="2">Exam Title:</td>
             <td colspan="5"><b>${exam.title}</b></td>
           </tr>
           <tr>
-            <td colspan="2">Môn học:</td>
+            <td colspan="2">Subject:</td>
             <td colspan="2">${exam.subject}</td>
-            <td colspan="2">Thời gian làm bài:</td>
-            <td>${exam.duration} phút</td>
+            <td colspan="2">Duration:</td>
+            <td>${exam.duration} mins</td>
           </tr>
           <tr>
-            <td colspan="2">Nhóm học sinh:</td>
+            <td colspan="2">Student Group:</td>
             <td colspan="2">${exam.groupName}</td>
-            <td colspan="2">Trạng thái:</td>
+            <td colspan="2">Status:</td>
             <td>${exam.status}</td>
           </tr>
           <tr>
-            <td colspan="2">Hạn nộp bài:</td>
+            <td colspan="2">Due Date:</td>
             <td colspan="2">${exam.due}</td>
-            <td colspan="2">Tỷ lệ nộp:</td>
-            <td>${exam.submittedCount} / ${exam.totalStudents} SV</td>
+            <td colspan="2">Submission Rate:</td>
+            <td>${exam.submittedCount} / ${exam.totalStudents} Students</td>
           </tr>
           <tr></tr>
-          <tr><td colspan="7" class="section-title">I. BẢNG ĐIỂM CHI TIẾT HỌC SINH (STUDENT GRADEBOOK)</td></tr>
+          <tr><td colspan="7" class="section-title">I. DETAILED STUDENT GRADEBOOK</td></tr>
           <thead>
             <tr>
-              <th style="width: 50px;">STT</th>
-              <th style="width: 100px;">Mã SV</th>
-              <th style="width: 180px;">Họ và Tên</th>
-              <th style="width: 220px;">Email Học Sinh</th>
-              <th style="width: 120px;">Trạng Thái</th>
-              <th style="width: 100px;">Điểm Số</th>
-              <th style="width: 150px;">Thời Gian Nộp</th>
+              <th style="width: 50px;">No.</th>
+              <th style="width: 100px;">Student ID</th>
+              <th style="width: 180px;">Full Name</th>
+              <th style="width: 220px;">Student Email</th>
+              <th style="width: 120px;">Status</th>
+              <th style="width: 100px;">Score</th>
+              <th style="width: 150px;">Submission Time</th>
             </tr>
           </thead>
           <tbody>
@@ -336,15 +336,15 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             `).join('')}
           </tbody>
           <tr></tr>
-          <tr><td colspan="7" class="section-title">II. THỐNG KÊ CÁC CÂU HỎI SAI NHIỀU NHẤT (MOST MISSED QUESTIONS)</td></tr>
+          <tr><td colspan="7" class="section-title">II. MOST MISSED QUESTIONS STATISTICS</td></tr>
           <thead>
             <tr>
-              <th>STT</th>
-              <th colspan="2">Nội Dung Câu Hỏi</th>
-              <th>Số SV Sai</th>
-              <th>Tỷ Lệ Sai</th>
-              <th>Lỗi Sai Phổ Biến</th>
-              <th>Đáp Án Đúng</th>
+              <th>No.</th>
+              <th colspan="2">Question Text</th>
+              <th>Incorrect Count</th>
+              <th>Error Rate</th>
+              <th>Common Misconception</th>
+              <th>Correct Answer</th>
             </tr>
           </thead>
           <tbody>
@@ -368,7 +368,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Bang_Diem_Exam_${exam.title.replace(/[^a-zA-Z0-9]/g, '_')}.xls`);
+    link.setAttribute('download', `Exam_Gradebook_${exam.title.replace(/[^a-zA-Z0-9]/g, '_')}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -421,12 +421,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         prev.map((g) =>
           g.id === editingGroup.id
             ? {
-                ...g,
-                name: groupName.trim(),
-                description: groupDescription.trim(),
-                joinCode: finalJoinCode,
-                isLocked: groupIsLocked,
-              }
+              ...g,
+              name: groupName.trim(),
+              description: groupDescription.trim(),
+              joinCode: finalJoinCode,
+              isLocked: groupIsLocked,
+            }
             : g
         )
       );
@@ -434,12 +434,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         setRosterGroup((prev) =>
           prev
             ? {
-                ...prev,
-                name: groupName.trim(),
-                description: groupDescription.trim(),
-                joinCode: finalJoinCode,
-                isLocked: groupIsLocked,
-              }
+              ...prev,
+              name: groupName.trim(),
+              description: groupDescription.trim(),
+              joinCode: finalJoinCode,
+              isLocked: groupIsLocked,
+            }
             : null
         );
       }
@@ -601,16 +601,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         prev.map((ex) =>
           ex.id === editingExam.id
             ? {
-                ...ex,
-                title: selectedQuiz.title,
-                subject: selectedQuiz.category,
-                quizId: selectedQuiz.id,
-                due: examDue,
-                duration: examDuration,
-                status: examStatus,
-                groupId: selectedGroup.id,
-                groupName: selectedGroup.name,
-              }
+              ...ex,
+              title: selectedQuiz.title,
+              subject: selectedQuiz.category,
+              quizId: selectedQuiz.id,
+              due: examDue,
+              duration: examDuration,
+              status: examStatus,
+              groupId: selectedGroup.id,
+              groupName: selectedGroup.name,
+            }
             : ex
         )
       );
@@ -641,7 +641,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   };
 
   const handleDeleteExam = (examId: number) => {
-    if (window.confirm('Bạn có chắc chắn muốn hủy bài thi này không?')) {
+    if (window.confirm('Are you sure you want to cancel this assigned exam?')) {
       setExams((prev) => prev.filter((ex) => ex.id !== examId));
     }
   };
@@ -714,9 +714,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       <div className="flex border-b border-outline-variant/30 gap-6">
         <button
           onClick={() => setSubTab('quizzes')}
-          className={`pb-3 text-sm font-bold transition-all relative ${
-            subTab === 'quizzes' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-          }`}
+          className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'quizzes' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+            }`}
         >
           My Quizzes ({HOST_QUIZZES_LIST.length})
           {subTab === 'quizzes' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
@@ -724,18 +723,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
         <button
           onClick={() => setSubTab('groups')}
-          className={`pb-3 text-sm font-bold transition-all relative ${
-            subTab === 'groups' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-          }`}
+          className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'groups' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+            }`}
         >
           My Student Groups ({groups.length})
           {subTab === 'groups' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
         </button>
         <button
           onClick={() => setSubTab('exams')}
-          className={`pb-3 text-sm font-bold transition-all relative ${
-            subTab === 'exams' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-          }`}
+          className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'exams' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+            }`}
         >
           My Assigned Exams ({exams.length})
           {subTab === 'exams' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
@@ -833,21 +830,19 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                           <button
                             onClick={() => handleToggleExamStatus(exam.id)}
                             title="Click to toggle status (Pending → Active → Closed)"
-                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full transition-all flex items-center gap-1.5 ${
-                              exam.status === 'Active'
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full transition-all flex items-center gap-1.5 ${exam.status === 'Active'
                                 ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
                                 : exam.status === 'Pending'
-                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                            }`}
+                                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                              }`}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full inline-block ${
-                              exam.status === 'Active'
+                            <span className={`w-1.5 h-1.5 rounded-full inline-block ${exam.status === 'Active'
                                 ? 'bg-emerald-500'
                                 : exam.status === 'Pending'
-                                ? 'bg-amber-500 animate-pulse'
-                                : 'bg-slate-400'
-                            }`} />
+                                  ? 'bg-amber-500 animate-pulse'
+                                  : 'bg-slate-400'
+                              }`} />
                             {exam.status === 'Pending' ? 'Pending (Đang chờ)' : exam.status}
                           </button>
                         </div>
@@ -1068,25 +1063,23 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       key={s}
                       type="button"
                       onClick={() => setExamStatus(s)}
-                      className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
-                        examStatus === s
+                      className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${examStatus === s
                           ? s === 'Active'
                             ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
                             : s === 'Pending'
-                            ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                            : 'bg-slate-500 text-white border-slate-500 shadow-sm'
+                              ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                              : 'bg-slate-500 text-white border-slate-500 shadow-sm'
                           : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-secondary/40'
-                      }`}
+                        }`}
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${
-                        examStatus === s
+                      <span className={`w-1.5 h-1.5 rounded-full ${examStatus === s
                           ? 'bg-white'
                           : s === 'Active'
-                          ? 'bg-emerald-400'
-                          : s === 'Pending'
-                          ? 'bg-amber-400'
-                          : 'bg-slate-400'
-                      }`} />
+                            ? 'bg-emerald-400'
+                            : s === 'Pending'
+                              ? 'bg-amber-400'
+                              : 'bg-slate-400'
+                        }`} />
                       {s === 'Pending' ? 'Pending' : s}
                     </button>
                   ))}
@@ -1150,18 +1143,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <div className="flex border-b border-outline-variant/30 gap-6 mt-4">
                 <button
                   onClick={() => setSubmissionsViewTab('roster')}
-                  className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${
-                    submissionsViewTab === 'roster' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
+                  className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${submissionsViewTab === 'roster' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
                 >
                   <ClipboardList className="w-3.5 h-3.5" /> Student Gradebook ({submissionsModalExam.totalStudents})
                   {submissionsViewTab === 'roster' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
                 </button>
                 <button
                   onClick={() => setSubmissionsViewTab('analytics')}
-                  className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${
-                    submissionsViewTab === 'analytics' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
+                  className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${submissionsViewTab === 'analytics' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
                 >
                   <BarChart2 className="w-3.5 h-3.5 text-amber-600" /> Most Missed Questions (Phân tích lỗi sai)
                   {submissionsViewTab === 'analytics' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
@@ -1201,21 +1192,19 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 {(submissionsModalExam.submissions || []).map((sub) => (
                   <div
                     key={sub.studentId}
-                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all gap-3 ${
-                      sub.status === 'Submitted'
+                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all gap-3 ${sub.status === 'Submitted'
                         ? 'bg-emerald-50/40 border-emerald-200/60'
                         : sub.status === 'In Progress'
-                        ? 'bg-amber-50/40 border-amber-200/60'
-                        : 'bg-slate-50/60 border-slate-200/40'
-                    }`}
+                          ? 'bg-amber-50/40 border-amber-200/60'
+                          : 'bg-slate-50/60 border-slate-200/40'
+                      }`}
                   >
                     {/* Student info */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className={`w-10 h-10 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 ${
-                        sub.status === 'Submitted' ? 'bg-emerald-200 text-emerald-900'
-                        : sub.status === 'In Progress' ? 'bg-amber-200 text-amber-900 animate-pulse'
-                        : 'bg-slate-200 text-slate-700'
-                      }`}>
+                      <div className={`w-10 h-10 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 ${sub.status === 'Submitted' ? 'bg-emerald-200 text-emerald-900'
+                          : sub.status === 'In Progress' ? 'bg-amber-200 text-amber-900 animate-pulse'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
                         {sub.studentName.charAt(0)}
                       </div>
                       <div className="min-w-0">
@@ -1230,11 +1219,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     {/* Status + Actions */}
                     <div className="flex items-center gap-2 shrink-0">
                       {/* Status badge */}
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                        sub.status === 'Submitted' ? 'bg-emerald-100 text-emerald-800'
-                        : sub.status === 'In Progress' ? 'bg-amber-100 text-amber-800'
-                        : 'bg-slate-100 text-slate-600'
-                      }`}>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${sub.status === 'Submitted' ? 'bg-emerald-100 text-emerald-800'
+                          : sub.status === 'In Progress' ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
                         {sub.status}
                       </span>
 
@@ -1396,9 +1384,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               return (
                 <div
                   key={group.id}
-                  className={`bg-white p-6 rounded-2xl border transition-all text-left space-y-4 flex flex-col justify-between shadow-sm relative ${
-                    group.isLocked ? 'border-amber-400/40 bg-amber-50/10' : 'border-outline-variant/30 hover:border-secondary/40'
-                  }`}
+                  className={`bg-white p-6 rounded-2xl border transition-all text-left space-y-4 flex flex-col justify-between shadow-sm relative ${group.isLocked ? 'border-amber-400/40 bg-amber-50/10' : 'border-outline-variant/30 hover:border-secondary/40'
+                    }`}
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between">
@@ -1415,11 +1402,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         {/* Lock / Unlock Toggle Button */}
                         <button
                           onClick={() => handleToggleLock(group.id)}
-                          className={`p-2 rounded-xl transition-all flex items-center gap-1 text-xs font-bold ${
-                            group.isLocked
+                          className={`p-2 rounded-xl transition-all flex items-center gap-1 text-xs font-bold ${group.isLocked
                               ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
                               : 'bg-green-100 text-green-800 hover:bg-green-200'
-                          }`}
+                            }`}
                           title={group.isLocked ? 'Group is LOCKED (Click to Unlock)' : 'Group is OPEN (Click to Lock)'}
                         >
                           {group.isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
@@ -1637,9 +1623,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <div className="flex items-center gap-2">
                   <h3 className="text-xl font-bold text-on-surface">{rosterGroup.name}</h3>
                   <span
-                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
-                      rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
-                    }`}
+                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
+                      }`}
                   >
                     {rosterGroup.isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                     {rosterGroup.isLocked ? 'LOCKED' : 'OPEN'}
@@ -1664,9 +1649,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             <div className="flex border-b border-outline-variant/30 gap-6 shrink-0">
               <button
                 onClick={() => setRosterTab('enrolled')}
-                className={`pb-2.5 text-xs font-bold transition-all relative ${
-                  rosterTab === 'enrolled' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
+                className={`pb-2.5 text-xs font-bold transition-all relative ${rosterTab === 'enrolled' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
               >
                 Enrolled Students ({rosterGroup.members?.length || 0})
                 {rosterTab === 'enrolled' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
@@ -1674,9 +1658,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
               <button
                 onClick={() => setRosterTab('pending')}
-                className={`pb-2.5 text-xs font-bold transition-all relative flex items-center gap-1.5 ${
-                  rosterTab === 'pending' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
+                className={`pb-2.5 text-xs font-bold transition-all relative flex items-center gap-1.5 ${rosterTab === 'pending' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
               >
                 Pending Approvals ({rosterGroup.pendingRequests?.length || 0})
                 {(rosterGroup.pendingRequests?.length || 0) > 0 && (
@@ -1765,26 +1748,24 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       {(member.examScores || []).length > 0 && (
                         <div className="pt-2 border-t border-outline-variant/15 space-y-1.5">
                           <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
-                            Chi tiết điểm các bài Exam:
+                            Detailed Exam Scores:
                           </span>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             {member.examScores?.map((scoreItem, sIdx) => (
                               <div
                                 key={sIdx}
-                                className={`px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center justify-between ${
-                                  scoreItem.status === 'Completed'
+                                className={`px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center justify-between ${scoreItem.status === 'Completed'
                                     ? 'bg-emerald-50/50 border-emerald-200/60'
                                     : scoreItem.status === 'In Progress'
-                                    ? 'bg-amber-50/50 border-amber-200/60'
-                                    : 'bg-slate-50 border-slate-200/60'
-                                }`}
+                                      ? 'bg-amber-50/50 border-amber-200/60'
+                                      : 'bg-slate-50 border-slate-200/60'
+                                  }`}
                               >
                                 <span className="font-medium truncate text-on-surface max-w-[110px]" title={scoreItem.examTitle}>
                                   {scoreItem.examTitle}
                                 </span>
-                                <span className={`font-extrabold ml-1 ${
-                                  scoreItem.status === 'Completed' ? 'text-emerald-700' : 'text-slate-500'
-                                }`}>
+                                <span className={`font-extrabold ml-1 ${scoreItem.status === 'Completed' ? 'text-emerald-700' : 'text-slate-500'
+                                  }`}>
                                   {scoreItem.score}
                                 </span>
                               </div>
@@ -1863,9 +1844,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             <div className="flex justify-between items-center border-t border-outline-variant/20 pt-4 shrink-0">
               <button
                 onClick={() => handleToggleLock(rosterGroup.id)}
-                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${
-                  rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-surface-container text-on-surface'
-                }`}
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-surface-container text-on-surface'
+                  }`}
               >
                 {rosterGroup.isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                 {rosterGroup.isLocked ? 'Unlock Group' : 'Lock Group'}

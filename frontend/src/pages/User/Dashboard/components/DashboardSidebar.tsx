@@ -37,11 +37,10 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         <nav className="space-y-1.5 font-body-md text-sm font-semibold text-left">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === 'overview'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'overview'
                 ? 'bg-primary text-on-primary shadow-sm'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-            }`}
+              }`}
           >
             <LayoutDashboard className="w-5 h-5" />
             Overview
@@ -49,11 +48,10 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
           <button
             onClick={() => setActiveTab('join_room')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === 'join_room'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'join_room'
                 ? 'bg-primary text-on-primary shadow-sm'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-            }`}
+              }`}
           >
             <DoorOpen className="w-5 h-5" />
             Join Live Room
@@ -61,11 +59,10 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
           <button
             onClick={() => setActiveTab('assigned_exams')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === 'assigned_exams'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'assigned_exams'
                 ? 'bg-primary text-on-primary shadow-sm'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-            }`}
+              }`}
           >
             <ClipboardList className="w-5 h-5" />
             Assigned Exams
@@ -73,11 +70,10 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
           <button
             onClick={() => setActiveTab('history')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === 'history'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'history'
                 ? 'bg-primary text-on-primary shadow-sm'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-            }`}
+              }`}
           >
             <History className="w-5 h-5" />
             History
@@ -85,11 +81,10 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
           <button
             onClick={() => setActiveTab('achievements')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === 'achievements'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'achievements'
                 ? 'bg-primary text-on-primary shadow-sm'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-            }`}
+              }`}
           >
             <Trophy className="w-5 h-5" />
             Achievements
@@ -99,23 +94,21 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
           <button
             onClick={() => setActiveTab('host_studio')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === 'host_studio'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'host_studio'
                 ? 'bg-secondary text-on-secondary shadow-sm font-bold'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-            }`}
+              }`}
           >
             <SlidersHorizontal className="w-5 h-5" />
-            Host Studio 🚀
+            Host Studio
           </button>
 
           <button
             onClick={() => setActiveTab('settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === 'settings'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'settings'
                 ? 'bg-primary text-on-primary shadow-sm'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-            }`}
+              }`}
           >
             <Settings className="w-5 h-5" />
             Settings
