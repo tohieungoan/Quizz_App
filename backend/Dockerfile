@@ -1,18 +1,14 @@
-FROM node:20-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Cài đặt dependencies
-RUN npm install
-
-# Copy code backend
+# Copy backend source code
 COPY . .
 
-# Expose cổng 3000
-EXPOSE 3000
+EXPOSE 8000
 
-# Khởi chạy backend
-CMD ["npm", "start"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

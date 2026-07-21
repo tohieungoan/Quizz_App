@@ -11,7 +11,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8000/api/v1
     command: npm run dev -- --host
 
   backend:
@@ -19,8 +19,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "8000:8000"
     volumes:
       - ./backend:/app
     environment:
-      - NODE_ENV=development
+      - DATABASE_URL=sqlite:///./sql_app.db
+      - SECRET_KEY=your-super-secret-key-change-in-production
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
