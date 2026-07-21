@@ -113,6 +113,17 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
     return matchesSearch && matchesDifficulty;
   });
 
+  const questionsPerPage = 5;
+  const questionTotalPages = Math.max(1, Math.ceil(filteredQuestions.length / questionsPerPage));
+  const questionStartIndex = (questionPage - 1) * questionsPerPage;
+  const paginatedQuestions = filteredQuestions.slice(questionStartIndex, questionStartIndex + questionsPerPage);
+
+  const usersListToPaginate = context?.type === 'EXAM' ? filteredAssignees : context?.type === 'ROOM' ? filteredParticipants : filteredUsers;
+  const usersPerPage = 5;
+  const userTotalPages = Math.max(1, Math.ceil(usersListToPaginate.length / usersPerPage));
+  const userStartIndex = (userPage - 1) * usersPerPage;
+  const paginatedUsersList = usersListToPaginate.slice(userStartIndex, userStartIndex + usersPerPage);
+
   return (
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
       <div className="py-gutter w-full flex flex-col gap-8">
@@ -336,7 +347,7 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
                 </tr>
               </thead>
                 <tbody className="divide-y divide-outline-variant/20">
-                  {filteredQuestions.length > 0 ? filteredQuestions.map(q => (
+                  {paginatedQuestions.length > 0 ? paginatedQuestions.map(q => (
                     <tr key={q.id} className="hover:bg-surface-bright transition-colors group">
                       <td className="px-6 py-4 cursor-pointer">
                         <div className="text-[15px] font-bold text-on-surface max-w-[200px] sm:max-w-[300px] md:max-w-[400px] line-clamp-1 group-hover:line-clamp-none transition-all duration-300">
@@ -368,28 +379,40 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
             </div>
             {/* Question Table Pagination */}
             <div className="px-6 py-4 border-t border-outline-variant/30 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-0">
-              <span className="text-sm text-on-surface-variant">Showing 1 to {filteredQuestions.length} of 50 entries</span>
+              <span className="text-sm text-on-surface-variant">Showing {questionStartIndex + 1} to {Math.min(questionStartIndex + questionsPerPage, filteredQuestions.length)} of {filteredQuestions.length} entries</span>
               <div className="flex items-center gap-2">
-              <button className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+              <button 
+                onClick={() => setQuestionPage(p => Math.max(1, p - 1))}
+                disabled={questionPage === 1}
+                className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-50"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
               <div className="relative">
                 <button 
                   onClick={() => setIsQuestionDropdownOpen(!isQuestionDropdownOpen)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-outline-variant/50 text-sm font-medium text-on-surface hover:border-outline-variant transition-colors bg-white shadow-sm"
                 >
-                  Page {questionPage} of 10 <ChevronDown className="w-4 h-4 text-on-surface-variant" />
+                  Page {questionPage} of {questionTotalPages} <ChevronDown className="w-4 h-4 text-on-surface-variant" />
                 </button>
                 {isQuestionDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setIsQuestionDropdownOpen(false)}></div>
                     <div className="absolute bottom-full left-0 mb-2 w-full min-w-[120px] bg-white border border-outline-variant/30 shadow-lg rounded-lg overflow-hidden z-20 py-1 max-h-48 overflow-y-auto">
-                      {[...Array(10)].map((_, i) => (
+                      {[...Array(questionTotalPages)].map((_, i) => (
                         <button key={i} onClick={() => { setQuestionPage(i+1); setIsQuestionDropdownOpen(false); }} className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-container-low transition-colors ${questionPage === i+1 ? 'bg-primary/5 text-primary font-semibold' : 'text-on-surface'}`}>Page {i+1}</button>
                       ))}
                     </div>
                   </>
                 )}
               </div>
-              <button className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors"><ChevronRight className="w-5 h-5" /></button>
+              <button 
+                onClick={() => setQuestionPage(p => Math.min(questionTotalPages, p + 1))}
+                disabled={questionPage === questionTotalPages}
+                className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-50"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
             </div>
           </div>
           </div>
@@ -446,7 +469,7 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
                   {context?.type === 'EXAM' ? (
-                    filteredAssignees.length > 0 ? filteredAssignees.map(a => (
+                    paginatedUsersList.length > 0 ? (paginatedUsersList as any[]).map(a => (
                       <tr key={a.id} className="hover:bg-surface-bright transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -480,7 +503,7 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
                       <tr><td colSpan={6} className="px-6 py-12 text-center text-on-surface-variant font-medium">No assignees found matching "{userSearch}"</td></tr>
                     )
                   ) : context?.type === 'ROOM' ? (
-                    filteredParticipants.length > 0 ? filteredParticipants.map(p => (
+                    paginatedUsersList.length > 0 ? (paginatedUsersList as any[]).map(p => (
                       <tr key={p.id} className="hover:bg-surface-bright transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -512,7 +535,7 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
                       <tr><td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant font-medium">No participants found matching "{userSearch}"</td></tr>
                     )
                   ) : (
-                    filteredUsers.length > 0 ? filteredUsers.map(u => (
+                    paginatedUsersList.length > 0 ? (paginatedUsersList as any[]).map(u => (
                       <tr key={u.id} className="hover:bg-surface-bright transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -564,29 +587,41 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
             {/* User Table Pagination */}
             <div className="px-6 py-4 border-t border-outline-variant/30 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-0">
               <span className="text-sm text-on-surface-variant">
-                Showing 1 to {context?.type === 'EXAM' ? filteredAssignees.length : context?.type === 'ROOM' ? filteredParticipants.length : filteredUsers.length} of {context?.type === 'EXAM' ? '120' : context?.type === 'ROOM' ? '42' : '1,240'} entries
+                Showing {userStartIndex + 1} to {Math.min(userStartIndex + usersPerPage, usersListToPaginate.length)} of {usersListToPaginate.length} entries
               </span>
               <div className="flex items-center gap-2">
-                <button className="p-1.5 rounded-md text-on-surface-variant/50 cursor-not-allowed"><ChevronLeft className="w-5 h-5" /></button>
+                <button 
+                  onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                  disabled={userPage === 1}
+                  className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
                 <div className="relative">
                   <button 
                     onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-outline-variant/50 text-sm font-medium text-on-surface hover:border-outline-variant transition-colors bg-white shadow-sm"
                   >
-                    Page {userPage} of {context?.type === 'ROOM' ? '7' : context?.type === 'EXAM' ? '20' : '1'} <ChevronDown className="w-4 h-4 text-on-surface-variant" />
+                    Page {userPage} of {userTotalPages} <ChevronDown className="w-4 h-4 text-on-surface-variant" />
                   </button>
                   {isUserDropdownOpen && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setIsUserDropdownOpen(false)}></div>
                       <div className="absolute bottom-full left-0 mb-2 w-full min-w-[120px] bg-white border border-outline-variant/30 shadow-lg rounded-lg overflow-hidden z-20 py-1 max-h-40 overflow-y-auto">
-                        <button onClick={() => { setUserPage(1); setIsUserDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm bg-primary/5 text-primary font-semibold">Page 1</button>
-                        <button onClick={() => { setUserPage(2); setIsUserDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-surface-container-low text-on-surface">Page 2</button>
-                        <button onClick={() => { setUserPage(3); setIsUserDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-surface-container-low text-on-surface">Page 3</button>
+                        {[...Array(userTotalPages)].map((_, i) => (
+                          <button key={i} onClick={() => { setUserPage(i+1); setIsUserDropdownOpen(false); }} className={`w-full text-left px-4 py-2 text-sm transition-colors ${userPage === i+1 ? 'bg-primary/5 text-primary font-semibold' : 'text-on-surface hover:bg-surface-container-low'}`}>Page {i+1}</button>
+                        ))}
                       </div>
                     </>
                   )}
                 </div>
-                <button className={`p-1.5 rounded-md transition-colors ${context?.type === 'ROOM' || context?.type === 'EXAM' ? 'text-primary hover:bg-surface-container cursor-pointer' : 'text-on-surface-variant/50 cursor-not-allowed'}`}><ChevronRight className="w-5 h-5" /></button>
+                <button 
+                  onClick={() => setUserPage(p => Math.min(userTotalPages, p + 1))}
+                  disabled={userPage === userTotalPages}
+                  className="p-1.5 rounded-md text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-50"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
               </div>
             </div>
           </div>

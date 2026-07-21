@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Bell, Trophy, HelpCircle, Clock } from 'lucide-react';
-import { DUMMY_NOTIFICATIONS } from '@/data/mockDb';
+import { useNotifications } from '@/hooks/useNotifications';
 import { AiSupportModal } from './AiSupportModal';
 
 interface DashboardHeaderProps {
@@ -14,6 +14,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const { notifications, unreadCount, markAllAsRead } = useNotifications();
 
   return (
     <>
@@ -60,8 +61,12 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               aria-label="Notifications"
             >
               <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full animate-ping" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
+              {unreadCount > 0 && (
+                <>
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full animate-ping" />
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
+                </>
+              )}
             </button>
 
             {/* Hover Popover Dropdown */}
@@ -69,18 +74,26 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               <div className="absolute right-0 top-full mt-1 w-80 md:w-96 bg-white rounded-2xl shadow-xl border border-outline-variant/30 overflow-hidden z-50 animate-in fade-in duration-150 text-left">
                 <div className="px-4 py-3 bg-surface-container-low border-b border-outline-variant/20 flex items-center justify-between">
                   <h4 className="font-bold text-sm text-on-surface">Recent Notifications</h4>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                    {DUMMY_NOTIFICATIONS.length} New
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={markAllAsRead} 
+                      className="text-[10px] font-semibold text-on-surface-variant hover:text-primary transition-colors"
+                    >
+                      Mark all read
+                    </button>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      {unreadCount} New
+                    </span>
+                  </div>
                 </div>
 
                 <div className="max-h-80 overflow-y-auto divide-y divide-outline-variant/20">
-                  {DUMMY_NOTIFICATIONS.map((item) => {
-                    const Icon = item.icon;
+                  {notifications.map((item) => {
+                    const Icon = item.icon || Bell;
                     return (
                       <div
                         key={item.id}
-                        className="p-3.5 hover:bg-surface-bright transition-colors flex items-start gap-3 cursor-pointer"
+                        className={`p-3.5 hover:bg-surface-bright transition-colors flex items-start gap-3 cursor-pointer ${item.unread ? 'bg-primary/5' : ''}`}
                       >
                         <div
                           className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${item.color}`}

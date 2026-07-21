@@ -1,4 +1,4 @@
-import { GraduationCap, LayoutDashboard, BookOpen, MonitorPlay, Users, BarChart2, ChevronLeft, Settings as SettingsIcon } from 'lucide-react';
+import { GraduationCap, LayoutDashboard, BookOpen, MonitorPlay, Users, BarChart2, ChevronLeft, Settings as SettingsIcon, Radio, Award } from 'lucide-react';
 import { ViewState } from '../types';
 
 interface SidebarProps {
@@ -15,6 +15,8 @@ export function Sidebar({ currentView, onNavigate, isOpen, onToggle }: SidebarPr
     { id: 'live-rooms' as const, label: 'Live Rooms', icon: MonitorPlay },
     { id: 'users' as const, label: 'User Directory', icon: Users },
     { id: 'reports' as const, label: 'Reports', icon: BarChart2 },
+    { id: 'achievements' as const, label: 'Achievements', icon: Award },
+    { id: 'broadcast' as const, label: 'Broadcasts', icon: Radio },
   ];
 
   return (

@@ -29,7 +29,9 @@ export function AdminLayout() {
   else if (currentPath.includes('/admin/rooms')) currentView = 'live-rooms';
   else if (currentPath.includes('/admin/users')) currentView = 'users';
   else if (currentPath.includes('/admin/reports')) currentView = 'reports';
+  else if (currentPath.includes('/admin/achievements')) currentView = 'achievements';
   else if (currentPath.includes('/admin/notifications')) currentView = 'notifications';
+  else if (currentPath.includes('/admin/broadcast')) currentView = 'broadcast';
   else if (currentPath.includes('/admin/settings')) currentView = 'settings';
 
   return (

@@ -42,10 +42,12 @@ export interface UserData {
   initials: string;
   email_verified?: boolean;
   achievement_points?: number;
+  study_streak?: number;
+  auth_provider?: 'LOCAL' | 'GOOGLE' | 'MICROSOFT';
+  provider_id?: string | null;
   last_login?: string;
   created_at?: string;
   avatar?: string;
-  assigned_quizzes?: string[];
 }
 
 export interface Room {

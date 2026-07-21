@@ -1,4 +1,4 @@
-import { X, User, Mail, Shield, AlertCircle, CheckCircle2, Lock, Calendar, Star, Clock, BookOpen } from 'lucide-react';
+import { X, User, Mail, Shield, AlertCircle, CheckCircle2, Lock, Calendar, Star, Clock, BookOpen, ChevronDown } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { DUMMY_QUIZZES } from '../../data/mockDb';
 
@@ -18,6 +18,53 @@ export interface UserData {
   avatar?: string;
   assigned_quizzes?: string[];
 }
+
+const CustomSelect = ({ 
+  value, 
+  options, 
+  onChange,
+  disabled 
+}: { 
+  value: string, 
+  options: {value: string, label: string}[], 
+  onChange: (val: string) => void,
+  disabled?: boolean
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedOption = options.find(o => o.value === value) || options[0];
+
+  return (
+    <div className="relative">
+      <button 
+        type="button" 
+        disabled={disabled}
+        onClick={() => !disabled && setIsOpen(!isOpen)} 
+        className={`w-full flex items-center justify-between px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-sm focus:outline-none transition-all ${isOpen ? 'ring-1 ring-primary border-primary' : ''} text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest disabled:cursor-not-allowed`}
+      >
+        <span>{selectedOption?.label}</span>
+        <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {isOpen && !disabled && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
+          <div className="absolute z-50 w-full mt-1.5 bg-surface-container-lowest border border-outline-variant/50 rounded-lg shadow-xl p-1.5 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+            {options.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${value === opt.value ? 'bg-primary/10 text-primary font-bold' : 'hover:bg-surface-container-low text-on-surface'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 interface UserActionModalProps {
   isOpen: boolean;
@@ -164,15 +211,15 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserAct
                   <label className="flex items-center gap-2 text-sm font-label-bold text-on-surface-variant mb-1.5">
                     <Shield className="w-4 h-4" /> Role <span className="text-error">*</span>
                   </label>
-                  <select 
+                  <CustomSelect 
                     disabled={isReadOnly}
                     value={formData.role || 'USER'}
-                    onChange={e => setFormData({ ...formData, role: e.target.value as any })}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest appearance-none"
-                  >
-                    <option value="USER">User</option>
-                    <option value="SUPER_ADMIN">Super Admin</option>
-                  </select>
+                    onChange={val => setFormData({ ...formData, role: val as any })}
+                    options={[
+                      { value: 'USER', label: 'User' },
+                      { value: 'SUPER_ADMIN', label: 'Super Admin' }
+                    ]}
+                  />
                 </div>
 
                 {/* Status */}
@@ -180,15 +227,15 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserAct
                   <label className="flex items-center gap-2 text-sm font-label-bold text-on-surface-variant mb-1.5">
                     <AlertCircle className="w-4 h-4" /> Status <span className="text-error">*</span>
                   </label>
-                  <select 
+                  <CustomSelect 
                     disabled={isReadOnly}
                     value={formData.status || 'ACTIVE'}
-                    onChange={e => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest appearance-none"
-                  >
-                    <option value="ACTIVE">Active</option>
-                    <option value="SUSPENDED">Suspended</option>
-                  </select>
+                    onChange={val => setFormData({ ...formData, status: val as any })}
+                    options={[
+                      { value: 'ACTIVE', label: 'Active' },
+                      { value: 'SUSPENDED', label: 'Suspended' }
+                    ]}
+                  />
                 </div>
 
                 {/* Achievement Points */}

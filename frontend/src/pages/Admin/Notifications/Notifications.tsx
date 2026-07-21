@@ -1,10 +1,10 @@
-import { Search, MoreVertical } from 'lucide-react';
+import { Search, MoreVertical, CheckCircle2, Bell } from 'lucide-react';
 import { useState } from 'react';
-import { DUMMY_NOTIFICATIONS, NotificationItem } from '@/data/mockDb';
+import { useNotifications } from '@/hooks/useNotifications';
 
 export function Notifications() {
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
-  const [notifications] = useState<NotificationItem[]>(DUMMY_NOTIFICATIONS);
+  const { notifications, markAllAsRead } = useNotifications();
 
   const displayedNotifs = activeTab === 'unread' ? notifications.filter(n => n.unread) : notifications;
 
@@ -22,7 +22,7 @@ export function Notifications() {
               Stay updated with system warnings, room activities, and user feedback.
             </p>
           </div>
-          <button className="self-start sm:self-auto text-sm font-semibold text-primary hover:underline flex items-center gap-1.5">
+          <button onClick={markAllAsRead} className="self-start sm:self-auto text-sm font-semibold text-primary hover:underline flex items-center gap-1.5">
             Mark all as read
           </button>
         </div>
@@ -68,7 +68,7 @@ export function Notifications() {
         {/* Notifications List */}
         <div className="flex flex-col gap-3">
           {displayedNotifs.map((n) => {
-            const Icon = n.icon;
+            const Icon = n.icon || Bell;
             return (
               <div
                 key={n.id}

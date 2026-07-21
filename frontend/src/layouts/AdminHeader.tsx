@@ -1,5 +1,6 @@
 import { Search, Bell, HelpCircle, Menu, AlertCircle, CheckCircle2, MessageSquare, Clock, User, Settings, LogOut, Shield, RefreshCw } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ViewState } from '../types';
 
 export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () => void, onNavigate?: (view: ViewState, context?: any) => void }) {
@@ -8,6 +9,7 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
   const [unreadCount, setUnreadCount] = useState(2);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -150,13 +152,25 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
                 <div className="h-px bg-outline-variant/20 my-1 mx-2"></div>
 
                 {/* Menu Items */}
-                <button className="flex items-center gap-3 w-full p-2.5 rounded-lg hover:bg-surface-container-low transition-colors text-on-surface text-[14px] font-semibold text-left group">
+                <button 
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    if (onNavigate) onNavigate('profile');
+                  }}
+                  className="flex items-center gap-3 w-full p-2.5 rounded-lg hover:bg-surface-container-low transition-colors text-on-surface text-[14px] font-semibold text-left group"
+                >
                   <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0 text-on-surface-variant group-hover:text-primary transition-colors">
                     <User className="w-4 h-4" />
                   </div>
                   My Profile
                 </button>
-                <button className="flex items-center gap-3 w-full p-2.5 rounded-lg hover:bg-surface-container-low transition-colors text-on-surface text-[14px] font-semibold text-left group">
+                <button 
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    navigate('/dashboard');
+                  }}
+                  className="flex items-center gap-3 w-full p-2.5 rounded-lg hover:bg-surface-container-low transition-colors text-on-surface text-[14px] font-semibold text-left group"
+                >
                   <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0 text-on-surface-variant group-hover:text-primary transition-colors">
                     <RefreshCw className="w-4 h-4" />
                   </div>

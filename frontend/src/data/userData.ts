@@ -54,12 +54,19 @@ export interface ExamQuestion {
 
 export interface AchievementBadge {
   id: number;
-  title: string;
+  name: string;
   description: string;
   icon: string;
-  unlocked: boolean;
-  progress: string;
-  rarity: 'Common' | 'Rare' | 'Epic' | 'Legendary';
+  category: 'TITLE' | 'BADGE';
+  tier: 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  points_required: number;
+  type_value: string;
+  target_value: number;
+  
+  // User badge fields
+  current_progress?: number;
+  is_unlocked?: boolean;
+  is_equipped?: boolean;
 }
 
 export interface HostQuiz {
@@ -206,12 +213,76 @@ export const USER_EXAM_HISTORY: ExamHistoryItem[] = [
 ];
 
 export const USER_ACHIEVEMENTS: AchievementBadge[] = [
-  { id: 1, title: 'Perfect Score', description: 'Score 100% on any live quiz or official exam.', icon: 'trophy', unlocked: true, progress: '100%', rarity: 'Legendary' },
-  { id: 2, title: 'Speed Demon', description: 'Answer 5 questions correctly in under 3 seconds each.', icon: 'zap', unlocked: true, progress: '100%', rarity: 'Epic' },
-  { id: 3, title: 'Unstoppable Streak', description: 'Maintain a 10-day active study streak.', icon: 'flame', unlocked: true, progress: '100%', rarity: 'Rare' },
-  { id: 4, title: 'Quiz Master', description: 'Complete over 50 quizzes across all subjects.', icon: 'award', unlocked: false, progress: '28/50', rarity: 'Legendary' },
-  { id: 5, title: 'Night Owl', description: 'Complete a study set after 10 PM.', icon: 'moon', unlocked: true, progress: '100%', rarity: 'Common' },
-  { id: 6, title: 'Group Champion', description: 'Rank 1st in a live group room session.', icon: 'star', unlocked: false, progress: 'Rank 2 Best', rarity: 'Epic' },
+  {
+    id: 1,
+    name: 'First Blood',
+    description: 'Complete your first quiz with any score.',
+    icon: 'target',
+    category: 'BADGE',
+    tier: 'COMMON',
+    points_required: 0,
+    type_value: 'QUIZ_COUNT',
+    target_value: 1,
+    current_progress: 1,
+    is_unlocked: true,
+    is_equipped: false
+  },
+  {
+    id: 2,
+    name: 'Sharpshooter',
+    description: 'Achieve a 100% score on 5 different quizzes.',
+    icon: 'zap',
+    category: 'BADGE',
+    tier: 'RARE',
+    points_required: 50,
+    type_value: 'PERFECT_SCORE',
+    target_value: 5,
+    current_progress: 3,
+    is_unlocked: false,
+    is_equipped: false
+  },
+  {
+    id: 3,
+    name: 'Unstoppable',
+    description: 'Maintain a learning streak of 30 consecutive days.',
+    icon: 'flame',
+    category: 'TITLE',
+    tier: 'EPIC',
+    points_required: 100,
+    type_value: 'STREAK',
+    target_value: 30,
+    current_progress: 12,
+    is_unlocked: false,
+    is_equipped: false
+  },
+  {
+    id: 4,
+    name: 'Night Owl',
+    description: 'Complete 10 quizzes between midnight and 4 AM.',
+    icon: 'moon',
+    category: 'BADGE',
+    tier: 'RARE',
+    points_required: 20,
+    type_value: 'NIGHT_OWL',
+    target_value: 10,
+    current_progress: 10,
+    is_unlocked: true,
+    is_equipped: false
+  },
+  {
+    id: 5,
+    name: 'Quiz Master',
+    description: 'Successfully complete 100 quizzes across any subjects.',
+    icon: 'crown',
+    category: 'TITLE',
+    tier: 'LEGENDARY',
+    points_required: 500,
+    type_value: 'QUIZ_COUNT',
+    target_value: 100,
+    current_progress: 89,
+    is_unlocked: false,
+    is_equipped: false
+  }
 ];
 
 export const HOST_QUIZZES_LIST: HostQuiz[] = [
