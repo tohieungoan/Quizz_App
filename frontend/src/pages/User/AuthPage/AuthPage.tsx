@@ -15,9 +15,9 @@ export const AuthPage: React.FC = () => {
   const [resetEmail, setResetEmail] = useState('')
 
   const testimonials = [
-    { text: 'QuizzApp transformed how I engage my members. Real-time results are incredible!', name: 'Ms. Sarah T.', role: 'High School Teacher' },
-    { text: 'Our department performance improved 40% after adopting QuizzApp for formal exams.', name: 'Prof. David L.', role: 'University Lecturer' },
-    { text: 'My members actually look forward to quizzes now. The game mode is a hit!', name: 'Mr. James K.', role: 'Middle School Educator' },
+    { text: 'QuizzApp transformed how I engage my members. Real-time results are incredible!', name: 'Ms. Sarah T.', role: 'Quiz Host' },
+    { text: 'Our department performance improved 40% after adopting QuizzApp for formal exams.', name: 'Prof. David L.', role: 'Team Lead' },
+    { text: 'My members actually look forward to quizzes now. The game mode is a hit!', name: 'Mr. James K.', role: 'Event Organizer' },
   ]
   const [testimonialIdx] = useState(0)
   const testimonial = testimonials[testimonialIdx]
@@ -27,7 +27,8 @@ export const AuthPage: React.FC = () => {
       case 'login':
         return { title: 'Welcome back 👋', subtitle: 'Sign in to access your QuizzApp dashboard.' }
       case 'register':
-        return { title: 'Create your account ✨', subtitle: 'Join thousands of educators on QuizzApp today.' }
+        return { title: 'Create your account ✨', subtitle: 'Join thousands of creators and hosts on QuizzApp today.' }
+
       case 'forgot-password':
         return { title: 'Reset password 🔒', subtitle: 'Forgot your password? No worries, we got you covered.' }
       case 'reset-success':

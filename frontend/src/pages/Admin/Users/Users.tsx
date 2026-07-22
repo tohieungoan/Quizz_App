@@ -150,8 +150,9 @@ export const Users: React.FC = () => {
             User Management
           </h1>
           <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
-            Manage student accounts and roles.
+            Manage user accounts and roles.
           </p>
+
         </div>
         <div className="flex items-center gap-3 self-start sm:self-auto">
           <button

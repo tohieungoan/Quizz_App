@@ -30,8 +30,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ onStartExam, onJoinRoo
       <div className="bg-gradient-to-r from-primary via-primary/90 to-secondary rounded-3xl p-8 text-white shadow-lg relative overflow-hidden">
         <div className="max-w-xl space-y-3 relative z-10">
           <span className="bg-white/20 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider">
-            Student Dashboard
+            User Dashboard
           </span>
+
           <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight">
             Welcome back, Alex! 👋
           </h1>

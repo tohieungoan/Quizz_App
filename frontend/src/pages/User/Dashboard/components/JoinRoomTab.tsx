@@ -27,21 +27,22 @@ export const JoinRoomTab: React.FC = () => {
   // Part 3: Enrolled Groups List State
   const [enrolledGroups, setEnrolledGroups] = useState<EnrolledGroup[]>([
     {
-      id: 'GRP-10A1',
-      name: 'Group 10A1 - Advanced Physics',
-      host: 'Dr. Sarah Jenkins',
+      id: 'GRP-PHYS-ALPHA',
+      name: 'Alpha Team - Advanced Physics',
+      host: 'Sarah Jenkins',
       membersCount: 32,
       lastActivity: 'Physics Ch. 4 Exam (Yesterday)',
       status: 'ACTIVE',
     },
     {
       id: 'GRP-ENG-B',
-      name: 'English Intensive Class B',
-      host: 'Prof. Marcus Thorne',
+      name: 'English Intensive Group B',
+      host: 'Marcus Thorne',
       membersCount: 28,
       lastActivity: 'Grammar Quiz 3 (3 days ago)',
       status: 'ACTIVE',
     },
+
     {
       id: 'GRP-CS-2026',
       name: 'Computer Science Honors 2026',
@@ -130,9 +131,9 @@ export const JoinRoomTab: React.FC = () => {
     <div className="max-w-5xl mx-auto py-6 space-y-10 text-left">
       {/* Top Header */}
       <div>
-        <h2 className="text-3xl font-extrabold text-on-surface">Join Rooms & Student Groups</h2>
+        <h2 className="text-3xl font-extrabold text-on-surface">Join Rooms & Study Groups</h2>
         <p className="text-sm text-on-surface-variant mt-1">
-          Enter a 6-digit room code for live instant quizzes, or join a teacher's managed student group.
+          Enter a 6-digit room code for live instant quizzes, or join a host's managed group.
         </p>
       </div>
 
@@ -146,9 +147,10 @@ export const JoinRoomTab: React.FC = () => {
             </div>
             <div>
               <h3 className="font-extrabold text-lg text-on-surface">1. Join Live Room by 6-Digit PIN</h3>
-              <p className="text-xs text-on-surface-variant">Instant entry to live quiz rooms hosted by teachers</p>
+              <p className="text-xs text-on-surface-variant">Instant entry to live quiz rooms hosted by creators</p>
             </div>
           </div>
+
 
           <form onSubmit={handleJoinLiveRoom} className="space-y-6">
             {roomError && (
@@ -209,21 +211,22 @@ export const JoinRoomTab: React.FC = () => {
           </div>
         </div>
 
-        {/* PART 2: Join Student Group by Code */}
+        {/* PART 2: Join Study Group by Code */}
         <div className="lg:col-span-5 bg-white p-8 rounded-3xl border border-outline-variant/30 shadow-lg space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center font-bold shrink-0">
               <Users className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="font-extrabold text-lg text-on-surface">2. Join Student Group</h3>
-              <p className="text-xs text-on-surface-variant">Enroll in a class group managed by your teacher</p>
+              <h3 className="font-extrabold text-lg text-on-surface">2. Join Study Group</h3>
+              <p className="text-xs text-on-surface-variant">Enroll in a group managed by your host</p>
             </div>
           </div>
 
           <p className="text-xs text-on-surface-variant leading-relaxed">
-            Joining a student group allows your teacher to automatically assign homework exams, track your progress, and view class rankings.
+            Joining a study group allows your host to automatically assign homework exams, track your progress, and view rankings.
           </p>
+
 
           <form onSubmit={handleJoinGroup} className="space-y-4">
             {groupError && (
@@ -248,7 +251,8 @@ export const JoinRoomTab: React.FC = () => {
                 type="text"
                 value={groupInviteCode}
                 onChange={(e) => setGroupInviteCode(e.target.value)}
-                placeholder="e.g. GRP-10A1-2026"
+                placeholder="e.g. GRP-ALPHA-2026"
+
                 className="w-full px-4 py-3 border border-outline-variant/60 focus:border-secondary rounded-xl outline-none text-sm text-on-surface font-semibold uppercase tracking-wider"
               />
             </div>
@@ -269,11 +273,12 @@ export const JoinRoomTab: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-extrabold text-xl text-on-surface flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-primary" /> My Enrolled Student Groups ({enrolledGroups.length})
+              <BookOpen className="w-5 h-5 text-primary" /> My Enrolled Study Groups ({enrolledGroups.length})
             </h3>
             <p className="text-xs text-on-surface-variant">
-              Classes and groups you are currently participating in as a student
+              Groups and teams you are currently participating in as a member
             </p>
+
           </div>
         </div>
 

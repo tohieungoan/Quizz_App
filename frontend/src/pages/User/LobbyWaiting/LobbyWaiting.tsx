@@ -254,7 +254,8 @@ export const LobbyWaiting: React.FC = () => {
                   SCAN TO JOIN
                 </div>
               </div>
-              <p className="mt-6 text-on-surface-variant font-body-lg font-medium text-sm text-center">Students can scan to join instantly</p>
+              <p className="mt-6 text-on-surface-variant font-body-lg font-medium text-sm text-center">Participants can scan to join instantly</p>
+
             </div>
           </div>
 

@@ -90,8 +90,9 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
             Quiz Library
           </h1>
           <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
-            Manage and create quizzes for your students.
+            Manage and create quizzes for your users.
           </p>
+
         </div>
         <button
           onClick={onCreateQuiz}
