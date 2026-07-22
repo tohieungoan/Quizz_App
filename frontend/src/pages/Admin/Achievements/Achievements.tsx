@@ -376,9 +376,9 @@ export function Achievements() {
 
       {/* Edit/Create Modal */}
       {isModalOpen && editingAchievement && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in overflow-y-auto">
-          <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-4xl animate-in zoom-in-95 duration-200 my-8">
-            <div className="px-8 py-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex justify-between items-center relative overflow-hidden rounded-t-[32px]">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-t-[32px] sm:rounded-[32px] shadow-2xl w-full max-w-4xl animate-in slide-in-from-bottom-full sm:zoom-in-95 duration-200 flex flex-col max-h-[95dvh] sm:max-h-[90dvh]">
+            <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex justify-between items-center relative overflow-hidden shrink-0 rounded-t-[32px]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -z-10 translate-x-1/2 -translate-y-1/2"></div>
               <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
@@ -388,7 +388,7 @@ export function Achievements() {
               </h2>
             </div>
             
-            <form onSubmit={handleSave} className="p-8 bg-slate-50/30">
+            <form onSubmit={handleSave} className="p-5 sm:p-8 bg-slate-50/30 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                 {/* Left Column: Basic Info Card */}
                 <div className="bg-white p-6 rounded-[24px] border border-slate-200/60 shadow-sm space-y-6">
