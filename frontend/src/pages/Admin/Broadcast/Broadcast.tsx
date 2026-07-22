@@ -33,14 +33,6 @@ export function Broadcast() {
         iconName = 'AlertCircle';
         color = 'text-error';
         bg = 'bg-error-container';
-      } else if (type === 'QUIZ' || type === 'EXAM') {
-        iconName = 'CheckCircle2';
-        color = 'text-green-600';
-        bg = 'bg-green-100';
-      } else if (type === 'ROOM') {
-        iconName = 'Radio';
-        color = 'text-blue-600';
-        bg = 'bg-blue-100';
       } else if (type === 'ANNOUNCEMENT') {
         iconName = 'Megaphone';
         color = 'text-orange-600';
@@ -78,9 +70,6 @@ export function Broadcast() {
   const getPreviewIcon = () => {
     switch (type) {
       case 'SYSTEM': return <AlertCircle className="w-5 h-5 text-error" />;
-      case 'QUIZ': 
-      case 'EXAM': return <CheckCircle2 className="w-5 h-5 text-green-600" />;
-      case 'ROOM': return <Radio className="w-5 h-5 text-blue-600" />;
       case 'ANNOUNCEMENT': return <Megaphone className="w-5 h-5 text-orange-600" />;
       default: return <Info className="w-5 h-5 text-primary" />;
     }
@@ -89,9 +78,6 @@ export function Broadcast() {
   const getPreviewBg = () => {
     switch (type) {
       case 'SYSTEM': return 'bg-error-container';
-      case 'QUIZ': 
-      case 'EXAM': return 'bg-green-100';
-      case 'ROOM': return 'bg-blue-100';
       case 'ANNOUNCEMENT': return 'bg-orange-100';
       default: return 'bg-primary/10';
     }
@@ -103,12 +89,14 @@ export function Broadcast() {
         
         {/* Header */}
         <div>
-          <h1 className="font-headline-xl text-[28px] text-[#3a1b7e] font-extrabold tracking-tight flex items-center gap-3">
-            <Radio className="w-8 h-8 text-primary" />
+          <h1 className="font-headline-xl text-[28px] text-primary font-extrabold tracking-tight flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#8b5cf6] flex items-center justify-center shadow-sm">
+              <Radio className="w-5 h-5 text-white" />
+            </div>
             System Broadcast
           </h1>
           <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
-            Send real-time alerts, announcements, or exam updates to users.
+            Send real-time alerts or announcements to users.
           </p>
         </div>
 
@@ -194,9 +182,6 @@ export function Broadcast() {
                   {[
                     { id: 'ANNOUNCEMENT', label: 'News', icon: Megaphone, color: 'text-orange-600', bg: 'bg-orange-50 hover:bg-orange-100 border-orange-200' },
                     { id: 'SYSTEM', label: 'System', icon: AlertCircle, color: 'text-error', bg: 'bg-error-container/50 hover:bg-error-container border-error/20' },
-                    { id: 'QUIZ', label: 'Quiz', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50 hover:bg-green-100 border-green-200' },
-                    { id: 'EXAM', label: 'Exam', icon: CheckCircle2, color: 'text-purple-600', bg: 'bg-purple-50 hover:bg-purple-100 border-purple-200' },
-                    { id: 'ROOM', label: 'Room', icon: Radio, color: 'text-blue-600', bg: 'bg-blue-50 hover:bg-blue-100 border-blue-200' },
                   ].map((t) => (
                     <button
                       key={t.id}

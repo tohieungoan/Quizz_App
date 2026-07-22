@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Edit2, Trash2, Eye, Upload, BookOpen } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Eye, Upload, BookOpen, Users as UsersIcon } from 'lucide-react';
 import { UserActionModal, UserData, UserMode } from '@/components/ui/UserActionModal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
@@ -146,9 +146,14 @@ export const Users: React.FC = () => {
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h2 className="text-headline-lg font-headline-lg text-on-surface mb-1">User Management</h2>
-          <p className="text-body-md font-body-md text-on-surface-variant">
-            Manage user accounts, roles, permissions, and quiz assignments.
+          <h1 className="font-headline-xl text-[28px] text-primary font-extrabold tracking-tight flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#8b5cf6] flex items-center justify-center shadow-sm">
+              <UsersIcon className="w-5 h-5 text-white" />
+            </div>
+            User Management
+          </h1>
+          <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
+            Manage student accounts and roles.
           </p>
         </div>
         <div className="flex items-center gap-3 self-start sm:self-auto">

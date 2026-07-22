@@ -33,6 +33,7 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
   const [userSearch, setUserSearch] = useState('');
   const [questionSearch, setQuestionSearch] = useState('');
   const [questionDifficultyFilter, setQuestionDifficultyFilter] = useState('All');
+  const [reportTypeFilter, setReportTypeFilter] = useState('ALL');
 
   const [questionPage, setQuestionPage] = useState(1);
   const [userPage, setUserPage] = useState(1);
@@ -95,9 +96,17 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
     { id: 'RM-092', type: 'ROOM', roomCode: 'F8G9H', roomTitle: 'Chemistry Prep', quizTitle: 'Organic Chem Review', host: 'Jane Smith', date: '2026-07-09 13:00', participants: 50, avgScore: '88.3%' }
   ];
 
-  const reportTotalPages = Math.ceil(recentReportsData.length / reportsPerPage);
+  const filteredReports = recentReportsData.filter(r => {
+    const matchesSearch = r.quizTitle.toLowerCase().includes(globalSearch.toLowerCase()) || 
+                          r.roomTitle.toLowerCase().includes(globalSearch.toLowerCase()) || 
+                          r.host.toLowerCase().includes(globalSearch.toLowerCase());
+    const matchesType = reportTypeFilter === 'ALL' || r.type === reportTypeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  const reportTotalPages = Math.max(1, Math.ceil(filteredReports.length / reportsPerPage));
   const reportStartIndex = (reportPage - 1) * reportsPerPage;
-  const paginatedReports = recentReportsData.slice(reportStartIndex, reportStartIndex + reportsPerPage);
+  const paginatedReports = filteredReports.slice(reportStartIndex, reportStartIndex + reportsPerPage);
 
   const filteredUsers = usersData.filter(u => 
     u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
@@ -160,11 +169,14 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
               </div>
             ) : (
               <div>
-                <h1 className="font-headline-xl text-[32px] text-on-surface font-bold mb-1 tracking-tight">
-                  Reports
+                <h1 className="font-headline-xl text-[28px] text-primary font-extrabold tracking-tight flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#8b5cf6] flex items-center justify-center shadow-sm">
+                    <BarChart2 className="w-5 h-5 text-white" />
+                  </div>
+                  Analytics & Reports
                 </h1>
-                <p className="font-body-lg text-[16px] text-on-surface-variant">
-                  Platform-wide quiz reports and analytics
+                <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
+                  Platform-wide quiz reports and analytics.
                 </p>
               </div>
             )}
@@ -237,7 +249,43 @@ export function Reports({ context: propContext, onNavigate: propOnNavigate }: { 
 
         {!context ? (
           <section className="flex flex-col gap-4 animate-in fade-in duration-300">
-            <div className="bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col mt-2">
+            {/* Toolbar */}
+            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm flex flex-col">
+              <div className="px-4 md:px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white rounded-xl">
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search reports..."
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/40 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface"
+                  />
+                </div>
+                <div className="flex items-center w-full sm:w-auto bg-surface-container-lowest p-1 rounded-xl border border-outline-variant/40">
+                  <button 
+                    onClick={() => setReportTypeFilter('ALL')}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[13px] font-bold transition-all ${reportTypeFilter === 'ALL' ? 'bg-white text-primary shadow-sm ring-1 ring-black/5' : 'text-on-surface-variant hover:text-on-surface hover:bg-black/5'}`}
+                  >
+                    All Types
+                  </button>
+                  <button 
+                    onClick={() => setReportTypeFilter('EXAM')}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[13px] font-bold transition-all ${reportTypeFilter === 'EXAM' ? 'bg-white text-primary shadow-sm ring-1 ring-black/5' : 'text-on-surface-variant hover:text-on-surface hover:bg-black/5'}`}
+                  >
+                    Exam
+                  </button>
+                  <button 
+                    onClick={() => setReportTypeFilter('ROOM')}
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[13px] font-bold transition-all ${reportTypeFilter === 'ROOM' ? 'bg-white text-primary shadow-sm ring-1 ring-black/5' : 'text-on-surface-variant hover:text-on-surface hover:bg-black/5'}`}
+                  >
+                    Room
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[800px]">
                   <thead>
