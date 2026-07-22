@@ -6,6 +6,7 @@ import { LandingPage } from './pages/User/LandingPage/LandingPage';
 import { AboutUs } from './pages/User/AboutUs/AboutUs';
 import { Feedback } from './pages/User/Feedback/Feedback';
 import { AuthPage } from './pages/User/AuthPage/AuthPage';
+import { ResetPasswordPage } from './pages/User/ResetPasswordPage/ResetPasswordPage';
 import { Dashboard } from './pages/User/Dashboard/Dashboard';
 import { NotFoundPage } from './pages/User/NotFoundPage/NotFoundPage';
 import { LobbyWaiting } from './pages/User/LobbyWaiting/LobbyWaiting';
@@ -34,6 +35,7 @@ const App: React.FC = () => {
   const isAuthRoute =
     location.pathname === '/login' ||
     location.pathname === '/register' ||
+    location.pathname === '/reset-password' ||
     location.pathname.startsWith('/dashboard') ||
     location.pathname === '/lobby' ||
     location.pathname === '/exam' ||
@@ -54,6 +56,8 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/register" element={<AuthPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
         <Route path="/dashboard" element={<Dashboard />} />
         <Route
           path="/create-quiz"

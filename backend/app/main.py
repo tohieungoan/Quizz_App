@@ -12,14 +12,17 @@ import app.models  # Import toàn bộ models để SQLAlchemy nhận diện cá
 # Khởi tạo tự động các bảng trong Database PostgreSQL nếu chưa tồn tại
 Base.metadata.create_all(bind=engine)
 
-# Xóa hai cột device_name và ip_address khỏi bảng refresh_tokens trong CSDL PostgreSQL
+# Tự động đồng bộ các cột CSDL PostgreSQL
 try:
     from sqlalchemy import text
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE refresh_tokens DROP COLUMN IF EXISTS device_name, DROP COLUMN IF EXISTS ip_address;"))
+        conn.execute(text("ALTER TABLE questions DROP COLUMN IF EXISTS media_type, ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
+        conn.execute(text("ALTER TABLE question_options DROP COLUMN IF EXISTS media_type, ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
         conn.commit()
 except Exception:
     pass
+
 
 
 app = FastAPI(

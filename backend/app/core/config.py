@@ -15,11 +15,21 @@ class Settings(BaseSettings):
     # PostgreSQL Database URL
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/quizz_db"
 
+    # SMTP Email Configuration
+    SMTP_HOST: Optional[str] = "smtp.gmail.com"
+    SMTP_PORT: Optional[int] = 587
+    SMTP_TLS: bool = True
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    EMAILS_FROM_EMAIL: Optional[str] = None
+    EMAILS_FROM_NAME: Optional[str] = "QuizzApp Support"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
 
 
 settings = Settings()

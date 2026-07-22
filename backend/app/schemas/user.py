@@ -33,10 +33,33 @@ class UserUpdate(BaseModel):
     email_verified: Optional[bool] = None
 
 
-# Schema dùng khi đổi mật khẩu riêng biệt
+# Schema dùng khi đổi mật khẩu (khi đã đăng nhập)
 class UserChangePassword(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=6)
+
+
+# Schema dùng cho API Quên mật khẩu
+class UserForgotPassword(BaseModel):
+    email: EmailStr
+
+
+# Schema dùng cho API Đặt lại mật khẩu với Token
+class UserResetPassword(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=6, description="Mật khẩu mới tối thiểu 6 ký tự")
+
+
+# Schema dùng cho API Xác minh Email
+class UserVerifyEmail(BaseModel):
+    token: str
+
+
+# Schema dùng cho API Gửi lại Email xác minh
+class UserResendVerification(BaseModel):
+    email: EmailStr
+
+
 
 
 # Schema dùng cho Response trả về cho Client (GET /api/v1/users)
