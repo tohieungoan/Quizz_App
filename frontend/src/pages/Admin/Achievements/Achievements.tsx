@@ -134,7 +134,8 @@ export function Achievements() {
     const count = (badge.id % 20) + 5; // Fake number of users for mock
     setUnlockedUsers(Array.from({ length: count }).map((_, i) => ({
       id: `u-${badge.id}-${i}`,
-      name: `Student ${Math.floor(Math.random() * 9000) + 1000}`,
+      name: `User ${Math.floor(Math.random() * 9000) + 1000}`,
+
       date: new Date(Date.now() - Math.random() * 10000000000).toLocaleDateString(),
       color: ['bg-blue-100 text-blue-600', 'bg-emerald-100 text-emerald-600', 'bg-amber-100 text-amber-600', 'bg-purple-100 text-purple-600'][Math.floor(Math.random() * 4)]
     })));

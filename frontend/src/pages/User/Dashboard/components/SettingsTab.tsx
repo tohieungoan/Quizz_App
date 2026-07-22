@@ -28,7 +28,8 @@ export const SettingsTab: React.FC = () => {
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Notification Email State
-  const [notificationEmail, setNotificationEmail] = useState('alex.j@student.edu');
+  const [notificationEmail, setNotificationEmail] = useState('alex.j@example.com');
+
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
 
   // Notification Types State

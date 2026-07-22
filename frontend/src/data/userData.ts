@@ -295,16 +295,16 @@ export const HOST_QUIZZES_LIST: HostQuiz[] = [
 export const HOST_GROUPS_LIST: HostGroup[] = [
   {
     id: 'GRP-01',
-    name: 'Group 10A1 - Advanced Physics',
-    joinCode: 'PHYS-10A1',
+    name: 'Alpha Team - Advanced Physics',
+    joinCode: 'PHYS-ALPHA',
     isLocked: false,
     membersCount: 3,
-    description: 'Class 10A1 students taking advanced physics coursework.',
+    description: 'Alpha team members taking advanced physics coursework.',
     members: [
       {
         id: 'M-1',
         name: 'Alex Johnson',
-        email: 'alex.j@school.edu',
+        email: 'alex.j@example.com',
         joinedDate: '2026-09-01',
         examsCompleted: 3,
         totalExamsAssigned: 3,
@@ -318,7 +318,7 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
       {
         id: 'M-2',
         name: 'Sarah Smith',
-        email: 'sarah.s@school.edu',
+        email: 'sarah.s@example.com',
         joinedDate: '2026-09-01',
         examsCompleted: 2,
         totalExamsAssigned: 3,
@@ -332,7 +332,7 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
       {
         id: 'M-3',
         name: 'Michael Brown',
-        email: 'michael.b@school.edu',
+        email: 'michael.b@example.com',
         joinedDate: '2026-09-03',
         examsCompleted: 1,
         totalExamsAssigned: 3,
@@ -345,18 +345,19 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
       },
     ],
     pendingRequests: [
-      { id: 'P-1', name: 'Kevin Lee', email: 'kevin.l@school.edu', joinedDate: '2026-10-18' },
-      { id: 'P-2', name: 'Maria Garcia', email: 'maria.g@school.edu', joinedDate: '2026-10-19' },
+      { id: 'P-1', name: 'Kevin Lee', email: 'kevin.l@example.com', joinedDate: '2026-10-18' },
+      { id: 'P-2', name: 'Maria Garcia', email: 'maria.g@example.com', joinedDate: '2026-10-19' },
     ],
   },
   {
     id: 'GRP-02',
-    name: 'English Intensive Class B',
-    joinCode: 'ENG-CLASSB',
+    name: 'English Intensive Group B',
+    joinCode: 'ENG-GROUPB',
     isLocked: true,
     membersCount: 2,
     description: 'Intensive English language & literature study group.',
     members: [
+
       {
         id: 'M-4',
         name: 'Emily Davis',

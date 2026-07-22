@@ -100,9 +100,10 @@ export const LandingPage: React.FC = () => {
             
             <h1 className="font-headline-xl text-4xl md:text-5xl lg:text-6xl text-on-surface tracking-tight font-extrabold leading-tight">
               Host Live Quizzes. <br />
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Engage Students.</span> <br />
+              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Engage Members.</span> <br />
               Assess Smarter.
             </h1>
+
             
             <p className="font-body-lg text-body-md md:text-lg text-on-surface-variant max-w-2xl mx-auto lg:mx-0 leading-relaxed">
               The ultimate platform for synchronized real-time quiz games and professional formal examinations. Empower your classroom with rich aesthetics, instant grading, and real-time interactive dashboards.
@@ -224,11 +225,11 @@ export const LandingPage: React.FC = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             
-            {/* Feature 1 - Teachers */}
+            {/* Feature 1 - Hosts */}
             <div className="bg-[#f9f9ff] rounded-3xl p-8 border border-outline-variant/30 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col items-start gap-4 group">
               <div className="w-full h-44 mb-4 overflow-hidden rounded-2xl shadow-sm border border-outline-variant/20 relative">
                 <img 
-                  alt="Teacher creating quizzes" 
+                  alt="Host creating quizzes" 
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   src={landingPage1} 
                 />
@@ -237,7 +238,8 @@ export const LandingPage: React.FC = () => {
               <div className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase">
                 <Laptop className="w-3.5 h-3.5" /> Host Studio
               </div>
-              <h3 className="font-headline-md text-xl font-bold text-on-surface mt-1">For Educators</h3>
+              <h3 className="font-headline-md text-xl font-bold text-on-surface mt-1">For Hosts & Creators</h3>
+
               <p className="font-body-md text-sm text-on-surface-variant leading-relaxed">
                 Build beautiful MCQ, True/False, and essay exams using AI-assisted tools. Coordinate classrooms, share invite links, and control question pacing.
               </p>

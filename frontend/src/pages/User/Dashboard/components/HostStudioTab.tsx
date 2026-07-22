@@ -118,14 +118,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       quizId: 'QZ-101',
       duration: 60,
       groupId: 'GRP-01',
-      groupName: 'Group 10A1 - Advanced Physics',
+      groupName: 'Alpha Team - Advanced Physics',
+
+
       totalStudents: 3,
       submittedCount: 2,
       status: 'Active',
       submissions: [
-        { studentId: 'M-1', studentName: 'Alex Johnson', studentEmail: 'alex.j@school.edu', status: 'Submitted', score: '85%', submittedAt: '2026-07-20 09:30' },
-        { studentId: 'M-2', studentName: 'Sarah Smith', studentEmail: 'sarah.s@school.edu', status: 'Submitted', score: '92%', submittedAt: '2026-07-20 10:15' },
-        { studentId: 'M-3', studentName: 'Michael Brown', studentEmail: 'michael.b@school.edu', status: 'In Progress' }
+        { studentId: 'M-1', studentName: 'Alex Johnson', studentEmail: 'alex.j@example.com', status: 'Submitted', score: '85%', submittedAt: '2026-07-20 09:30' },
+        { studentId: 'M-2', studentName: 'Sarah Smith', studentEmail: 'sarah.s@example.com', status: 'Submitted', score: '92%', submittedAt: '2026-07-20 10:15' },
+        { studentId: 'M-3', studentName: 'Michael Brown', studentEmail: 'michael.b@example.com', status: 'In Progress' }
       ]
     },
     {
@@ -136,16 +138,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       quizId: 'QZ-103',
       duration: 90,
       groupId: 'GRP-02',
-      groupName: 'English Intensive Class B',
+      groupName: 'English Intensive Group B',
       totalStudents: 2,
       submittedCount: 0,
       status: 'Active',
       submissions: [
-        { studentId: 'M-4', studentName: 'Emily Davis', studentEmail: 'emily.d@school.edu', status: 'Not Started' },
-        { studentId: 'M-5', studentName: 'David Wilson', studentEmail: 'david.w@school.edu', status: 'Not Started' }
+        { studentId: 'M-4', studentName: 'Emily Davis', studentEmail: 'emily.d@example.com', status: 'Not Started' },
       ]
     }
   ]);
+
   const [examSearchTerm, setExamSearchTerm] = useState('');
 
   // Exam Modal State
@@ -191,7 +193,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       </head>
       <body>
         <table>
-          <tr><td colspan="5" class="title">STUDENT GROUP ROSTER LIST</td></tr>
+          <tr><td colspan="5" class="title">ROSTER LIST</td></tr>
           <tr><td colspan="5" style="text-align: center; font-style: italic; color: #6b7280;">Exported at: ${new Date().toLocaleString('en-US')}</td></tr>
           <tr></tr>
           <tr class="header-bg">
@@ -298,7 +300,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             <td>${exam.duration} mins</td>
           </tr>
           <tr>
-            <td colspan="2">Student Group:</td>
+            <td colspan="2">Group:</td>
             <td colspan="2">${exam.groupName}</td>
             <td colspan="2">Status:</td>
             <td>${exam.status}</td>
@@ -686,11 +688,11 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       <div className="bg-gradient-to-r from-secondary via-emerald-600 to-teal-700 rounded-3xl p-8 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2">
           <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-            Teacher & Host Studio
+            Host Studio
           </span>
           <h2 className="text-3xl font-extrabold">Host Live Quiz Sessions</h2>
           <p className="text-emerald-100 text-sm max-w-xl">
-            Select a quiz set, configure game settings, manage student rosters, approve join requests, and launch real-time rooms.
+            Select a quiz set, configure game settings, manage member rosters, approve join requests, and launch real-time rooms.
           </p>
         </div>
 
@@ -726,7 +728,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'groups' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
             }`}
         >
-          My Student Groups ({groups.length})
+          My Study Groups ({groups.length})
+
           {subTab === 'groups' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
         </button>
         <button
@@ -943,7 +946,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <ClipboardList className="w-12 h-12 mx-auto text-outline/40" />
                 <div>
                   <p className="text-sm font-bold text-on-surface">No assigned exams yet</p>
-                  <p className="text-xs mt-1">Assign an exam to a student group to track submissions here.</p>
+                  <p className="text-xs mt-1">Assign an exam to a group to track submissions here.</p>
                 </div>
                 <button
                   onClick={handleOpenAssignExamModal}
@@ -1538,7 +1541,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Group 10A1 - Advanced Physics"
+                  placeholder="e.g. Alpha Team - Advanced Physics"
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   className="w-full px-4 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
@@ -1547,19 +1550,19 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
-                  Student Join Code
+                  Member Join Code
                 </label>
                 <div className="relative">
                   <Key className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="e.g. PHYS-10A1"
+                    placeholder="e.g. PHYS-ALPHA"
                     value={groupJoinCode}
                     onChange={(e) => setGroupJoinCode(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-secondary/20"
                   />
                 </div>
-                <p className="text-[11px] text-on-surface-variant mt-1">Students will use this code to request entry.</p>
+                <p className="text-[11px] text-on-surface-variant mt-1">Members will use this code to request entry.</p>
               </div>
 
               <div>

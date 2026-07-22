@@ -82,8 +82,9 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
           {/* Assign to Group */}
           <div>
             <label className="block text-xs font-extrabold mb-1.5 uppercase tracking-wider text-on-surface-variant">
-              Target Student Group
+              Target Study Group
             </label>
+
             <select
               value={selectedGroupId}
               onChange={(e) => setSelectedGroupId(e.target.value)}
