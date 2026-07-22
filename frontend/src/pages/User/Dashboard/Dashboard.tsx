@@ -52,13 +52,20 @@ export const Dashboard: React.FC = () => {
     navigate('/create-quiz', { state: { activeTab } });
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('dashboard_active_tab');
+    navigate('/login');
+  };
+
   return (
     <div className="min-h-screen bg-surface-bright text-on-surface flex font-sans antialiased md:ml-64">
       {/* Desktop Sidebar */}
       <DashboardSidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onLogout={() => navigate('/login')}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
@@ -66,7 +73,7 @@ export const Dashboard: React.FC = () => {
         {/* Desktop & Mobile Header */}
         <DashboardHeader
           activeTitle={activeTitle}
-          onLogout={() => navigate('/login')}
+          onLogout={handleLogout}
         />
 
         {/* Mobile Sub-header Bar */}
@@ -149,7 +156,7 @@ export const Dashboard: React.FC = () => {
               <Settings className="w-4 h-4" /> Settings
             </button>
             <button
-              onClick={() => navigate('/login')}
+              onClick={handleLogout}
               className="w-full text-left px-3 py-2 rounded-lg text-error hover:bg-error-container/20 flex items-center gap-2"
             >
               <LogOut className="w-4 h-4" /> Log Out

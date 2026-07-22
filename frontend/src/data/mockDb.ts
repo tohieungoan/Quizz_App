@@ -48,6 +48,7 @@ export interface UserData {
   last_login?: string;
   created_at?: string;
   avatar?: string;
+  assigned_quizzes?: string[];
 }
 
 export interface Room {

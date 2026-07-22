@@ -71,7 +71,7 @@ export const ParticipantAnswer: React.FC = () => {
   const currentStreak = state?.streak ?? 0
   const activePowerUp = state?.activePowerUp || null
   const questionNumber = state?.questionNumber || 1
-  const fromSource = state?.fromSource || 'landing'
+  const fromSource = state?.fromSource || (localStorage.getItem('token') ? 'dashboard' : 'landing')
   const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room'
 
   // Get active question details based on current index (loop 1-3)

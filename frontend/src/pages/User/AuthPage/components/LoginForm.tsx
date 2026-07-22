@@ -37,6 +37,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     await new Promise((r) => setTimeout(r, 1500))
     setLoading(false)
     setSuccess(true)
+    localStorage.setItem('token', 'mock-jwt-token')
+    localStorage.setItem('user', JSON.stringify({ email: form.email }))
     setTimeout(() => navigate('/dashboard'), 1000)
   }
 

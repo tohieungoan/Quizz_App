@@ -58,6 +58,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchLogin }) => 
     await new Promise((r) => setTimeout(r, 1500))
     setLoading(false)
     setSuccess(true)
+    localStorage.setItem('token', 'mock-jwt-token')
+    localStorage.setItem('user', JSON.stringify({ name: form.fullName, email: form.email }))
     setTimeout(() => navigate('/dashboard'), 1200)
   }
 
