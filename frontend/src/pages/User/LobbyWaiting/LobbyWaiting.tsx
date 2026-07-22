@@ -73,10 +73,12 @@ export const LobbyWaiting: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const state = location.state as { roomCode?: string; nickname?: string; isHost?: boolean } | null
+  const state = location.state as { roomCode?: string; nickname?: string; isHost?: boolean; fromSource?: 'landing' | 'dashboard'; activeTab?: string } | null
   const roomCode = state?.roomCode || '823914'
   const nickname = state?.nickname || 'Guest'
   const isHost = !!state?.isHost
+  const fromSource = state?.fromSource || (localStorage.getItem('token') ? 'dashboard' : 'landing')
+  const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room'
 
   // Common lobby states
   const [players, setPlayers] = useState<Player[]>([])
@@ -157,7 +159,14 @@ export const LobbyWaiting: React.FC = () => {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleLeave = () => navigate(-1 as any)
+  const handleLeave = () => {
+    const isLoggedIn = !!(localStorage.getItem('token') || localStorage.getItem('user'))
+    if (isLoggedIn || fromSource === 'dashboard') {
+      navigate('/dashboard', { state: { activeTab } })
+    } else {
+      navigate('/')
+    }
+  }
 
   const handleStartGame = () => {
     alert('Starting game live session! Connecting to members...')
@@ -391,7 +400,7 @@ export const LobbyWaiting: React.FC = () => {
                 </p>
               </div>
               <button
-                onClick={() => navigate('/play', { state: { nickname, roomCode, score: 0, streak: 0 } })}
+                onClick={() => navigate('/play', { state: { nickname, roomCode, score: 0, streak: 0, fromSource, activeTab } })}
                 className="mt-2 flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-button text-xs font-bold shadow-md hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all cursor-pointer"
               >
                 Start Game (Simulated) <span className="material-symbols-outlined text-sm">play_arrow</span>

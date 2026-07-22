@@ -222,9 +222,11 @@ export const LiveLeaderboard: React.FC = () => {
 
   const mePlayer = players.find((p) => p.isMe);
 
+  const isLoggedIn = !!(localStorage.getItem('token') || localStorage.getItem('user'));
+
   const handleNextAction = () => {
     if (isGameFinished) {
-      if (fromSource === 'dashboard') {
+      if (isLoggedIn || fromSource === 'dashboard') {
         navigate('/dashboard', { state: { activeTab } });
       } else {
         navigate('/');
@@ -246,7 +248,7 @@ export const LiveLeaderboard: React.FC = () => {
   };
 
   const handleLeave = () => {
-    if (fromSource === 'dashboard') {
+    if (isLoggedIn || fromSource === 'dashboard') {
       navigate('/dashboard', { state: { activeTab } });
     } else {
       navigate('/');
