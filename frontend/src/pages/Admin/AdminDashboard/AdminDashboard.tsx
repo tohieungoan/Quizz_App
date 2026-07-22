@@ -1,4 +1,4 @@
-import { Library, MonitorPlay, Users, Star } from 'lucide-react';
+import { Library, MonitorPlay, Users, Star, LayoutDashboard } from 'lucide-react';
 import { useState } from 'react';
 import { MetricCard } from './components/MetricCard';
 import { HottestQuizzes } from './components/HottestQuizzes';
@@ -12,8 +12,13 @@ export function AdminDashboard() {
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h2 className="text-headline-lg font-headline-lg text-on-surface mb-1">System Overview</h2>
-          <p className="text-body-md font-body-md text-on-surface-variant">Real-time metrics and platform health.</p>
+          <h1 className="font-headline-xl text-[28px] text-primary font-extrabold tracking-tight flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#8b5cf6] flex items-center justify-center shadow-sm">
+              <LayoutDashboard className="w-5 h-5 text-white" />
+            </div>
+            System Overview
+          </h1>
+          <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">Real-time metrics and platform health.</p>
         </div>
       </div>
 

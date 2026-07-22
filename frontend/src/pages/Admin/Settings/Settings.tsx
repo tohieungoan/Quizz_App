@@ -1,4 +1,4 @@
-import { Mail, Bell, UserPlus, Lock, UserCheck, UserMinus, Shield, Info } from 'lucide-react';
+import { Mail, Bell, UserPlus, Lock, UserCheck, UserMinus, Shield, Info, Settings as SettingsIcon } from 'lucide-react';
 import { useState } from 'react';
 
 export function Settings() {
@@ -10,10 +10,13 @@ export function Settings() {
         
         {/* Header Section */}
         <div className="flex flex-col gap-1.5">
-          <h1 className="text-[28px] text-[#2563eb] font-bold tracking-tight">
+          <h1 className="font-headline-xl text-[28px] text-primary font-extrabold tracking-tight flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#8b5cf6] flex items-center justify-center shadow-sm">
+              <SettingsIcon className="w-5 h-5 text-white" />
+            </div>
             Notification Settings
           </h1>
-          <p className="text-[15px] text-slate-500">
+          <p className="font-body-lg text-[15px] text-slate-500 mt-1">
             Manage Super Admin alerts for accounts, permissions, audit logs, and security events.
           </p>
         </div>
