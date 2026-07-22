@@ -48,5 +48,53 @@ def generate_refresh_token_string() -> str:
     return secrets.token_urlsafe(64)
 
 
+def create_password_reset_token(email: str, password_hash: str, updated_at: Any = None) -> str:
+    """Tạo JWT Token để khôi phục mật khẩu (chỉ link mới nhất có hiệu lực & dùng 1 lần, hạn 15 phút)."""
+    expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode = {"exp": expire, "sub": email, "type": "reset_password"}
+    updated_str = str(updated_at) if updated_at else ""
+    secret = f"{settings.SECRET_KEY}{password_hash}{updated_str}"
+    encoded_jwt = jwt.encode(to_encode, secret, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def verify_password_reset_token(token: str, password_hash: str, updated_at: Any = None) -> Union[str, None]:
+    """Xác thực Token khôi phục mật khẩu. Trả về email nếu hợp lệ và token là phiên bản mới nhất chưa bị thay thế."""
+    try:
+        updated_str = str(updated_at) if updated_at else ""
+        secret = f"{settings.SECRET_KEY}{password_hash}{updated_str}"
+        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
+        if payload.get("type") != "reset_password":
+            return None
+        email: str = payload.get("sub")
+        return email
+    except Exception:
+        return None
+
+
+def create_email_verification_token(email: str) -> str:
+    """Tạo JWT Token để xác minh Email (hạn 24 giờ)."""
+    expire = datetime.utcnow() + timedelta(hours=24)
+    to_encode = {"exp": expire, "sub": email, "type": "verify_email"}
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def verify_email_verification_token(token: str) -> Union[str, None]:
+    """Xác thực Token xác minh Email và trả về email nếu hợp lệ."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "verify_email":
+            return None
+        email: str = payload.get("sub")
+        return email
+    except Exception:
+        return None
+
+
+
+
+
+
 
 

@@ -1,4 +1,4 @@
-﻿export * from './Dashboard/Dashboard';
+export * from './Dashboard/Dashboard';
 export * from './AboutUs/AboutUs';
 export * from './AuthPage/AuthPage';
 export * from './Feedback/Feedback';
@@ -10,3 +10,6 @@ export * from './LobbyWaiting/LobbyWaiting';
 export * from './NotFoundPage/NotFoundPage';
 export * from './ParticipantAnswer/ParticipantAnswer';
 export * from './PowerUpSelection/PowerUpSelection';
+export * from './ResetPasswordPage/ResetPasswordPage';
+
+

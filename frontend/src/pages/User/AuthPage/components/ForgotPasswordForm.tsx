@@ -4,7 +4,7 @@ import { InputField } from './InputField'
 
 interface ForgotPasswordFormProps {
   onBackToLogin: () => void
-  onSuccess: (email: string) => void
+  onSuccess?: (email: string) => void
 }
 
 export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
@@ -17,11 +17,11 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
 
   const validate = (): boolean => {
     if (!email) {
-      setError('Email is required.')
+      setError('Email address is required.')
       return false
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('Invalid email address.')
+      setError('Please enter a valid email address.')
       return false
     }
     setError('')
@@ -32,9 +32,31 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     e.preventDefault()
     if (!validate()) return
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 1500))
-    setLoading(false)
-    onSuccess(email)
+    setError('')
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/auth/forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'This email address is not registered in our system.')
+      }
+
+      if (onSuccess) {
+        onSuccess(email)
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -42,7 +64,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
       <div className="bg-primary/5 rounded-2xl p-4 border border-primary/10 flex gap-3 text-sm text-on-surface-variant">
         <ShieldAlert className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
         <p className="leading-relaxed text-sm">
-          Enter the email address associated with your account, and we will email you a link to reset your password.
+          Enter the email address associated with your account, and we will send you a password reset link.
         </p>
       </div>
 
@@ -86,3 +108,5 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     </form>
   )
 }
+
+

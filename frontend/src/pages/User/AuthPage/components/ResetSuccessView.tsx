@@ -18,9 +18,20 @@ export const ResetSuccessView: React.FC<ResetSuccessViewProps> = ({ email, onBac
 
   const handleResend = async () => {
     setIsResending(true)
-    await new Promise((r) => setTimeout(r, 1200))
-    setIsResending(false)
-    setCountdown(60)
+    try {
+      await fetch('http://localhost:8000/api/v1/auth/forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      })
+    } catch (e) {
+      // Ignore error on silent resend
+    } finally {
+      setIsResending(false)
+      setCountdown(60)
+    }
   }
 
   return (
@@ -29,9 +40,9 @@ export const ResetSuccessView: React.FC<ResetSuccessViewProps> = ({ email, onBac
         <Mail className="w-10 h-10" />
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="font-headline-md text-headline-md text-on-surface font-bold">Check your inbox</h3>
-        <p className="text-on-surface-variant font-body-md max-w-sm text-sm">
-          We've sent a password reset link to <strong className="text-on-surface">{email}</strong>. Please check your email to proceed.
+        <h3 className="font-headline-md text-headline-md text-on-surface font-bold text-2xl">Check your inbox</h3>
+        <p className="text-on-surface-variant font-body-md max-w-sm text-sm leading-relaxed">
+          We've sent password reset instructions to <strong className="text-on-surface">{email}</strong>. Please check your email to proceed.
         </p>
       </div>
 
@@ -43,14 +54,14 @@ export const ResetSuccessView: React.FC<ResetSuccessViewProps> = ({ email, onBac
         >
           Open Gmail
         </button>
-        
+
         <button
           type="button"
           disabled={countdown > 0 || isResending}
           onClick={handleResend}
           className="font-label-bold text-label-bold text-primary hover:underline py-2 disabled:text-outline disabled:no-underline transition-all text-sm focus:outline-none"
         >
-          {isResending ? 'Resending...' : countdown > 0 ? `Resend email in ${countdown}s` : 'Resend password reset link'}
+          {isResending ? 'Resending...' : countdown > 0 ? `Resend email in ${countdown}s` : 'Resend reset link'}
         </button>
       </div>
 
@@ -65,3 +76,5 @@ export const ResetSuccessView: React.FC<ResetSuccessViewProps> = ({ email, onBac
     </div>
   )
 }
+
+

@@ -34,7 +34,7 @@ class Question(Base):
     type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    media_type: Mapped[str] = mapped_column(String, default="NONE")
+    audio_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     media_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     audio_play_limit: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -58,8 +58,9 @@ class QuestionOption(Base):
     question_id: Mapped[int] = mapped_column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    media_type: Mapped[str] = mapped_column(String, default="NONE")
+    audio_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     media_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
 
     is_correct: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
