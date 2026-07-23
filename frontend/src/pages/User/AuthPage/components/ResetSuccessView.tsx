@@ -16,22 +16,13 @@ export const ResetSuccessView: React.FC<ResetSuccessViewProps> = ({ email, onBac
     return () => clearTimeout(timer)
   }, [countdown])
 
-  const handleResend = async () => {
+  const handleResend = () => {
     setIsResending(true)
-    try {
-      await fetch('http://localhost:8000/api/v1/auth/forgot-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
-      })
-    } catch (e) {
-      // Ignore error on silent resend
-    } finally {
+    // Simulate resend email (frontend only)
+    setTimeout(() => {
       setIsResending(false)
       setCountdown(60)
-    }
+    }, 800)
   }
 
   return (

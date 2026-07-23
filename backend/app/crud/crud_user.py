@@ -1,5 +1,5 @@
 """
-Các thao tác truy vấn CSDL (Create, Read, Update, Delete) cho đối tượng User.
+Database operations (Create, Read, Update, Delete) for the User object.
 """
 from datetime import datetime, timedelta
 from typing import Optional, List, Union, Dict, Any
@@ -12,19 +12,19 @@ from app.core.security import get_password_hash, verify_password, generate_refre
 
 class CRUDUser:
     def get_by_id(self, db: Session, user_id: int) -> Optional[User]:
-        """Lấy thông tin User theo ID."""
+        """Retrieve User information by ID."""
         return db.query(User).filter(User.id == user_id).first()
 
     def get_by_email(self, db: Session, email: str) -> Optional[User]:
-        """Lấy thông tin User theo Email."""
+        """Retrieve User information by Email."""
         return db.query(User).filter(User.email == email).first()
 
     def get_multi(self, db: Session, skip: int = 0, limit: int = 100) -> List[User]:
-        """Lấy danh sách Users có phân trang."""
+        """Retrieve list of Users with pagination."""
         return db.query(User).offset(skip).limit(limit).all()
 
     def create(self, db: Session, obj_in: UserCreate) -> User:
-        """Tạo mới User (mã hóa mật khẩu nếu có)."""
+        """Create a new User (hashes password if provided)."""
         db_obj = User(
             email=obj_in.email,
             password=get_password_hash(obj_in.password) if obj_in.password else None,
@@ -41,7 +41,7 @@ class CRUDUser:
         return db_obj
 
     def update(self, db: Session, db_obj: User, obj_in: Union[UserUpdate, Dict[str, Any]]) -> User:
-        """Cập nhật thông tin User."""
+        """Update User information."""
         if isinstance(obj_in, dict):
             update_data = obj_in
         else:
@@ -60,7 +60,7 @@ class CRUDUser:
         return db_obj
 
     def delete(self, db: Session, user_id: int) -> Optional[User]:
-        """Xóa User theo ID."""
+        """Delete User by ID."""
         obj = db.query(User).filter(User.id == user_id).first()
         if obj:
             db.delete(obj)
@@ -68,7 +68,7 @@ class CRUDUser:
         return obj
 
     def authenticate(self, db: Session, email: str, password: str) -> Optional[User]:
-        """Xác thực tài khoản bằng Email và Password."""
+        """Authenticate user by Email and Password."""
         user = self.get_by_email(db, email=email)
         if not user or not user.password:
             return None
@@ -77,7 +77,7 @@ class CRUDUser:
         return user
 
     def delete_all_user_refresh_tokens(self, db: Session, user_id: int) -> int:
-        """Xóa sạch toàn bộ Refresh Token cũ của người dùng khỏi CSDL."""
+        """Delete all old Refresh Tokens of the user from database."""
         num_deleted = db.query(RefreshToken).filter(
             RefreshToken.user_id == user_id
         ).delete(synchronize_session=False)
@@ -87,7 +87,7 @@ class CRUDUser:
     def create_refresh_token(
         self, db: Session, user_id: int, expires_days: int = 7, delete_previous: bool = True
     ) -> RefreshToken:
-        """Tạo Refresh Token mới. Mặc định xóa toàn bộ Refresh Token cũ của user khỏi DB."""
+        """Create a new Refresh Token. Default is to delete all old Refresh Tokens of the user from DB."""
         if delete_previous:
             self.delete_all_user_refresh_tokens(db, user_id=user_id)
 
@@ -105,7 +105,7 @@ class CRUDUser:
         return db_obj
 
     def get_refresh_token(self, db: Session, token: str) -> Optional[RefreshToken]:
-        """Lấy thông tin Refresh Token chưa bị revoke và chưa hết hạn."""
+        """Get Refresh Token info if not revoked and not expired."""
         token_obj = db.query(RefreshToken).filter(
             RefreshToken.token == token,
             RefreshToken.revoked == False
@@ -115,7 +115,7 @@ class CRUDUser:
         return None
 
     def revoke_refresh_token(self, db: Session, token: str) -> bool:
-        """Xóa một Refresh Token khỏi CSDL khi đăng xuất."""
+        """Delete a Refresh Token from database upon logout."""
         token_obj = db.query(RefreshToken).filter(RefreshToken.token == token).first()
         if token_obj:
             db.delete(token_obj)

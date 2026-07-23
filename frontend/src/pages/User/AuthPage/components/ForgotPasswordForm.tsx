@@ -28,35 +28,19 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     return true
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
     setLoading(true)
     setError('')
 
-    try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/forgot-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'This email address is not registered in our system.')
-      }
-
+    // Simulate forgot password API request (frontend only)
+    setTimeout(() => {
+      setLoading(false)
       if (onSuccess) {
         onSuccess(email)
       }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred. Please try again.')
-    } finally {
-      setLoading(false)
-    }
+    }, 800)
   }
 
   return (

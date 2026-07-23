@@ -168,7 +168,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ onStartExam, onJoinRoo
 
       {/* 4. BOTTOM SECTION: Charts & Activity Analytics (Moved to Bottom) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Donut Chart (Biểu đồ tròn phân bổ Quiz & Activity) */}
+        {/* Donut Chart (Quiz & Activity Distribution) */}
         <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-6">
           <div className="flex items-center justify-between">
             <div>

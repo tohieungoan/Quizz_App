@@ -1,6 +1,6 @@
 """
-Xử lý bảo mật, mã hóa và token.
-Bao gồm: Mã hóa mật khẩu (hashing với bcrypt), kiểm tra mật khẩu, tạo và verify JWT Access Token.
+Security, hashing and token processing.
+Includes: Password hashing (with bcrypt), password verification, creating and verifying JWT Access Token.
 """
 from datetime import datetime, timedelta
 from typing import Any, Union
@@ -12,7 +12,7 @@ ALGORITHM = "HS256"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Kiểm tra mật khẩu thô với mật khẩu đã mã hóa."""
+    """Verify plain password against hashed password."""
     if not plain_password or not hashed_password:
         return False
     try:
@@ -24,14 +24,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def get_password_hash(password: str) -> str:
-    """Mã hóa mật khẩu bằng bcrypt."""
+    """Hash password using bcrypt."""
     password_bytes = password.encode("utf-8")[:72]
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
 
 def create_access_token(subject: Union[str, Any], expires_delta: timedelta = None) -> str:
-    """Tạo JWT Access Token."""
+    """Create JWT Access Token."""
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -43,13 +43,13 @@ def create_access_token(subject: Union[str, Any], expires_delta: timedelta = Non
 
 
 def generate_refresh_token_string() -> str:
-    """Tạo chuỗi Refresh Token bảo mật ngẫu nhiên."""
+    """Generate a random secure Refresh Token string."""
     import secrets
     return secrets.token_urlsafe(64)
 
 
 def create_password_reset_token(email: str, password_hash: str, updated_at: Any = None) -> str:
-    """Tạo JWT Token để khôi phục mật khẩu (chỉ link mới nhất có hiệu lực & dùng 1 lần, hạn 15 phút)."""
+    """Create JWT Token for password reset (only the newest link is valid & one-time use, 15 minutes expiry)."""
     expire = datetime.utcnow() + timedelta(minutes=15)
     to_encode = {"exp": expire, "sub": email, "type": "reset_password"}
     updated_str = str(updated_at) if updated_at else ""
@@ -59,7 +59,7 @@ def create_password_reset_token(email: str, password_hash: str, updated_at: Any 
 
 
 def verify_password_reset_token(token: str, password_hash: str, updated_at: Any = None) -> Union[str, None]:
-    """Xác thực Token khôi phục mật khẩu. Trả về email nếu hợp lệ và token là phiên bản mới nhất chưa bị thay thế."""
+    """Verify password reset Token. Returns email if valid and token is the newest version."""
     try:
         updated_str = str(updated_at) if updated_at else ""
         secret = f"{settings.SECRET_KEY}{password_hash}{updated_str}"
@@ -73,7 +73,7 @@ def verify_password_reset_token(token: str, password_hash: str, updated_at: Any 
 
 
 def create_email_verification_token(email: str) -> str:
-    """Tạo JWT Token để xác minh Email (hạn 24 giờ)."""
+    """Create JWT Token for Email verification (expires in 24 hours)."""
     expire = datetime.utcnow() + timedelta(hours=24)
     to_encode = {"exp": expire, "sub": email, "type": "verify_email"}
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
@@ -81,7 +81,7 @@ def create_email_verification_token(email: str) -> str:
 
 
 def verify_email_verification_token(token: str) -> Union[str, None]:
-    """Xác thực Token xác minh Email và trả về email nếu hợp lệ."""
+    """Verify Email verification Token and return email if valid."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "verify_email":
@@ -90,6 +90,34 @@ def verify_email_verification_token(token: str) -> Union[str, None]:
         return email
     except Exception:
         return None
+
+
+def create_notification_email_verification_token(user_id: int, new_email: str) -> str:
+    """Generate JWT token to verify notification email (expires in 2 hours)."""
+    expire = datetime.utcnow() + timedelta(hours=2)
+    to_encode = {
+        "exp": expire,
+        "sub": str(user_id),
+        "new_email": new_email,
+        "type": "verify_notification_email"
+    }
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def verify_notification_email_verification_token(token: str) -> Union[dict, None]:
+    """Verify notification email JWT token. Returns dict with user_id and new_email if valid."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "verify_notification_email":
+            return None
+        return {
+            "user_id": int(payload.get("sub")),
+            "new_email": payload.get("new_email")
+        }
+    except Exception:
+        return None
+
 
 
 
