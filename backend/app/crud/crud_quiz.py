@@ -1,3 +1,3 @@
 """
-Các thao tác truy vấn CSDL (Create, Read, Update, Delete) cho đối tượng Quiz & Question.
+Database operations (Create, Read, Update, Delete) for the Quiz & Question objects.
 """

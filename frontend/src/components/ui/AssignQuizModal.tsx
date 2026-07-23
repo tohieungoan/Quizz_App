@@ -113,7 +113,7 @@ export function AssignQuizModal({ isOpen, onClose, user, onAssign }: AssignQuizM
                   onClick={(e) => {
                     if (isTimeConflict) {
                       e.preventDefault();
-                      setConflictWarning(`Trùng giờ! Bài "${quiz.title}" có thời gian (${quiz.time}) bị trùng với bài khác.`);
+                      setConflictWarning(`Time conflict! The quiz "${quiz.title}" scheduled for (${quiz.time}) overlaps with another quiz.`);
                       setTimeout(() => setConflictWarning(null), 3500);
                     }
                   }}

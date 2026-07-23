@@ -1,3 +1,3 @@
 """
-Unit tests cho tính năng Đăng nhập / Đăng ký / Token.
+Unit tests for Login / Register / Token features.
 """
