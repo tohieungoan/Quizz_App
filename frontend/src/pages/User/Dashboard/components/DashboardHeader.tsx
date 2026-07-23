@@ -75,8 +75,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 <div className="px-4 py-3 bg-surface-container-low border-b border-outline-variant/20 flex items-center justify-between">
                   <h4 className="font-bold text-sm text-on-surface">Recent Notifications</h4>
                   <div className="flex items-center gap-2">
-                    <button 
-                      onClick={markAllAsRead} 
+                    <button
+                      onClick={markAllAsRead}
                       className="text-[10px] font-semibold text-on-surface-variant hover:text-primary transition-colors"
                     >
                       Mark all read
@@ -130,7 +130,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
             <div className="hidden md:flex flex-col text-left">
               <span className="text-xs font-bold text-on-surface leading-snug">Alex Johnson</span>
-              <span className="text-[10px] text-on-surface-variant font-medium">Student / Member</span>
+              <span className="text-[10px] text-on-surface-variant font-medium">Member</span>
             </div>
           </div>
         </div>

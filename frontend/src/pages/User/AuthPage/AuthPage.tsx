@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Gamepad2, ArrowLeft, User } from 'lucide-react'
+import { GraduationCap, ArrowLeft, User } from 'lucide-react'
 import landingPage1 from '@/assets/images/landing-page-1.jpg'
 import { AuthMode } from './types'
 import { LoginForm } from './components/LoginForm'
@@ -59,9 +59,9 @@ export const AuthPage: React.FC = () => {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group w-fit">
             <div className="w-11 h-11 rounded-2xl bg-on-primary/20 backdrop-blur-sm flex items-center justify-center group-hover:bg-on-primary/30 transition-colors">
-              <Gamepad2 className="w-6 h-6 text-on-primary" />
+              <GraduationCap className="w-6 h-6 text-on-primary" />
             </div>
-            <span className="font-headline-md text-headline-md text-on-primary font-bold tracking-tight">QuizzApp</span>
+            <span className="font-heading-md text-headline-md text-on-primary font-bold tracking-tight">QuizzApp</span>
           </Link>
 
           {/* Center content */}
@@ -132,7 +132,7 @@ export const AuthPage: React.FC = () => {
         {/* Mobile logo bar */}
         <div className="lg:hidden flex items-center justify-between px-6 py-5 border-b border-outline-variant/20">
           <Link to="/" className="flex items-center gap-2">
-            <Gamepad2 className="w-7 h-7 text-primary" />
+            <GraduationCap className="w-7 h-7 text-primary" />
             <span className="font-headline-md text-headline-md font-bold text-primary">QuizzApp</span>
           </Link>
           <Link to="/" className="flex items-center gap-1 text-on-surface-variant font-body-md text-sm hover:text-primary transition-colors">

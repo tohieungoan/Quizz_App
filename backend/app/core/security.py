@@ -92,6 +92,34 @@ def verify_email_verification_token(token: str) -> Union[str, None]:
         return None
 
 
+def create_notification_email_verification_token(user_id: int, new_email: str) -> str:
+    """Generate JWT token to verify notification email (expires in 2 hours)."""
+    expire = datetime.utcnow() + timedelta(hours=2)
+    to_encode = {
+        "exp": expire,
+        "sub": str(user_id),
+        "new_email": new_email,
+        "type": "verify_notification_email"
+    }
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def verify_notification_email_verification_token(token: str) -> Union[dict, None]:
+    """Verify notification email JWT token. Returns dict with user_id and new_email if valid."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "verify_notification_email":
+            return None
+        return {
+            "user_id": int(payload.get("sub")),
+            "new_email": payload.get("new_email")
+        }
+    except Exception:
+        return None
+
+
+
 
 
 

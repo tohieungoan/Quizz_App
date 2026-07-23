@@ -1,6 +1,6 @@
 """
-Các dependency dùng chung cho API.
-Ví dụ: get_db (kết nối database session), get_current_user (xác thực người dùng từ token).
+Shared dependencies for API endpoints.
+Examples: get_db (database session connection), get_current_user (JWT user authentication).
 """
 from typing import Generator
 from fastapi import Depends, HTTPException, status
@@ -33,7 +33,7 @@ def get_current_user(
     db: Session = Depends(get_db),
     token: str = Depends(reusable_oauth2),
 ) -> User:
-    """Xác thực JWT Token và trả về thông tin User hiện tại."""
+    """Authenticate JWT Token and retrieve current User."""
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
@@ -42,18 +42,18 @@ def get_current_user(
         if token_data.sub is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Token không hợp lệ",
+                detail="Invalid token.",
             )
     except (JWTError, ValidationError):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token không hợp lệ hoặc đã hết hạn",
+            detail="Invalid or expired token.",
         )
     user = crud_user.get_by_id(db, user_id=int(token_data.sub))
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy người dùng sở hữu token này",
+            detail="User owning this token not found.",
         )
     return user
 
@@ -61,11 +61,11 @@ def get_current_user(
 def get_current_active_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Kiểm tra user hiện tại có đang hoạt động (ACTIVE) không."""
+    """Verify if the current user is active."""
     if current_user.status != "ACTIVE":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tài khoản chưa được kích hoạt hoặc đã bị khóa",
+            detail="Account has not been activated or is locked.",
         )
     return current_user
 
@@ -73,11 +73,10 @@ def get_current_active_user(
 def get_current_active_admin(
     current_user: User = Depends(get_current_active_user),
 ) -> User:
-    """Kiểm tra user hiện tại có quyền Admin hoặc Super Admin không."""
-    if current_user.role not in ["ADMIN", "SUPER_ADMIN"]:
+    """Verify if the current user has Super Admin role permission."""
+    if current_user.role != "SUPER_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bạn không có quyền thực hiện thao tác này (Yêu cầu quyền Admin)",
+            detail="You do not have permission to perform this action (Super Admin role required).",
         )
     return current_user
-

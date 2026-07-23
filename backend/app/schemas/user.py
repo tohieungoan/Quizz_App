@@ -81,3 +81,31 @@ class UserResponse(UserBase):
 class UserInDB(UserResponse):
     password: Optional[str] = None
 
+
+class UserSettingResponse(BaseModel):
+    notification_email: Optional[str] = None
+    email_notifications_enabled: bool = True
+    in_app_notifications_enabled: bool = True
+    notify_system: bool = True
+    notify_quiz_assigned: bool = True
+    notify_exam_reminder: bool = True
+    notify_results_published: bool = True
+    notify_room_invite: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserSettingUpdate(BaseModel):
+    email_notifications_enabled: Optional[bool] = None
+    in_app_notifications_enabled: Optional[bool] = None
+    notify_system: Optional[bool] = None
+    notify_quiz_assigned: Optional[bool] = None
+    notify_exam_reminder: Optional[bool] = None
+    notify_results_published: Optional[bool] = None
+    notify_room_invite: Optional[bool] = None
+
+
+class NotificationEmailRequest(BaseModel):
+    email: EmailStr
+
+
