@@ -19,6 +19,7 @@ try:
         conn.execute(text("ALTER TABLE refresh_tokens DROP COLUMN IF EXISTS device_name, DROP COLUMN IF EXISTS ip_address;"))
         conn.execute(text("ALTER TABLE questions DROP COLUMN IF EXISTS media_type, ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
         conn.execute(text("ALTER TABLE question_options DROP COLUMN IF EXISTS media_type, ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
+        conn.execute(text("ALTER TABLE groups ADD COLUMN IF NOT EXISTS icon VARCHAR DEFAULT 'GraduationCap';"))
         conn.commit()
 except Exception:
     pass

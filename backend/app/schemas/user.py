@@ -1,13 +1,13 @@
 """
-Pydantic Models cho đối tượng User.
-Dùng để Validate dữ liệu đầu vào (UserCreate, UserUpdate) và định dạng dữ liệu đầu ra (UserResponse).
+Pydantic Models for User object.
+Used to validate input data (UserCreate, UserUpdate) and format output data (UserResponse).
 """
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
 
-# Base Schema chứa các thuộc tính dùng chung
+# Base Schema containing shared attributes
 class UserBase(BaseModel):
     email: EmailStr
     fullname: Optional[str] = None
@@ -16,14 +16,14 @@ class UserBase(BaseModel):
     status: Optional[str] = "ACTIVE"
 
 
-# Schema dùng khi tạo mới User (POST /api/v1/users)
+# Schema used when creating a new User (POST /api/v1/users)
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6, description="Mật khẩu tối thiểu 6 ký tự")
+    password: str = Field(..., min_length=6, description="Password minimum 6 characters")
     auth_provider: Optional[str] = "LOCAL"
     provider_id: Optional[str] = None
 
 
-# Schema dùng khi cập nhật thông tin User (PUT / PATCH /api/v1/users/{id})
+# Schema used when updating User information (PUT / PATCH /api/v1/users/{id})
 class UserUpdate(BaseModel):
     fullname: Optional[str] = None
     avatar: Optional[str] = None
@@ -33,36 +33,36 @@ class UserUpdate(BaseModel):
     email_verified: Optional[bool] = None
 
 
-# Schema dùng khi đổi mật khẩu (khi đã đăng nhập)
+# Schema used for password change (when logged in)
 class UserChangePassword(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=6)
 
 
-# Schema dùng cho API Quên mật khẩu
+# Schema used for Forgot Password API
 class UserForgotPassword(BaseModel):
     email: EmailStr
 
 
-# Schema dùng cho API Đặt lại mật khẩu với Token
+# Schema used for Reset Password with Token API
 class UserResetPassword(BaseModel):
     token: str
-    new_password: str = Field(..., min_length=6, description="Mật khẩu mới tối thiểu 6 ký tự")
+    new_password: str = Field(..., min_length=6, description="New password minimum 6 characters")
 
 
-# Schema dùng cho API Xác minh Email
+# Schema used for Email Verification API
 class UserVerifyEmail(BaseModel):
     token: str
 
 
-# Schema dùng cho API Gửi lại Email xác minh
+# Schema used for Resending Verification Email API
 class UserResendVerification(BaseModel):
     email: EmailStr
 
 
 
 
-# Schema dùng cho Response trả về cho Client (GET /api/v1/users)
+# Schema used for Response returned to Client (GET /api/v1/users)
 class UserResponse(UserBase):
     id: int
     study_streak: int = 0
@@ -77,7 +77,7 @@ class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Schema chứa thông tin đầy đủ (dùng nội bộ backend nếu cần)
+# Schema containing full information (used internally in backend if needed)
 class UserInDB(UserResponse):
     password: Optional[str] = None
 

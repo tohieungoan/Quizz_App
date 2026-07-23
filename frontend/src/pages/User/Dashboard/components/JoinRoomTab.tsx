@@ -104,7 +104,7 @@ export const JoinRoomTab: React.FC = () => {
 
     // Check if group is locked (e.g. ENG-CLASSB is locked in demo)
     if (cleanCode === 'ENG-CLASSB' || cleanCode === 'LOCKED') {
-      setGroupError('Group này đã bị KHÓA bởi giáo viên. Không tiếp nhận yêu cầu tham gia mới.');
+      setGroupError('This group has been LOCKED by the teacher. New join requests are not accepted.');
       return;
     }
 
@@ -118,7 +118,7 @@ export const JoinRoomTab: React.FC = () => {
     };
 
     setEnrolledGroups([newGroup, ...enrolledGroups]);
-    setGroupSuccess(`Đã gửi yêu cầu tham gia nhóm #${cleanCode}! Đang chờ giáo viên xét duyệt.`);
+    setGroupSuccess(`Join request submitted for group #${cleanCode}! Waiting for host approval.`);
     setGroupInviteCode('');
     setTimeout(() => setGroupSuccess(''), 5000);
   };

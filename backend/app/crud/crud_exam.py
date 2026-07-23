@@ -1,3 +1,3 @@
 """
-Các thao tác truy vấn CSDL (Create, Read, Update, Delete) cho đối tượng Exam Assignment & Submissions.
+Database operations (Create, Read, Update, Delete) for the Exam Assignment & Submissions objects.
 """
