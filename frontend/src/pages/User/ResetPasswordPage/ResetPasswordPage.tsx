@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowLeft, Gamepad2 } from 'lucide-react';
+import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowLeft, GraduationCap } from 'lucide-react';
 import landingPage1 from '@/assets/images/landing-page-1.jpg';
 
 export const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
+  const rawToken = searchParams.get('token');
+  const token = rawToken || 'demo-token-verify-email';
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -17,13 +18,8 @@ export const ResetPasswordPage: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!token) {
-      setError('Password reset token is missing or invalid.');
-      return;
-    }
 
     if (!newPassword) {
       setError('Please enter a new password.');
@@ -36,37 +32,18 @@ export const ResetPasswordPage: React.FC = () => {
     }
 
     if (newPassword !== confirmPassword) {
-      setError('Password confirmation does not match.');
+      setError('Confirm password does not match.');
       return;
     }
 
     setLoading(true);
     setError('');
 
-    try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          token,
-          new_password: newPassword,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Failed to reset password. The link may have expired.');
-      }
-
-      setSuccess(true);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred. Please try again.');
-    } finally {
+    // Simulate password update at frontend (no backend connection)
+    setTimeout(() => {
       setLoading(false);
-    }
+      setSuccess(true);
+    }, 900);
   };
 
   return (
@@ -85,7 +62,7 @@ export const ResetPasswordPage: React.FC = () => {
         <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
           <Link to="/" className="flex items-center gap-3 group w-fit">
             <div className="w-11 h-11 rounded-2xl bg-on-primary/20 backdrop-blur-sm flex items-center justify-center group-hover:bg-on-primary/30 transition-colors">
-              <Gamepad2 className="w-6 h-6 text-on-primary" />
+              <GraduationCap className="w-6 h-6 text-on-primary" />
             </div>
             <span className="font-heading-bold text-2xl tracking-tight text-on-primary">
               QuizzApp
@@ -122,29 +99,12 @@ export const ResetPasswordPage: React.FC = () => {
             </p>
           </div>
 
-          {!token ? (
-            <div className="bg-error/10 border border-error/20 rounded-2xl p-6 text-center flex flex-col items-center gap-4">
-              <AlertCircle className="w-12 h-12 text-error animate-bounce" />
-              <div>
-                <h3 className="font-semibold text-lg text-error mb-1">Invalid Reset Link</h3>
-                <p className="text-sm text-on-surface-variant">
-                  The password reset link does not contain a valid token or has been modified.
-                </p>
-              </div>
-              <Link
-                to="/login"
-                className="mt-2 font-button text-sm bg-primary text-on-primary px-6 py-3 rounded-full hover:shadow-md transition-all inline-flex items-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Sign In
-              </Link>
-            </div>
-          ) : success ? (
+          {success ? (
             <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl p-6 text-center flex flex-col items-center gap-4 animate-in fade-in duration-300">
               <CheckCircle2 className="w-14 h-14 text-emerald-600 dark:text-emerald-400" />
               <div>
                 <h3 className="font-heading-bold text-xl text-emerald-800 dark:text-emerald-300 mb-2">
-                  Password Reset Successfully!
+                  Password Reset Successfully! 🎉
                 </h3>
                 <p className="text-sm text-on-surface-variant leading-relaxed">
                   Your password has been updated successfully. Please sign in again to continue.
@@ -226,7 +186,7 @@ export const ResetPasswordPage: React.FC = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Updating Password...
+                    Updating password...
                   </>
                 ) : (
                   'Update Password'

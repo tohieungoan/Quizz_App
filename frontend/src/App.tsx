@@ -36,6 +36,7 @@ const App: React.FC = () => {
     location.pathname === '/login' ||
     location.pathname === '/register' ||
     location.pathname === '/reset-password' ||
+    location.pathname === '/verify-email' ||
     location.pathname.startsWith('/dashboard') ||
     location.pathname === '/lobby' ||
     location.pathname === '/exam' ||
@@ -57,6 +58,7 @@ const App: React.FC = () => {
         <Route path="/login" element={<AuthPage />} />
         <Route path="/register" element={<AuthPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<ResetPasswordPage />} />
 
         <Route path="/dashboard" element={<Dashboard />} />
         <Route

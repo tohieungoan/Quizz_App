@@ -1,4 +1,4 @@
 """
-API Endpoints cho quản lý bộ câu hỏi (Quizzes).
-Bao gồm: Lấy danh sách quizzes, tạo quiz mới, cập nhật câu hỏi, xóa quiz...
+API Endpoints for Quiz management.
+Includes: Fetching quiz list, creating new quizzes, updating questions, deleting quizzes...
 """
