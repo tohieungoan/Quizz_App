@@ -15,10 +15,7 @@ export function Notifications() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
           <div>
-            <h1 className="font-headline-xl text-[28px] text-primary font-extrabold tracking-tight flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#8b5cf6] flex items-center justify-center shadow-sm">
-                <Bell className="w-5 h-5 text-white" />
-              </div>
+            <h1 className="font-headline-xl text-[28px] text-on-surface font-extrabold tracking-tight">
               Notifications & Alerts
             </h1>
             <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">

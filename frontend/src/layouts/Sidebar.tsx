@@ -34,12 +34,12 @@ export function Sidebar({ currentView, onNavigate, isOpen, onToggle }: SidebarPr
           <ChevronLeft className={`w-5 h-5 transition-transform duration-300 ${!isOpen ? 'rotate-180' : ''}`} />
         </button>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary shrink-0 flex items-center justify-center shadow-sm">
-            <GraduationCap className="w-6 h-6 text-on-primary" fill="currentColor" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary shrink-0 flex items-center justify-center shadow-md">
+            <GraduationCap className="w-5.5 h-5.5 text-white" />
           </div>
           {isOpen && (
             <div className="overflow-hidden whitespace-nowrap transition-all duration-300">
-              <h1 className="text-headline-md font-bold text-primary leading-tight tracking-tight">EduQuest</h1>
+              <h1 className="text-headline-md font-bold text-primary leading-tight tracking-tight">QuizzApp</h1>
               <span className="text-label-bold text-on-surface-variant text-xs opacity-80 uppercase tracking-widest mt-0.5 block">Admin Central</span>
             </div>
           )}

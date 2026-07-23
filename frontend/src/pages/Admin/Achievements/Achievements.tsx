@@ -141,18 +141,6 @@ export function Achievements() {
     })));
   };
 
-  const handleRevokeUser = (userId: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Revoke Badge',
-      message: 'Are you sure you want to revoke this badge from the user? They will lose all associated perks.',
-      onConfirm: () => {
-        setUnlockedUsers(prev => prev.filter(u => u.id !== userId));
-        setConfirmDialog(null);
-      }
-    });
-  };
-
   return (
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
       <div className="py-gutter w-full flex flex-col gap-6 pb-20 max-w-6xl">
@@ -160,10 +148,7 @@ export function Achievements() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="font-headline-xl text-[28px] text-primary font-extrabold tracking-tight flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-[#8b5cf6] flex items-center justify-center shadow-sm">
-                <Award className="w-5 h-5 text-white" />
-              </div>
+            <h1 className="font-headline-xl text-[28px] text-on-surface font-extrabold tracking-tight">
               Achievement Management
             </h1>
             <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
@@ -590,13 +575,7 @@ export function Achievements() {
                           <div className="text-[11px] font-medium text-slate-500">Earned on {user.date}</div>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => handleRevokeUser(user.id)}
-                        className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-error hover:bg-error/10 rounded-lg transition-all"
-                        title="Revoke badge"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
                     </div>
                   ))}
                 </div>
