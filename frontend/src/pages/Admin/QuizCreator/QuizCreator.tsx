@@ -1,8 +1,10 @@
 import { ArrowLeft, Wrench, X, List, CheckSquare, AlignLeft, Sparkles, ArrowRight, Check, Plus, Trash2, Edit2, Image as ImageIcon, Mic, UploadCloud, GripVertical, CopyPlus } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { QuestionBankModal } from '@/components/ui/QuestionBankModal';
+import { CloudUpload, CloudUploadRef } from '@/components/ui/CloudUpload';
+import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
 import { DUMMY_QUIZZES } from '@/data/mockDb';
 
 export type QuestionType = 'multiple' | 'truefalse' | 'short';
@@ -13,6 +15,8 @@ export interface BaseQuestion {
   text: string;
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
   timeLimit: number;
+  mediaUrl?: string;
+  audioUrl?: string;
 }
 
 export interface MultipleChoiceQuestion extends BaseQuestion {
@@ -46,6 +50,19 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [shortCorrect, setShortCorrect] = useState('');
   const [qDifficulty, setQDifficulty] = useState<'EASY'|'MEDIUM'|'HARD'>('MEDIUM');
   const [qTimeLimit, setQTimeLimit] = useState<number>(60);
+  const [mediaUrl, setMediaUrl] = useState<string | undefined>();
+  const [audioUrl, setAudioUrl] = useState<string | undefined>();
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+
+  const imageUploadRef = useRef<CloudUploadRef>(null);
+  const audioUploadRef = useRef<CloudUploadRef>(null);
+
+  const { uploadFile: uploadMedia, deleteFile: deleteMediaFile, isUploading: isUploadingMedia } = useCloudinaryUpload();
+  const { uploadFile: uploadAudio, deleteFile: deleteAudioFile, isUploading: isUploadingAudio } = useCloudinaryUpload();
+  
+  // Track assets uploaded during this specific draft session so we can clean them up if replaced
+  const [draftUploadedUrls, setDraftUploadedUrls] = useState<Set<string>>(new Set());
   
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -64,6 +81,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [alertState, setAlertState] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
+  const [formResetKey, setFormResetKey] = useState(0);
 
   const handleStartBuild = (type: QuestionType) => {
     setEditingType(type);
@@ -74,7 +92,13 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setShortCorrect('');
     setQDifficulty('MEDIUM');
     setQTimeLimit(60);
+    setMediaUrl(undefined);
+    setAudioUrl(undefined);
+    setMediaFile(null);
+    setAudioFile(null);
+    setShowUploadType(null);
     setEditingId(null);
+    setFormResetKey(prev => prev + 1);
     
     // Scroll to top of the builder area
     setTimeout(() => {
@@ -88,7 +112,13 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setQText(q.text);
     setQDifficulty(q.difficulty);
     setQTimeLimit(q.timeLimit);
+    setMediaUrl(q.mediaUrl);
+    setAudioUrl(q.audioUrl);
+    setMediaFile(null);
+    setAudioFile(null);
+    setShowUploadType(null);
     setEditingId(q.id);
+    setFormResetKey(prev => prev + 1);
     if (q.type === 'multiple') {
       setMcOptions(q.options);
       setMcCorrect(q.correctAnswer);
@@ -106,11 +136,35 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   };
 
   const handleDuplicateQuestion = (q: Question) => {
+    // Determine the base text and the next copy number
+    const baseText = q.text.replace(/\s*\(Copy( \d+)?\)$/, '');
+    let maxCopyNum = 0;
+    
+    questions.forEach(item => {
+      if (item.text === baseText) {
+        maxCopyNum = Math.max(maxCopyNum, 0);
+      } else if (item.text.startsWith(baseText + ' (Copy ')) {
+        const suffix = item.text.substring((baseText + ' (Copy ').length);
+        const numMatch = suffix.match(/^(\d+)\)$/);
+        if (numMatch) {
+          maxCopyNum = Math.max(maxCopyNum, parseInt(numMatch[1], 10));
+        }
+      }
+    });
+    
+    const newText = `${baseText} (Copy ${maxCopyNum + 1})`;
+
     setEditingType(q.type);
-    setQText(q.text + ' (Copy)');
+    setQText(newText);
     setQDifficulty(q.difficulty);
     setQTimeLimit(q.timeLimit);
+    setMediaUrl(q.mediaUrl);
+    setAudioUrl(q.audioUrl);
+    setMediaFile(null);
+    setAudioFile(null);
     setEditingId(null);
+    setFormResetKey(prev => prev + 1);
+    
     if (q.type === 'multiple') {
       setMcOptions([...q.options]);
       setMcCorrect(q.correctAnswer);
@@ -127,15 +181,59 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }, 10);
   };
 
-  const handleSaveQuestion = (nextType: QuestionType | null = null) => {
+  const handleSaveQuestion = async (nextType: QuestionType | null = null) => {
     if (!qText.trim()) return;
+
+    let finalMediaUrl = mediaUrl;
+    let finalAudioUrl = audioUrl;
+
+    if (mediaFile) {
+      const url = await uploadMedia(mediaFile);
+      if (url) {
+        // If there was an old URL and it was uploaded during this draft session, delete it to prevent orphaned assets
+        if (mediaUrl && mediaUrl !== url && draftUploadedUrls.has(mediaUrl)) {
+          const isReferenced = questions.some(q => q.id !== editingId && (q.mediaUrl === mediaUrl || q.audioUrl === mediaUrl));
+          if (!isReferenced) {
+            deleteMediaFile(mediaUrl);
+            setDraftUploadedUrls(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(mediaUrl);
+              return newSet;
+            });
+          }
+        }
+        finalMediaUrl = url;
+        setDraftUploadedUrls(prev => new Set(prev).add(url));
+      }
+    }
+
+    if (audioFile) {
+      const url = await uploadAudio(audioFile);
+      if (url) {
+        if (audioUrl && audioUrl !== url && draftUploadedUrls.has(audioUrl)) {
+          const isReferenced = questions.some(q => q.id !== editingId && (q.mediaUrl === audioUrl || q.audioUrl === audioUrl));
+          if (!isReferenced) {
+            deleteAudioFile(audioUrl);
+            setDraftUploadedUrls(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(audioUrl);
+              return newSet;
+            });
+          }
+        }
+        finalAudioUrl = url;
+        setDraftUploadedUrls(prev => new Set(prev).add(url));
+      }
+    }
 
     let newQ: Question;
     const baseQ = {
-      id: editingId || Date.now().toString(),
+      id: (editingId !== null && editingId !== undefined) ? String(editingId) : Date.now().toString(),
       text: qText,
       difficulty: qDifficulty,
       timeLimit: qTimeLimit,
+      mediaUrl: finalMediaUrl,
+      audioUrl: finalAudioUrl,
     };
 
     if (editingType === 'multiple') {
@@ -146,10 +244,17 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       newQ = { ...baseQ, type: 'short', correctAnswer: shortCorrect };
     }
 
-    if (editingId) {
-      setQuestions(questions.map(q => q.id === editingId ? newQ : q));
+    if (editingId !== null && editingId !== undefined) {
+      setQuestions(prev => {
+        const hasMatch = prev.some(q => String(q.id) === String(editingId));
+        if (!hasMatch) {
+           // We'll show an alert if it somehow couldn't find the match!
+           alert("DEBUG: Không tìm thấy ID " + editingId + " trong mảng questions có độ dài " + prev.length + ". Các ID hiện có: " + prev.map(q => q.id).join(", "));
+        }
+        return prev.map(q => String(q.id) === String(editingId) ? newQ : q);
+      });
     } else {
-      setQuestions([...questions, newQ]);
+      setQuestions(prev => [...prev, newQ]);
     }
 
     if (nextType) {
@@ -158,6 +263,13 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       setEditingType(null);
       setEditingId(null);
     }
+    setMediaFile(null);
+    setAudioFile(null);
+    setMediaUrl(undefined);
+    setAudioUrl(undefined);
+    setFormResetKey(prev => prev + 1);
+    imageUploadRef.current?.reset();
+    audioUploadRef.current?.reset();
   };
 
   const handleDeleteClick = (id: string) => {
@@ -167,7 +279,32 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
   const confirmDeleteQuestion = () => {
     if (questionToDelete) {
-      setQuestions(questions.filter(q => q.id !== questionToDelete));
+      const qToDelete = questions.find(q => q.id === questionToDelete);
+      if (qToDelete) {
+        if (qToDelete.mediaUrl && draftUploadedUrls.has(qToDelete.mediaUrl)) {
+          const isReferenced = questions.some(q => q.id !== questionToDelete && (q.mediaUrl === qToDelete.mediaUrl || q.audioUrl === qToDelete.mediaUrl));
+          if (!isReferenced) {
+            deleteMediaFile(qToDelete.mediaUrl);
+            setDraftUploadedUrls(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(qToDelete.mediaUrl!);
+              return newSet;
+            });
+          }
+        }
+        if (qToDelete.audioUrl && draftUploadedUrls.has(qToDelete.audioUrl)) {
+          const isReferenced = questions.some(q => q.id !== questionToDelete && (q.mediaUrl === qToDelete.audioUrl || q.audioUrl === qToDelete.audioUrl));
+          if (!isReferenced) {
+            deleteAudioFile(qToDelete.audioUrl);
+            setDraftUploadedUrls(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(qToDelete.audioUrl!);
+              return newSet;
+            });
+          }
+        }
+      }
+      setQuestions(prev => prev.filter(q => q.id !== questionToDelete));
       setQuestionToDelete(null);
     }
   };
@@ -489,18 +626,64 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-outline-variant/50 rounded-lg text-xs font-bold text-on-surface hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all shadow-sm">
-                        <ImageIcon className="w-3.5 h-3.5 text-primary" /> Add Image
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); imageUploadRef.current?.openDialog(); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all shadow-sm ${mediaUrl || mediaFile ? 'bg-primary/10 border-primary/50 text-primary' : 'border-outline-variant/50 text-on-surface hover:text-primary hover:bg-primary/5'}`}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" /> Image
                       </button>
-                      <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-outline-variant/50 rounded-lg text-xs font-bold text-on-surface hover:text-secondary hover:border-secondary/50 hover:bg-secondary/5 transition-all shadow-sm">
-                        <Mic className="w-3.5 h-3.5 text-secondary" /> Add Audio
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); audioUploadRef.current?.openDialog(); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all shadow-sm ${audioUrl || audioFile ? 'bg-secondary/10 border-secondary/50 text-secondary' : 'border-outline-variant/50 text-on-surface hover:text-secondary hover:bg-secondary/5'}`}
+                      >
+                        <Mic className="w-3.5 h-3.5" /> Audio
                       </button>
                     </div>
                   </label>
+                  
+                  {/* UPLOAD SECTIONS */}
+                  <div className="flex flex-col gap-2">
+                    <CloudUpload 
+                      key={`img-${formResetKey}`}
+                      ref={imageUploadRef}
+                      hideDropzone={true}
+                      acceptedTypes="image/*,video/*"
+                      label={(mediaUrl || mediaFile) ? "Change Image or Video" : "Upload Image or Video for this question"}
+                      initialPreviewUrl={mediaUrl}
+                      file={mediaFile}
+                      onFileSelect={(file) => {
+                        if (file) setMediaFile(file);
+                        else { 
+                          setMediaUrl(undefined); 
+                          setMediaFile(null); 
+                        }
+                      }}
+                    />
+
+                    <CloudUpload 
+                      key={`aud-${formResetKey}`}
+                      ref={audioUploadRef}
+                      hideDropzone={true}
+                      acceptedTypes="audio/*"
+                      label={(audioUrl || audioFile) ? "Change Audio" : "Upload Audio for this question"}
+                      initialPreviewUrl={audioUrl}
+                      file={audioFile}
+                      onFileSelect={(file) => {
+                        if (file) setAudioFile(file);
+                        else { 
+                          setAudioUrl(undefined); 
+                          setAudioFile(null); 
+                        }
+                      }}
+                    />
+                  </div>
+
                   <textarea 
                     value={qText}
                     onChange={e => setQText(e.target.value)}
-                    className="w-full border-2 border-outline-variant/50 rounded-xl px-4 py-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none shadow-sm text-sm" 
+                    className="w-full border-2 border-outline-variant/50 rounded-xl px-4 py-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none shadow-sm text-sm mt-2" 
                     placeholder="Type your question here..." 
                     rows={3}
                   ></textarea>
@@ -642,35 +825,33 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                     </button>
                     <button 
                       type="button"
-                      onPointerDown={(e) => { 
-                        if (!qText.trim() || (editingType === 'short' && !shortCorrect.trim())) return;
-                        e.preventDefault(); 
-                        handleSaveQuestion(null); 
-                      }}
                       onClick={(e) => { 
                         e.preventDefault(); 
                         if (editingType) handleSaveQuestion(null);
                       }}
-                      disabled={!qText.trim() || (editingType === 'short' && !shortCorrect.trim())}
+                      disabled={!qText.trim() || (editingType === 'short' && !shortCorrect.trim()) || isUploadingMedia || isUploadingAudio}
                       className="font-bold text-sm bg-white border-2 border-primary text-primary px-5 py-2.5 rounded-lg flex items-center justify-center gap-1.5 active:bg-primary/10 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Check className="w-4 h-4" /> Save
+                      {isUploadingMedia || isUploadingAudio ? (
+                        <>Uploading...</>
+                      ) : (
+                        <><Check className="w-4 h-4" /> Save</>
+                      )}
                     </button>
                     <button 
                       type="button"
-                      onPointerDown={(e) => { 
-                        if (!qText.trim() || (editingType === 'short' && !shortCorrect.trim())) return;
-                        e.preventDefault(); 
-                        handleSaveQuestion(editingType); 
-                      }}
                       onClick={(e) => { 
                         e.preventDefault(); 
                         if (editingType) handleSaveQuestion(editingType);
                       }}
-                      disabled={!qText.trim() || (editingType === 'short' && !shortCorrect.trim())}
+                      disabled={!qText.trim() || (editingType === 'short' && !shortCorrect.trim()) || isUploadingMedia || isUploadingAudio}
                       className="font-bold text-sm bg-primary text-on-primary px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 active:bg-primary/80 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Plus className="w-4 h-4" /> Save & Next
+                      {isUploadingMedia || isUploadingAudio ? (
+                        <>Uploading...</>
+                      ) : (
+                        <><Plus className="w-4 h-4" /> Save & Next</>
+                      )}
                     </button>
                   </div>
                 </div>
