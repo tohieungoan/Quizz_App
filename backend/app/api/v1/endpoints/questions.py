@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Background
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_active_admin
+from app.api.deps import get_db, get_current_active_user
 from app.crud.crud_question import crud_question
 from app.crud.crud_quiz import crud_quiz
 from app.schemas.question import QuestionCreate, QuestionUpdate, QuestionResponse
@@ -16,11 +16,11 @@ def create_question(
     quiz_id: int,
     question_in: QuestionCreate,
     db: Session = Depends(get_db),
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
     Create a new question (and its options) inside a specific quiz.
-    Requires Admin privileges.
+    Requires an active user.
     """
     # Verify quiz exists
     quiz = crud_quiz.get(db=db, quiz_id=quiz_id)
@@ -56,7 +56,7 @@ def update_question(
     question_in: QuestionUpdate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
     Update a question (excluding options for now).
@@ -89,7 +89,7 @@ def delete_question(
     question_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
     Delete a question and its options.
