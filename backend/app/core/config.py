@@ -1,6 +1,6 @@
 """
-Cấu hình cốt lõi của ứng dụng.
-Đọc các biến môi trường từ file .env sử dụng Pydantic BaseSettings.
+Core configuration of the application.
+Reads environment variables from the .env file using Pydantic BaseSettings.
 """
 from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict

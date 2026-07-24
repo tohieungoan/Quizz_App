@@ -1,7 +1,7 @@
 """
-Các tác vụ chạy ngầm (Background Tasks) và Tác vụ lên lịch (Cron Jobs).
-Ví dụ: 
-- Tự động quét đóng bài thi hết hạn từ Pending/Active -> Closed.
-- Gửi email thông báo kết quả thi hoặc nhắc nhở làm bài.
-- Tự động dọn dẹp các tệp tạm sau 7 ngày.
+Background Tasks and Scheduled Tasks (Cron Jobs).
+Example:
+- Automatically scan and close expired exams from Pending/Active -> Closed.
+- Send email notifications for exam results or reminders to take exams.
+- Automatically clean up temporary files after 7 days.
 """

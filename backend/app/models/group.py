@@ -12,6 +12,7 @@ class Group(Base):
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    icon: Mapped[Optional[str]] = mapped_column(String, default="GraduationCap", nullable=True)
     status: Mapped[str] = mapped_column(String, default="OPEN")
     group_code: Mapped[Optional[str]] = mapped_column(String, unique=True, index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

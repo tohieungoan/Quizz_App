@@ -15,17 +15,17 @@ def send_email(
     html_content: str,
 ) -> bool:
     """
-    Gửi Email qua SMTP Server được cấu hình trong settings.
+    Send Email via SMTP Server configured in settings.
     """
     if not settings.SMTP_USER or settings.SMTP_USER == "your_email@gmail.com":
         logger.warning(
-            f"[SMTP] Chưa cấu hình SMTP_USER thực tế trong file .env. Bỏ qua bước gửi email tới: {email_to}"
+            f"[SMTP] Real SMTP_USER is not configured in .env. Skipping email sending to: {email_to}"
         )
         return False
 
     if not settings.SMTP_PASSWORD or settings.SMTP_PASSWORD == "your_app_password":
         logger.warning(
-            f"[SMTP] Chưa cấu hình SMTP_PASSWORD thực tế trong file .env. Bỏ qua bước gửi email tới: {email_to}"
+            f"[SMTP] Real SMTP_PASSWORD is not configured in .env. Skipping email sending to: {email_to}"
         )
         return False
 
@@ -38,28 +38,28 @@ def send_email(
         html_part = MIMEText(html_content, "html", "utf-8")
         msg.attach(html_part)
 
-        # Kết nối tới SMTP Server
+        # Connect to SMTP Server
         server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15)
         if settings.SMTP_TLS:
             server.starttls()
         
-        # Tự động loại bỏ khoảng trắng trong Mật khẩu ứng dụng
+        # Automatically remove whitespace in App Password
         smtp_pass = settings.SMTP_PASSWORD.replace(" ", "")
         server.login(settings.SMTP_USER, smtp_pass)
         server.sendmail(settings.EMAILS_FROM_EMAIL or settings.SMTP_USER, email_to, msg.as_string())
         server.quit()
 
 
-        logger.info(f"[SMTP] Đã gửi email thành công tới: {email_to}")
+        logger.info(f"[SMTP] Successfully sent email to: {email_to}")
         return True
     except Exception as e:
-        logger.error(f"[SMTP] Lỗi khi gửi email tới {email_to}: {str(e)}")
+        logger.error(f"[SMTP] Error sending email to {email_to}: {str(e)}")
         return False
 
 
 def send_reset_password_email(email_to: str, reset_url: str) -> bool:
     """
-    Tạo Email HTML mẫu và gửi đường dẫn khôi phục mật khẩu.
+    Create sample HTML Email and send password reset link.
     """
     subject = "QuizzApp - Password Reset Request"
     html_content = f"""
@@ -114,7 +114,7 @@ def send_reset_password_email(email_to: str, reset_url: str) -> bool:
 
 def send_verification_email(email_to: str, verify_url: str) -> bool:
     """
-    Gửi Email chứa liên kết xác minh tài khoản mới đăng ký.
+    Send Email containing verification link for newly registered account.
     """
     subject = "QuizzApp - Please Verify Your Email Address"
     html_content = f"""

@@ -29,8 +29,30 @@ import {
   Download,
   BarChart2,
   FileSpreadsheet,
+  Brain,
+  Trophy,
+  Award,
+  Globe,
+  Atom,
+  Calculator,
+  Laptop,
+  Compass,
+  GraduationCap
 } from 'lucide-react';
 import { HOST_QUIZZES_LIST, HOST_GROUPS_LIST, HostGroup, GroupMember, USER_ASSIGNED_EXAMS, AssignedExam } from '@/data/userData';
+
+const GROUP_ICONS = {
+  GraduationCap,
+  BookOpen,
+  Brain,
+  Trophy,
+  Award,
+  Globe,
+  Atom,
+  Calculator,
+  Laptop,
+  Compass,
+};
 
 export interface HostAssignedExam {
   id: number;
@@ -98,6 +120,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<HostGroup | null>(null);
   const [groupName, setGroupName] = useState('');
+  const [groupIcon, setGroupIcon] = useState('GraduationCap');
   const [groupDescription, setGroupDescription] = useState('');
   const [groupJoinCode, setGroupJoinCode] = useState('');
   const [groupIsLocked, setGroupIsLocked] = useState(false);
@@ -256,8 +279,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
   const handleExportExamExcel = (exam: HostAssignedExam) => {
     const analytics = MOCK_QUESTION_ANALYTICS[exam.id] || [
-      { id: 1, question: "Khái niệm về phản ứng nhiệt hóa sinh trong tế bào?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Phản ứng phân giải protein", correctAnswer: "C. Phản ứng tổng hợp ATP" },
-      { id: 2, question: "Cấu trúc ti thể gồm mấy lớp màng bao bọc?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 lớp màng đơn", correctAnswer: "B. 2 lớp màng đôi" }
+      { id: 1, question: "Biochemical reactions concepts in cells?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Protein breakdown reaction", correctAnswer: "C. ATP synthesis reaction" },
+      { id: 2, question: "How many membrane layers does a mitochondrion have?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 single membrane", correctAnswer: "B. 2 double membranes" }
     ];
 
     const htmlTemplate = `
@@ -397,6 +420,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const handleOpenCreateModal = () => {
     setEditingGroup(null);
     setGroupName('');
+    setGroupIcon('GraduationCap');
     setGroupDescription('');
     setGroupJoinCode(`GRP-${Math.floor(1000 + Math.random() * 9000)}`);
     setGroupIsLocked(false);
@@ -406,6 +430,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const handleOpenEditModal = (group: HostGroup) => {
     setEditingGroup(group);
     setGroupName(group.name);
+    setGroupIcon(group.icon || 'GraduationCap');
     setGroupDescription(group.description || '');
     setGroupJoinCode(group.joinCode || group.id);
     setGroupIsLocked(group.isLocked || false);
@@ -428,6 +453,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               description: groupDescription.trim(),
               joinCode: finalJoinCode,
               isLocked: groupIsLocked,
+              icon: groupIcon,
             }
             : g
         )
@@ -441,6 +467,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               description: groupDescription.trim(),
               joinCode: finalJoinCode,
               isLocked: groupIsLocked,
+              icon: groupIcon,
             }
             : null
         );
@@ -452,6 +479,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         description: groupDescription.trim() || 'No description provided.',
         joinCode: finalJoinCode,
         isLocked: groupIsLocked,
+        icon: groupIcon,
         membersCount: 0,
         members: [],
         pendingRequests: [],
@@ -834,17 +862,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                             onClick={() => handleToggleExamStatus(exam.id)}
                             title="Click to toggle status (Pending → Active → Closed)"
                             className={`text-[10px] font-bold px-2.5 py-1 rounded-full transition-all flex items-center gap-1.5 ${exam.status === 'Active'
-                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                : exam.status === 'Pending'
-                                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                              : exam.status === 'Pending'
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                               }`}
                           >
                             <span className={`w-1.5 h-1.5 rounded-full inline-block ${exam.status === 'Active'
-                                ? 'bg-emerald-500'
-                                : exam.status === 'Pending'
-                                  ? 'bg-amber-500 animate-pulse'
-                                  : 'bg-slate-400'
+                              ? 'bg-emerald-500'
+                              : exam.status === 'Pending'
+                                ? 'bg-amber-500 animate-pulse'
+                                : 'bg-slate-400'
                               }`} />
                             {exam.status === 'Pending' ? 'Pending (Đang chờ)' : exam.status}
                           </button>
@@ -1067,21 +1095,21 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       type="button"
                       onClick={() => setExamStatus(s)}
                       className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${examStatus === s
-                          ? s === 'Active'
-                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
-                            : s === 'Pending'
-                              ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                              : 'bg-slate-500 text-white border-slate-500 shadow-sm'
-                          : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-secondary/40'
+                        ? s === 'Active'
+                          ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                          : s === 'Pending'
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                            : 'bg-slate-500 text-white border-slate-500 shadow-sm'
+                        : 'bg-white text-on-surface-variant border-outline-variant/40 hover:border-secondary/40'
                         }`}
                     >
                       <span className={`w-1.5 h-1.5 rounded-full ${examStatus === s
-                          ? 'bg-white'
-                          : s === 'Active'
-                            ? 'bg-emerald-400'
-                            : s === 'Pending'
-                              ? 'bg-amber-400'
-                              : 'bg-slate-400'
+                        ? 'bg-white'
+                        : s === 'Active'
+                          ? 'bg-emerald-400'
+                          : s === 'Pending'
+                            ? 'bg-amber-400'
+                            : 'bg-slate-400'
                         }`} />
                       {s === 'Pending' ? 'Pending' : s}
                     </button>
@@ -1196,17 +1224,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <div
                     key={sub.studentId}
                     className={`flex items-center justify-between p-4 rounded-2xl border transition-all gap-3 ${sub.status === 'Submitted'
-                        ? 'bg-emerald-50/40 border-emerald-200/60'
-                        : sub.status === 'In Progress'
-                          ? 'bg-amber-50/40 border-amber-200/60'
-                          : 'bg-slate-50/60 border-slate-200/40'
+                      ? 'bg-emerald-50/40 border-emerald-200/60'
+                      : sub.status === 'In Progress'
+                        ? 'bg-amber-50/40 border-amber-200/60'
+                        : 'bg-slate-50/60 border-slate-200/40'
                       }`}
                   >
                     {/* Student info */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className={`w-10 h-10 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 ${sub.status === 'Submitted' ? 'bg-emerald-200 text-emerald-900'
-                          : sub.status === 'In Progress' ? 'bg-amber-200 text-amber-900 animate-pulse'
-                            : 'bg-slate-200 text-slate-700'
+                        : sub.status === 'In Progress' ? 'bg-amber-200 text-amber-900 animate-pulse'
+                          : 'bg-slate-200 text-slate-700'
                         }`}>
                         {sub.studentName.charAt(0)}
                       </div>
@@ -1223,8 +1251,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     <div className="flex items-center gap-2 shrink-0">
                       {/* Status badge */}
                       <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${sub.status === 'Submitted' ? 'bg-emerald-100 text-emerald-800'
-                          : sub.status === 'In Progress' ? 'bg-amber-100 text-amber-800'
-                            : 'bg-slate-100 text-slate-600'
+                        : sub.status === 'In Progress' ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-100 text-slate-600'
                         }`}>
                         {sub.status}
                       </span>
@@ -1393,7 +1421,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <div className="space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="w-12 h-12 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center font-bold relative">
-                        <Users className="w-6 h-6" />
+                        {(() => {
+                          const IconComponent = GROUP_ICONS[group.icon as keyof typeof GROUP_ICONS] || Users;
+                          return <IconComponent className="w-6 h-6" />;
+                        })()}
                         {pendingCount > 0 && (
                           <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-white rounded-full text-[10px] font-black flex items-center justify-center animate-bounce">
                             {pendingCount}
@@ -1406,8 +1437,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         <button
                           onClick={() => handleToggleLock(group.id)}
                           className={`p-2 rounded-xl transition-all flex items-center gap-1 text-xs font-bold ${group.isLocked
-                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                              : 'bg-green-100 text-green-800 hover:bg-green-200'
+                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                            : 'bg-green-100 text-green-800 hover:bg-green-200'
                             }`}
                           title={group.isLocked ? 'Group is LOCKED (Click to Unlock)' : 'Group is OPEN (Click to Lock)'}
                         >
@@ -1549,21 +1580,49 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
-                  Member Join Code
+                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">
+                  Select Group Icon <span className="text-error">*</span>
                 </label>
-                <div className="relative">
-                  <Key className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="e.g. PHYS-ALPHA"
-                    value={groupJoinCode}
-                    onChange={(e) => setGroupJoinCode(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-secondary/20"
-                  />
+                <div className="grid grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-2">
+                  {Object.entries(GROUP_ICONS).map(([iconName, IconComponent]) => {
+                    const isSelected = groupIcon === iconName;
+                    return (
+                      <button
+                        key={iconName}
+                        type="button"
+                        onClick={() => setGroupIcon(iconName)}
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${isSelected
+                            ? 'bg-secondary text-white shadow-md scale-105 font-bold'
+                            : 'bg-white text-on-surface-variant hover:text-secondary border border-outline-variant/30 hover:border-secondary/50'
+                          }`}
+                        title={iconName}
+                      >
+                        <IconComponent className="w-4.5 h-4.5" />
+                      </button>
+                    );
+                  })}
                 </div>
-                <p className="text-[11px] text-on-surface-variant mt-1">Members will use this code to request entry.</p>
               </div>
+
+              {editingGroup && (
+                <div>
+                  <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
+                    Member Join Code
+                  </label>
+                  <div className="relative">
+                    <Key className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="e.g. PHYS-ALPHA"
+                      value={groupJoinCode}
+                      onChange={(e) => setGroupJoinCode(e.target.value)}
+                      disabled={true}
+                      className="w-full pl-10 pr-4 py-2.5 border rounded-xl text-xs font-mono font-bold uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-secondary/20 bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200"
+                    />
+                  </div>
+                  <p className="text-[11px] text-on-surface-variant mt-1">Members will use this code to request entry.</p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
@@ -1583,7 +1642,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <div className="space-y-0.5">
                   <span className="text-xs font-bold text-on-surface flex items-center gap-1.5">
                     {groupIsLocked ? <Lock className="w-4 h-4 text-amber-600" /> : <Unlock className="w-4 h-4 text-green-600" />}
-                    Lock Group (Khóa nhóm)
+                    Lock Group
                   </span>
                   <p className="text-[11px] text-on-surface-variant">Prevent new student join requests</p>
                 </div>
@@ -1758,10 +1817,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                               <div
                                 key={sIdx}
                                 className={`px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center justify-between ${scoreItem.status === 'Completed'
-                                    ? 'bg-emerald-50/50 border-emerald-200/60'
-                                    : scoreItem.status === 'In Progress'
-                                      ? 'bg-amber-50/50 border-amber-200/60'
-                                      : 'bg-slate-50 border-slate-200/60'
+                                  ? 'bg-emerald-50/50 border-emerald-200/60'
+                                  : scoreItem.status === 'In Progress'
+                                    ? 'bg-amber-50/50 border-amber-200/60'
+                                    : 'bg-slate-50 border-slate-200/60'
                                   }`}
                               >
                                 <span className="font-medium truncate text-on-surface max-w-[110px]" title={scoreItem.examTitle}>

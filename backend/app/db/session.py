@@ -1,5 +1,5 @@
 """
-Khởi tạo kết nối Database (engine) và SessionLocal từ SQLAlchemy dựa trên DATABASE_URL trong config.
+Initialize Database connection (engine) and SessionLocal from SQLAlchemy based on DATABASE_URL in config.
 """
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

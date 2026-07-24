@@ -103,6 +103,7 @@ export interface HostGroup {
   isLocked: boolean;
   membersCount: number;
   description?: string;
+  icon?: string;
   members?: GroupMember[];
   pendingRequests?: GroupMember[];
 }
@@ -300,6 +301,7 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
     isLocked: false,
     membersCount: 3,
     description: 'Alpha team members taking advanced physics coursework.',
+    icon: 'GraduationCap',
     members: [
       {
         id: 'M-1',
@@ -356,6 +358,7 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
     isLocked: true,
     membersCount: 2,
     description: 'Intensive English language & literature study group.',
+    icon: 'BookOpen',
     members: [
 
       {
@@ -394,6 +397,7 @@ export const HOST_GROUPS_LIST: HostGroup[] = [
     isLocked: false,
     membersCount: 2,
     description: 'CS honors section focusing on algorithms and web dev.',
+    icon: 'Brain',
     members: [
       {
         id: 'M-6',

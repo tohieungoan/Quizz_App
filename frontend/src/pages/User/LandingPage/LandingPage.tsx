@@ -80,7 +80,7 @@ export const LandingPage: React.FC = () => {
     if (isValid) {
       setIsConnecting(true)
       setTimeout(() => {
-        // Chuyển sang Lobby với state roomCode và nickname
+        // Navigate to Lobby with state roomCode and nickname
         navigate('/lobby', { state: { roomCode, nickname: nickname.trim(), isHost: false, fromSource: 'landing' } })
       }, 800)
     }

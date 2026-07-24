@@ -1,4 +1,4 @@
 """
-Thư mục services chứa xử lý logic nghiệp vụ phức tạp.
-Ví dụ: payment.py xử lý tích hợp cổng thanh toán, gọi API bên thứ 3, hoặc tính toán logic nâng cao.
+The services directory contains complex business logic handling.
+Example: payment.py handles payment gateway integration, calling third-party APIs, or advanced logic calculations.
 """

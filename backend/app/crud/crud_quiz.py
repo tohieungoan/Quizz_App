@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.quiz import Quiz
 from app.schemas.quiz import QuizCreate, QuizUpdate
 
+
 class CRUDQuiz:
     def get(self, db: Session, quiz_id: int) -> Optional[Quiz]:
         """Get quiz by ID."""
@@ -54,5 +55,6 @@ class CRUDQuiz:
             db.delete(db_obj)
             db.commit()
         return db_obj
+
 
 crud_quiz = CRUDQuiz()
