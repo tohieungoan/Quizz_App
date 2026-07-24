@@ -1,7 +1,7 @@
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_active_admin
+from app.api.deps import get_db, get_current_active_user
 from app.crud.crud_quiz import crud_quiz
 from app.schemas.quiz import QuizCreate, QuizUpdate, QuizResponse, QuizPageResponse
 from app.utils.cloudinary_utils import delete_cloudinary_asset_bg
@@ -14,13 +14,13 @@ def create_quiz(
     *,
     db: Session = Depends(get_db),
     quiz_in: QuizCreate,
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
     Create a new empty quiz (shell). 
-    Requires Admin privileges. The quiz will be linked to the creator.
+    Requires an active user. The quiz will be linked to the creator.
     """
-    quiz = crud_quiz.create_with_user(db=db, obj_in=quiz_in, user_id=current_admin.id)
+    quiz = crud_quiz.create_with_user(db=db, obj_in=quiz_in, user_id=current_user.id)
     return quiz
 
 
@@ -29,7 +29,7 @@ def read_all_quizzes(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
     Retrieve all quizzes in the system.
@@ -47,7 +47,7 @@ def read_all_quizzes(
 def read_quiz(
     quiz_id: int,
     db: Session = Depends(get_db),
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
     Get detailed information about a specific quiz (Admin only).
@@ -67,10 +67,10 @@ def update_quiz(
     db: Session = Depends(get_db),
     quiz_id: int,
     quiz_in: QuizUpdate,
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
-    Update a quiz. You must be an Admin and the creator of the quiz to update it.
+    Update a quiz. You must be an active user and the creator of the quiz to update it.
     """
     quiz = crud_quiz.get(db=db, quiz_id=quiz_id)
     if not quiz:
@@ -86,10 +86,10 @@ def delete_quiz(
     db: Session = Depends(get_db),
     quiz_id: int,
     background_tasks: BackgroundTasks,
-    current_admin=Depends(get_current_active_admin),
+    current_user=Depends(get_current_active_user),
 ) -> Any:
     """
-    Delete a quiz. You must be an Admin and the creator of the quiz to delete it.
+    Delete a quiz. You must be an active user and the creator of the quiz to delete it.
     """
     quiz = crud_quiz.get(db=db, quiz_id=quiz_id)
     if not quiz:
