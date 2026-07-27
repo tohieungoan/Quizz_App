@@ -1,6 +1,7 @@
 import logging
 import cloudinary
 import cloudinary.uploader
+from typing import Optional
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ cloudinary.config(
     api_secret=settings.CLOUDINARY_API_SECRET
 )
 
-def extract_public_id(url: str) -> str:
+def extract_public_id(url: str) -> Optional[str]:
     """
     Extract the Cloudinary public_id from a full secure_url.
     Handles URLs with or without transformations and versions.

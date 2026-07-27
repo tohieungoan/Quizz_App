@@ -64,8 +64,8 @@ class BadgeResponse(BadgeBase):
 class BadgePageResponse(BaseModel):
     data: List[BadgeResponse]
     total: int
-    skip: int
-    limit: int
+    pageIndex: int
+    pageSize: int
 
 
 class BadgeUserResponse(BaseModel):
