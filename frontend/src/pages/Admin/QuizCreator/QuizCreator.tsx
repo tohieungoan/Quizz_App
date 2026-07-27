@@ -40,7 +40,6 @@ export type Question = MultipleChoiceQuestion | TrueFalseQuestion | ShortAnswerQ
 export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, initialData?: any }) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [editingType, setEditingType] = useState<QuestionType | null>(null);
-  const [mobileTab, setMobileTab] = useState<'build' | 'settings'>('build');
   
   // Builder State
   const [qText, setQText] = useState('');
@@ -77,7 +76,6 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);
   
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
-  const [bankModalOpen, setBankModalOpen] = useState(false);
   const [alertState, setAlertState] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
@@ -388,8 +386,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   };
 
   return (
-    <div className="h-[calc(100dvh-64px)] md:h-[calc(100dvh-80px)] w-full flex flex-col overflow-hidden bg-surface-container-lowest text-on-surface">
-      <header className="h-14 md:h-16 shrink-0 flex items-center justify-between px-3 md:px-6 bg-surface-container-lowest/80 backdrop-blur-md border-b border-outline-variant/50 sticky top-0 z-20">
+    <div className="h-screen flex flex-col bg-surface-container-lowest text-on-surface">
+      <header className="h-14 md:h-16 shrink-0 flex items-center justify-between px-3 md:px-6 bg-surface-container-lowest border-b border-outline-variant/50">
         <div className="flex items-center gap-2 md:gap-4">
           <button onClick={handleCancelClick} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high text-on-surface transition-colors">
             <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
@@ -403,27 +401,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         </div>
       </header>
 
-      {/* Mobile Tabs */}
-      <div className="flex md:hidden p-3 bg-surface-container-lowest border-b border-outline-variant/50 shrink-0 shadow-sm relative z-10 justify-center">
-        <div className="flex w-full max-w-sm bg-surface-container-low p-1 rounded-xl">
-          <button 
-            onClick={() => setMobileTab('build')}
-            className={`flex-1 py-2 text-[13px] font-bold text-center rounded-lg transition-all duration-300 ${mobileTab === 'build' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Build Questions
-          </button>
-          <button 
-            onClick={() => setMobileTab('settings')}
-            className={`flex-1 py-2 text-[13px] font-bold text-center rounded-lg transition-all duration-300 ${mobileTab === 'settings' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Quiz Settings
-          </button>
-        </div>
-      </div>
-
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* Left Sidebar (Settings) */}
-        <aside className={`${mobileTab === 'settings' ? 'flex' : 'hidden'} md:flex w-full md:w-80 h-full overflow-y-auto border-r border-outline-variant/50 p-4 md:p-6 flex-col gap-4 md:gap-6 bg-surface-container-low shrink-0 animate-in slide-in-from-right-4 md:animate-none`}>
+      <main className="flex-1 flex flex-col md:flex-row overflow-auto">
+        {/* Left Sidebar */}
+        <aside className="w-full md:w-80 h-full overflow-y-auto border-b md:border-b-0 md:border-r border-outline-variant/50 p-4 md:p-6 flex flex-col gap-4 md:gap-6 bg-surface-container-low shrink-0">
           <div className="bg-surface-container-lowest rounded-xl p-4 md:p-5 border border-outline-variant/50 shadow-sm flex flex-col gap-4 md:gap-5">
             <h2 className="font-headline-md text-lg">Core Information</h2>
             <div className="flex flex-col gap-1.5">
@@ -506,89 +486,75 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
         {/* Main Builder Area */}
         {/* Right Content */}
-        <section className={`${mobileTab === 'build' ? 'block' : 'hidden'} md:block flex-1 min-h-0 overflow-y-auto overscroll-none bg-surface-container-lowest p-4 md:p-8 relative animate-in slide-in-from-left-4 md:animate-none`} id="main-builder-area">
+        <section className="flex-1 min-h-0 overflow-y-auto overscroll-none bg-surface-container-lowest p-4 md:p-8 relative" id="main-builder-area">
           
           {/* Empty State / Type Selection */}
           {!editingType && (
             <div className="max-w-5xl w-full mx-auto">
               
-              {/* AI Generator Section (Premium Layout) */}
-              <div className="relative rounded-2xl p-[1px] bg-gradient-to-r from-primary via-[#8b5cf6] to-primary overflow-hidden shadow-md mb-10 hover:shadow-lg transition-shadow">
-                <div className="bg-white rounded-[15px] p-4 md:p-5 flex flex-col md:flex-row items-center gap-4 relative z-10">
-                  <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-[#8b5cf6]/20 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-primary" />
-                    </div>
-                    <h2 className="font-headline-md text-base whitespace-nowrap font-extrabold bg-gradient-to-r from-primary to-[#8b5cf6] bg-clip-text text-transparent">AI Magic Generate</h2>
-                  </div>
-                  
-                  <div className="flex-1 w-full relative">
-                    <input 
-                      type="text"
-                      className="w-full bg-surface-container-lowest border border-outline-variant/50 rounded-xl pl-4 pr-4 py-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm text-on-surface shadow-sm font-medium placeholder:text-slate-400 transition-all"
-                      placeholder="E.g. Generate 5 multiple choice questions about Quantum Physics..."
-                    />
-                  </div>
+              {/* AI Generator Section (Ultra Compact Layout) */}
+              <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-xl p-3 relative flex flex-col md:flex-row items-center gap-3 shadow-sm mb-8">
+                <div className="flex items-center gap-2 text-primary shrink-0 pl-1">
+                  <Sparkles className="w-5 h-5" />
+                  <h2 className="font-headline-md text-base whitespace-nowrap hidden sm:block">AI Magic Generate</h2>
+                </div>
+                
+                <div className="flex-1 w-full relative">
+                  <input 
+                    type="text"
+                    className="w-full bg-white border border-outline-variant/50 rounded-lg pl-3 pr-4 py-2.5 focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm text-on-surface shadow-sm"
+                    placeholder="Describe your topic to generate questions..."
+                  />
+                </div>
 
-                  <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto mt-2 md:mt-0">
-                    <button className="flex-1 md:flex-none border border-outline-variant/60 rounded-xl text-sm font-bold text-slate-600 hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 bg-surface-container-lowest px-4 py-3 shadow-sm" title="Upload Source Document">
-                      <UploadCloud className="w-4 h-4 text-primary/80" /> 
-                      <span className="hidden sm:inline">Upload File</span>
-                    </button>
+                <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                  <button className="flex-1 md:flex-none border border-outline-variant/60 rounded-lg text-sm font-medium text-on-surface-variant hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 bg-white px-4 py-2.5 shadow-sm" title="Upload Source Document (PDF, DOCX, TXT)">
+                    <UploadCloud className="w-4 h-4 text-primary/70" /> 
+                    <span>Upload File</span>
+                  </button>
 
-                    <button className="flex-1 md:flex-none px-6 py-3 bg-gradient-to-r from-primary to-[#8b5cf6] text-white rounded-xl text-sm font-bold hover:shadow-lg hover:opacity-95 transition-all shadow-md flex items-center justify-center gap-2">
-                      <Sparkles className="w-4 h-4" /> Generate
-                    </button>
-                  </div>
+                  <button className="flex-1 md:flex-none px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-bold hover:bg-primary/90 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+                    <Sparkles className="w-4 h-4" /> Generate
+                  </button>
                 </div>
               </div>
-              
               {/* Header */}
-              <div className="mb-6">
-                <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Build Your Quiz</h2>
-                <p className="text-slate-500 font-medium text-sm mt-1">Add questions manually or import them from your question bank.</p>
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold text-on-surface mb-2">Build Your Quiz</h2>
+                <p className="text-on-surface-variant">Generate a complete quiz using AI or add questions manually.</p>
               </div>
 
               {/* Manual Creation Section */}
               <div className="mb-10">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                  <button onClick={() => handleStartBuild('multiple')} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-primary/50 hover:shadow-[0_8px_24px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 text-primary flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-4">Manual Creation</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <button onClick={() => handleStartBuild('multiple')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-primary hover:shadow-md transition-all group">
+                    <div className="w-12 h-12 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
                       <List className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-primary transition-colors tracking-tight">Multiple Choice</h4>
-                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">One correct answer.</p>
+                      <h4 className="font-bold text-base text-on-surface group-hover:text-primary transition-colors">Multiple Choice</h4>
+                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Options with one correct answer.</p>
                     </div>
                   </button>
 
-                  <button onClick={() => handleStartBuild('truefalse')} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-secondary/50 hover:shadow-[0_8px_24px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-secondary/10 to-secondary/5 text-secondary flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <button onClick={() => handleStartBuild('truefalse')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-secondary hover:shadow-md transition-all group">
+                    <div className="w-12 h-12 shrink-0 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
                       <CheckSquare className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-secondary transition-colors tracking-tight">True / False</h4>
-                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">Binary choice.</p>
+                      <h4 className="font-bold text-base text-on-surface group-hover:text-secondary transition-colors">True / False</h4>
+                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Quick binary choice assessments.</p>
                     </div>
                   </button>
 
-                  <button onClick={() => handleStartBuild('short')} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-tertiary-fixed-dim/50 hover:shadow-[0_8px_24px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-tertiary-fixed-dim/10 to-tertiary-fixed-dim/5 text-tertiary-fixed-dim flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <button onClick={() => handleStartBuild('short')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-tertiary-fixed-dim hover:shadow-md transition-all group">
+                    <div className="w-12 h-12 shrink-0 rounded-xl bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
                       <AlignLeft className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-tertiary-fixed-dim transition-colors tracking-tight">Short Answer</h4>
-                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">Exact text match.</p>
-                    </div>
-                  </button>
-
-                  <button onClick={() => setBankModalOpen(true)} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-emerald-500/50 hover:shadow-[0_8px_24px_rgba(16,185,129,0.12)] hover:-translate-y-1 transition-all duration-300 group">
-                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                      <CopyPlus className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-emerald-600 transition-colors tracking-tight">Question Bank</h4>
-                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">Add from library.</p>
+                      <h4 className="font-bold text-base text-on-surface group-hover:text-tertiary-fixed-dim transition-colors">Short Answer</h4>
+                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Require exact text match answers.</p>
                     </div>
                   </button>
                 </div>
@@ -602,7 +568,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
           {/* Form Builder */}
           {editingType && (
-              <div className="shrink-0 bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 shadow-sm flex flex-col gap-6 relative overflow-hidden">
+              <div className="shrink-0 bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 shadow-sm flex flex-col gap-6 relative">
                 {/* Decorative Top Bar */}
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-tertiary-fixed-dim"></div>
 
@@ -892,7 +858,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                             <span className="text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-2.5 py-1 rounded-full whitespace-nowrap">{getTypeName(q.type)}</span>
                           </td>
                           <td className="px-6 py-4 text-sm text-on-surface font-medium">
-                            <p className="line-clamp-2 max-w-md group-hover:line-clamp-none transition-all">{q.text || 'Untitled Question'}</p>
+                            <p className="line-clamp-2 max-w-md">{q.text || 'Untitled Question'}</p>
                           </td>
                           <td className="px-6 py-4 text-xs text-on-surface-variant font-medium">
                             {q.type === 'multiple' && (
@@ -960,21 +926,6 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         title={alertState.title}
         message={alertState.message}
         type={alertState.type}
-      />
-
-      <QuestionBankModal
-        isOpen={bankModalOpen}
-        onClose={() => setBankModalOpen(false)}
-        existingQuestionIds={questions.map(q => q.id)}
-        onAddQuestions={(newQuestions) => {
-          setQuestions([...questions, ...newQuestions]);
-          setAlertState({
-            isOpen: true,
-            title: 'Questions Added',
-            message: `Successfully added ${newQuestions.length} question(s) from the bank.`,
-            type: 'success'
-          });
-        }}
       />
     </div>
   );

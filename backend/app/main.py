@@ -20,6 +20,7 @@ try:
         conn.execute(text("ALTER TABLE questions DROP COLUMN IF EXISTS media_type, ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
         conn.execute(text("ALTER TABLE question_options DROP COLUMN IF EXISTS media_type, ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
         conn.execute(text("ALTER TABLE groups ADD COLUMN IF NOT EXISTS icon VARCHAR DEFAULT 'GraduationCap';"))
+        conn.execute(text("ALTER TABLE exams ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL;"))
         conn.commit()
 except Exception:
     pass

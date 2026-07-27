@@ -11,6 +11,7 @@ class Exam(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     quiz_id: Mapped[int] = mapped_column(Integer, ForeignKey("quizzes.id"), nullable=False)
     host_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    group_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("groups.id"), nullable=True)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     start_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -23,6 +24,7 @@ class Exam(Base):
     # Relationships
     quiz = relationship("Quiz")
     host = relationship("User", foreign_keys=[host_id])
+    group = relationship("Group", foreign_keys=[group_id])
     assignees = relationship("ExamAssignee", back_populates="exam", cascade="all, delete-orphan")
 
 

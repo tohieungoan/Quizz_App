@@ -66,6 +66,8 @@ export interface HostAssignedExam {
   totalStudents: number;
   submittedCount: number;
   status: 'Pending' | 'Active' | 'Closed';
+  navigationRule?: 'FREE_NAV' | 'FIXED_NAV';
+  resultsPublished?: boolean;
   submissions?: {
     studentId: string;
     studentName: string;
@@ -182,6 +184,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const [examDue, setExamDue] = useState('');
   const [examDuration, setExamDuration] = useState<number>(60);
   const [examStatus, setExamStatus] = useState<'Pending' | 'Active' | 'Closed'>('Pending');
+  const [navigationRule, setNavigationRule] = useState<'FREE_NAV' | 'FIXED_NAV'>('FREE_NAV');
+  const [resultsPublished, setResultsPublished] = useState<boolean>(false);
 
   // Submissions Modal State
   const [submissionsModalExam, setSubmissionsModalExam] = useState<HostAssignedExam | null>(null);
@@ -595,6 +599,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setExamDue('');
     setExamDuration(60);
     setExamStatus('Pending');
+    setNavigationRule('FREE_NAV');
+    setResultsPublished(false);
     setIsExamModalOpen(true);
   };
 
@@ -606,6 +612,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setExamDue(exam.due);
     setExamDuration(exam.duration);
     setExamStatus(exam.status);
+    setNavigationRule(exam.navigationRule || 'FREE_NAV');
+    setResultsPublished(exam.resultsPublished || false);
     setIsExamModalOpen(true);
   };
 
@@ -626,18 +634,22 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     const selectedGroup = groups.find((g) => g.id === selectedGroupId);
     if (!selectedGroup || !selectedQuiz) return;
 
+    const finalTitle = examTitle.trim() || selectedQuiz.title;
+
     if (editingExam) {
       setExams((prev) =>
         prev.map((ex) =>
           ex.id === editingExam.id
             ? {
               ...ex,
-              title: selectedQuiz.title,
+              title: finalTitle,
               subject: selectedQuiz.category,
               quizId: selectedQuiz.id,
               due: examDue,
               duration: examDuration,
               status: examStatus,
+              navigationRule: navigationRule,
+              resultsPublished: resultsPublished,
               groupId: selectedGroup.id,
               groupName: selectedGroup.name,
             }
@@ -648,12 +660,14 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       const members = selectedGroup.members || [];
       const newExam: HostAssignedExam = {
         id: Date.now(),
-        title: selectedQuiz.title,
+        title: finalTitle,
         due: examDue,
         subject: selectedQuiz.category,
         quizId: selectedQuiz.id,
         duration: examDuration,
         status: examStatus,
+        navigationRule: navigationRule,
+        resultsPublished: resultsPublished,
         groupId: selectedGroup.id,
         groupName: selectedGroup.name,
         totalStudents: members.length,
@@ -991,9 +1005,9 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       {/* Assign / Edit Exam Modal */}
       {isExamModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-xl space-y-6 text-left animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-4">
-              <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
+          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-xl space-y-4 text-left animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3.5">
+              <h3 className="text-lg font-bold text-on-surface flex items-center gap-2">
                 <ClipboardList className="w-5 h-5 text-secondary" />
                 {editingExam ? 'Edit Exam Assignment' : 'Assign New Exam'}
               </h3>
@@ -1005,68 +1019,83 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveExam} className="space-y-4">
-              {/* Quiz Selection (luôn hiện, cả new lẫn edit) */}
-              <div>
-                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
-                  Select Quiz <span className="text-error">*</span>
-                </label>
-                <select
-                  value={selectedQuizId}
-                  onChange={(e) => setSelectedQuizId(e.target.value)}
-                  required
-                  className="w-full px-4 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
-                >
-                  <option value="">-- Select a Quiz --</option>
-                  {HOST_QUIZZES_LIST.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      {q.title} ({q.questions} Qs · {q.level})
-                    </option>
-                  ))}
-                </select>
+            <form onSubmit={handleSaveExam} className="space-y-3">
+              {/* Quiz Selection + Group Selection — cùng hàng */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
+                    Select Quiz <span className="text-error">*</span>
+                  </label>
+                  <select
+                    value={selectedQuizId}
+                    onChange={(e) => setSelectedQuizId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                  >
+                    <option value="">-- Quiz --</option>
+                    {HOST_QUIZZES_LIST.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
+                    Assign to Group <span className="text-error">*</span>
+                  </label>
+                  <select
+                    value={selectedGroupId}
+                    onChange={(e) => setSelectedGroupId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                  >
+                    <option value="">-- Group --</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {/* Group Selection */}
+              {/* Exam Title */}
               <div>
-                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
-                  Assign to Group <span className="text-error">*</span>
+                <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
+                  Exam Title
                 </label>
-                <select
-                  value={selectedGroupId}
-                  onChange={(e) => setSelectedGroupId(e.target.value)}
-                  required
-                  className="w-full px-4 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
-                >
-                  <option value="">-- Select a Group --</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>{g.name} ({g.membersCount} students)</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  placeholder="e.g. Midterm Test, Final Exam..."
+                  value={examTitle}
+                  onChange={(e) => setExamTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                />
+                <p className="text-[10px] text-on-surface-variant mt-0.5">If left blank, the quiz title will be used.</p>
               </div>
 
               {/* Due Date + Duration — cùng hàng */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
                     Deadline <span className="text-error">*</span>
                   </label>
                   <div className="relative">
-                    <Calendar className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Calendar className="w-3.5 h-3.5 text-outline absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="datetime-local"
                       required
                       value={examDue}
                       onChange={(e) => setExamDue(e.target.value)}
-                      className="w-full pl-9 pr-2 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                      className="w-full pl-8 pr-2 py-2 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
+                  <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
                     Duration (minutes) <span className="text-error">*</span>
                   </label>
                   <div className="relative">
-                    <Clock className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Clock className="w-3.5 h-3.5 text-outline absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="number"
                       required
@@ -1076,17 +1105,46 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       placeholder="e.g. 60"
                       value={examDuration}
                       onChange={(e) => setExamDuration(Number(e.target.value))}
-                      className="w-full pl-9 pr-2 py-2.5 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                      className="w-full pl-8 pr-2 py-2 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
                     />
                   </div>
-                  <p className="text-[11px] text-on-surface-variant mt-1">5 – 300 phút</p>
+                </div>
+              </div>
+
+              {/* Navigation Rule + Publish Results Toggle */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-surface-container/30 p-3 rounded-xl border border-outline-variant/20">
+                <div>
+                  <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
+                    Navigation Rule
+                  </label>
+                  <select
+                    value={navigationRule}
+                    onChange={(e) => setNavigationRule(e.target.value as 'FREE_NAV' | 'FIXED_NAV')}
+                    className="w-full px-2.5 py-1.5 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                  >
+                    <option value="FREE_NAV">Free</option>
+                    <option value="FIXED_NAV">Sequential</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col justify-center">
+                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1.5 md:mt-4">
+                    <input
+                      type="checkbox"
+                      checked={resultsPublished}
+                      onChange={(e) => setResultsPublished(e.target.checked)}
+                      className="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary/50 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-on-surface">Publish Results</span>
+                  </label>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5 ml-6">Display scores immediately.</p>
                 </div>
               </div>
 
               {/* Status Selector */}
-              <div className="p-4 bg-surface-container/50 rounded-2xl border border-outline-variant/20 space-y-2">
-                <label className="block text-xs font-bold text-on-surface uppercase tracking-wider">
-                  Exam Status (Trạng thái)
+              <div className="p-3 bg-surface-container/50 rounded-xl border border-outline-variant/20 space-y-1.5">
+                <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider">
+                  Exam Status
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['Pending', 'Active', 'Closed'] as const).map((s) => (
@@ -1094,7 +1152,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       key={s}
                       type="button"
                       onClick={() => setExamStatus(s)}
-                      className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${examStatus === s
+                      className={`py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 border ${examStatus === s
                         ? s === 'Active'
                           ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
                           : s === 'Pending'
@@ -1117,7 +1175,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
+              <div className="flex justify-end gap-3 pt-3 border-t border-outline-variant/20">
                 <button
                   type="button"
                   onClick={() => setIsExamModalOpen(false)}
@@ -1185,7 +1243,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${submissionsViewTab === 'analytics' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
                     }`}
                 >
-                  <BarChart2 className="w-3.5 h-3.5 text-amber-600" /> Most Missed Questions (Phân tích lỗi sai)
+                  <BarChart2 className="w-3.5 h-3.5 text-amber-600" /> Most Missed Questions
                   {submissionsViewTab === 'analytics' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
                 </button>
               </div>
@@ -1314,7 +1372,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <div className="flex items-center justify-between bg-amber-50 p-3.5 rounded-2xl border border-amber-200 text-xs text-amber-900">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Top những câu hỏi sinh viên thường trả lời sai nhiều nhất trong bài thi này.</span>
+                    <span>Top questions that students most frequently answered incorrectly in this exam.</span>
                   </div>
                   <button
                     onClick={() => handleExportExamExcel(submissionsModalExam)}
@@ -1325,8 +1383,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 </div>
 
                 {((MOCK_QUESTION_ANALYTICS[submissionsModalExam.id] || [
-                  { id: 1, question: "Khái niệm về phản ứng nhiệt hóa sinh trong tế bào?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Phản ứng phân giải protein", correctAnswer: "C. Phản ứng tổng hợp ATP" },
-                  { id: 2, question: "Cấu trúc ti thể gồm mấy lớp màng bao bọc?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 lớp màng đơn", correctAnswer: "B. 2 lớp màng đôi" }
+                  { id: 1, question: "Biochemical reactions concepts in cells?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Protein breakdown reaction", correctAnswer: "C. ATP synthesis reaction" },
+                  { id: 2, question: "How many membrane layers does a mitochondrion have?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 single membrane", correctAnswer: "B. 2 double membranes" }
                 ])).map((item, idx) => (
                   <div key={item.id} className="bg-white p-4 rounded-2xl border border-outline-variant/30 space-y-3 text-xs shadow-xs">
                     <div className="flex items-start justify-between gap-3">
@@ -1337,12 +1395,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         <div>
                           <h5 className="font-bold text-on-surface text-sm">{item.question}</h5>
                           <p className="text-on-surface-variant text-[11px] mt-0.5">
-                            Có <strong className="text-rose-600">{item.wrongCount} / {item.totalCount}</strong> sinh viên làm sai bài này ({item.wrongPercentage}% tỷ lệ sai)
+                            <strong className="text-rose-600">{item.wrongCount} / {item.totalCount}</strong> students answered incorrectly ({item.wrongPercentage}% error rate)
                           </p>
                         </div>
                       </div>
                       <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-extrabold rounded-lg shrink-0 text-xs">
-                        {item.wrongPercentage}% Sai
+                        {item.wrongPercentage}% Wrong
                       </span>
                     </div>
 
@@ -1353,11 +1411,11 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
                       <div className="bg-rose-50/60 p-2.5 rounded-xl border border-rose-100">
-                        <span className="font-bold text-rose-800 uppercase tracking-wider block text-[10px] mb-0.5">Lỗi sai phổ biến:</span>
+                        <span className="font-bold text-rose-800 uppercase tracking-wider block text-[10px] mb-0.5">Common Wrong Answer:</span>
                         <span className="text-rose-900 font-medium">{item.commonWrongAnswer}</span>
                       </div>
                       <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
-                        <span className="font-bold text-emerald-800 uppercase tracking-wider block text-[10px] mb-0.5">Đáp án đúng chính xác:</span>
+                        <span className="font-bold text-emerald-800 uppercase tracking-wider block text-[10px] mb-0.5">Correct Answer:</span>
                         <span className="text-emerald-900 font-medium">{item.correctAnswer}</span>
                       </div>
                     </div>
@@ -1592,8 +1650,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         type="button"
                         onClick={() => setGroupIcon(iconName)}
                         className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${isSelected
-                            ? 'bg-secondary text-white shadow-md scale-105 font-bold'
-                            : 'bg-white text-on-surface-variant hover:text-secondary border border-outline-variant/30 hover:border-secondary/50'
+                          ? 'bg-secondary text-white shadow-md scale-105 font-bold'
+                          : 'bg-white text-on-surface-variant hover:text-secondary border border-outline-variant/30 hover:border-secondary/50'
                           }`}
                         title={iconName}
                       >
