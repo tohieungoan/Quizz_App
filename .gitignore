@@ -46,3 +46,8 @@ venv/
 
 # Agent config (local only)
 .agents/
+
+# Papers and documentation generation
+docs/
+backend/generate_papers.py
+
