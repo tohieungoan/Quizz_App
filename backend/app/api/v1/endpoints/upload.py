@@ -2,7 +2,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 import cloudinary
 import cloudinary.utils
-from app.api.deps import get_current_active_admin
+from app.api.deps import get_current_active_admin, get_current_active_user
 from app.core.config import settings
 from app.schemas.upload import UploadSignatureRequest, UploadSignatureResponse
 from app.utils.cloudinary_utils import delete_cloudinary_asset_bg
@@ -11,9 +11,9 @@ router = APIRouter()
 
 # Initialize Cloudinary
 cloudinary.config(
-    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
-    api_key=settings.CLOUDINARY_API_KEY,
-    api_secret=settings.CLOUDINARY_API_SECRET
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME or "",
+    api_key=settings.CLOUDINARY_API_KEY or "",
+    api_secret=settings.CLOUDINARY_API_SECRET or ""
 )
 
 # File size limits (in bytes)
@@ -22,7 +22,8 @@ MAX_VIDEO_AUDIO_SIZE = 50 * 1024 * 1024  # 50MB
 
 @router.post("/request-signature", response_model=UploadSignatureResponse, summary="Request a Cloudinary upload signature")
 async def request_upload_signature(
-    request: UploadSignatureRequest
+    request: UploadSignatureRequest,
+    current_user=Depends(get_current_active_user)
 ):
     """
     Generate a secure signature for direct client-to-cloud upload.
@@ -61,14 +62,14 @@ async def request_upload_signature(
     
     signature = cloudinary.utils.api_sign_request(
         params_to_sign, 
-        settings.CLOUDINARY_API_SECRET
+        settings.CLOUDINARY_API_SECRET or ""
     )
 
     return UploadSignatureResponse(
         signature=signature,
         timestamp=timestamp,
-        api_key=settings.CLOUDINARY_API_KEY,
-        cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+        api_key=settings.CLOUDINARY_API_KEY or "",
+        cloud_name=settings.CLOUDINARY_CLOUD_NAME or "",
         folder=folder
     )
 
