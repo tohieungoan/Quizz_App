@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 
-export const RoomDistribution: React.FC = () => {
+interface RoomDistData {
+  game_mode: number;
+  exam_mode: number;
+}
+
+interface Props {
+  data?: RoomDistData;
+}
+
+export const RoomDistribution: React.FC<Props> = ({ data }) => {
   const [hoveredSlice, setHoveredSlice] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   
@@ -12,8 +21,9 @@ export const RoomDistribution: React.FC = () => {
   const radius = 56;
   const circumference = 2 * Math.PI * radius;
   
-  const gamePercent = 65;
-  const examPercent = 35;
+  const totalRooms = (data?.game_mode || 0) + (data?.exam_mode || 0);
+  const gamePercent = totalRooms > 0 ? Math.round(((data?.game_mode || 0) / totalRooms) * 100) : 0;
+  const examPercent = totalRooms > 0 ? Math.round(((data?.exam_mode || 0) / totalRooms) * 100) : 0;
   
   const gameStroke = (gamePercent / 100) * circumference;
   const examStroke = (examPercent / 100) * circumference;
@@ -21,7 +31,7 @@ export const RoomDistribution: React.FC = () => {
   const gap = 20; 
 
   // Center display logic
-  let centerMain = "42";
+  let centerMain = totalRooms.toString();
   let centerSub = "Total Rooms";
   if (hoveredSlice === 'game') {
     centerMain = "65%";
@@ -39,11 +49,6 @@ export const RoomDistribution: React.FC = () => {
 
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-base text-slate-800 font-extrabold tracking-tight">Room Distribution</h3>
-        <div className="p-1.5 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer rounded-lg border border-slate-200 text-slate-400 hover:text-slate-600">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-          </svg>
-        </div>
       </div>
       
       <div className="flex-1 flex flex-col items-center justify-center pt-2">

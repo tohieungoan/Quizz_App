@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Users, Eye, FileText, MonitorPlay } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Pagination } from '@/components/ui/Pagination';
 import { RoomDetailsModal } from '@/components/ui/RoomDetailsModal';
@@ -12,6 +12,7 @@ interface RoomsProps {
 
 export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [rooms, setRooms] = useState<Room[]>(DUMMY_ROOMS);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -47,6 +48,19 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
   React.useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter]);
+
+  // Handle deep linking from Dashboard to open a specific room's modal
+  React.useEffect(() => {
+    const state = location.state as { openRoomCode?: string };
+    if (state?.openRoomCode) {
+      const roomToOpen = rooms.find((r) => r.room_code === state.openRoomCode);
+      if (roomToOpen) {
+        handleOpenDetails(roomToOpen);
+        // Clear the state so it doesn't reopen if the user refreshes the page
+        navigate(location.pathname, { replace: true });
+      }
+    }
+  }, [location.state, rooms, navigate, location.pathname]);
 
   return (
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
