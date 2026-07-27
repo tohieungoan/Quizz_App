@@ -37,8 +37,8 @@ export const MetricCard: React.FC<MetricCardProps> = ({
           </span>
         )}
         {badge && (
-          <span className="flex items-center gap-1.5 bg-error-container text-on-error-container text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
-            <span className="w-1.5 h-1.5 rounded-full bg-error"></span> {badge}
+          <span className="flex items-center gap-1.5 bg-secondary-container text-on-secondary-container text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span> {badge}
           </span>
         )}
       </div>

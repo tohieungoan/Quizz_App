@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
     quizzes,
     upload,
     users,
+    dashboard,
 )
 
 api_router = APIRouter()
@@ -27,4 +28,5 @@ api_router.include_router(quizzes.router, prefix="/quizzes", tags=["Quizzes"])
 api_router.include_router(questions.router, prefix="/quizzes", tags=["Questions"])
 
 # Admin Endpoints
+api_router.include_router(dashboard.router, prefix="/admin/dashboard", tags=["Admin - Dashboard"])
 api_router.include_router(badges.router, prefix="/admin/badges", tags=["Admin - Badges"])
