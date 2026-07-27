@@ -43,5 +43,5 @@ class QuizResponse(QuizBase):
 class QuizPageResponse(BaseModel):
     data: List[QuizResponse]
     total: int
-    skip: int
-    limit: int
+    pageIndex: int
+    pageSize: int

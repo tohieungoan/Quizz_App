@@ -73,7 +73,7 @@ export const useCloudinaryUpload = () => {
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const response = JSON.parse(xhr.responseText);
+              const response = JSON.parse(xhr.responseText);//Loggg
               setUploadedUrl(response.secure_url);
               setIsUploading(false);
               resolve(response.secure_url);

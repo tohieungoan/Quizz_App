@@ -1,18 +1,19 @@
 """
 Aggregate all routers for API version 1.
-Include sub-routers from auth.py, users.py, groups.py, quizzes.py, exams.py...
+Include sub-routers from auth.py, users.py, groups.py, quizzes.py, exams.py, dashboard.py...
 """
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     auth,
     badges,
+    dashboard,
+    exams,
     groups,
     questions,
     quizzes,
     upload,
     users,
-    dashboard,
 )
 
 api_router = APIRouter()
@@ -24,8 +25,9 @@ api_router.include_router(groups.router, prefix="/groups", tags=["Groups"])
 api_router.include_router(upload.router, prefix="/upload", tags=["Upload"])
 
 # Quiz & Question Endpoints
-api_router.include_router(quizzes.router, prefix="/quizzes", tags=["Quizzes"])
+api_router.include_router(quizzes.router, tags=["Quizzes"])
 api_router.include_router(questions.router, prefix="/quizzes", tags=["Questions"])
+api_router.include_router(exams.router, prefix="/exams", tags=["Exams"])
 
 # Admin Endpoints
 api_router.include_router(dashboard.router, prefix="/admin/dashboard", tags=["Admin - Dashboard"])

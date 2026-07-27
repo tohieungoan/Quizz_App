@@ -9,6 +9,7 @@ from app.api.deps import get_db, get_current_active_user
 from app.models.group import Group, GroupMember
 from app.models.user import User
 from app.models.notification import Notification
+from app.models.exam import Exam, ExamAssignee
 from app.schemas.group import (
     GroupCreate,
     GroupUpdate,
@@ -17,7 +18,13 @@ from app.schemas.group import (
     GroupJoinRequest,
     GroupMemberResponse,
     GroupInviteRequest,
+    BulkRequestAction,
+    BulkInvitationAction,
+    RosterMemberResponse,
+    ExamScoreDetail,
 )
+
+from app.api.v1.endpoints.exams import assign_active_exams_to_new_member
 
 router = APIRouter()
 
@@ -95,6 +102,103 @@ def list_my_invitations(
                 "requested_at": invite.requested_at,
             })
     return result
+
+
+@router.post("/invitations/bulk-accept", summary="Accept multiple group invitations")
+def bulk_accept_group_invitations(
+    body: BulkInvitationAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Accept multiple invitations to join study groups.
+    """
+    query = db.query(GroupMember).filter(
+        GroupMember.user_id == current_user.id,
+        GroupMember.status == "INVITED"
+    )
+    if not body.all_invitations:
+        if not body.group_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either group_ids must be provided or all_invitations must be set to True.",
+            )
+        query = query.filter(GroupMember.group_id.in_(body.group_ids))
+    
+    invitations = query.all()
+    if not invitations:
+        return {"message": "No pending invitations found to accept.", "count": 0}
+    
+    count = len(invitations)
+    group_ids_accepted = []
+    for invite in invitations:
+        invite.status = "APPROVED"
+        invite.joined_at = datetime.utcnow()
+        db.add(invite)
+        group_ids_accepted.append(invite.group_id)
+        assign_active_exams_to_new_member(db, invite.group_id, current_user.id)
+        
+    # Mark corresponding notifications as read
+    if group_ids_accepted:
+        notifications = db.query(Notification).filter(
+            Notification.user_id == current_user.id,
+            Notification.target_group_id.in_(group_ids_accepted),
+            Notification.type == "GROUP_INVITE",
+            Notification.is_read == False
+        ).all()
+        for notification in notifications:
+            notification.is_read = True
+            db.add(notification)
+            
+    db.commit()
+    return {"message": f"Successfully joined {count} group(s).", "count": count}
+
+
+@router.post("/invitations/bulk-decline", summary="Decline multiple group invitations")
+def bulk_decline_group_invitations(
+    body: BulkInvitationAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Decline multiple invitations to join study groups.
+    """
+    query = db.query(GroupMember).filter(
+        GroupMember.user_id == current_user.id,
+        GroupMember.status == "INVITED"
+    )
+    if not body.all_invitations:
+        if not body.group_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either group_ids must be provided or all_invitations must be set to True.",
+            )
+        query = query.filter(GroupMember.group_id.in_(body.group_ids))
+        
+    invitations = query.all()
+    if not invitations:
+        return {"message": "No pending invitations found to decline.", "count": 0}
+        
+    count = len(invitations)
+    group_ids_declined = []
+    for invite in invitations:
+        db.delete(invite)
+        group_ids_declined.append(invite.group_id)
+        
+    # Mark corresponding notifications as read
+    if group_ids_declined:
+        notifications = db.query(Notification).filter(
+            Notification.user_id == current_user.id,
+            Notification.target_group_id.in_(group_ids_declined),
+            Notification.type == "GROUP_INVITE",
+            Notification.is_read == False
+        ).all()
+        for notification in notifications:
+            notification.is_read = True
+            db.add(notification)
+            
+    db.commit()
+    return {"message": f"Successfully declined {count} group invitation(s).", "count": count}
 
 
 @router.get("/{group_id}", response_model=GroupDetailResponse, summary="Get study group details")
@@ -234,6 +338,7 @@ def request_to_join_group(
             member.status = "APPROVED"
             member.joined_at = datetime.utcnow()
             db.add(member)
+            assign_active_exams_to_new_member(db, group.id, current_user.id)
 
             # Mark invitations for this group sent to the current user as read (is_read=True)
             notifications = db.query(Notification).filter(
@@ -292,6 +397,103 @@ def list_group_join_requests(
     return requests
 
 
+@router.post("/{group_id}/requests/bulk-approve", summary="Approve multiple join requests")
+def bulk_approve_join_requests(
+    group_id: int,
+    body: BulkRequestAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Approve multiple pending join requests for a study group.
+    Only the owner of the group or Super Admin is authorized.
+    """
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study group not found.",
+        )
+    if group.owner_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group owner or Super Admin can approve join requests.",
+        )
+        
+    query = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.status == "PENDING"
+    )
+    if not body.all_members:
+        if not body.member_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either member_ids must be provided or all_members must be set to True.",
+            )
+        query = query.filter(GroupMember.user_id.in_(body.member_ids))
+        
+    requests = query.all()
+    if not requests:
+        return {"message": "No pending join requests found to approve.", "count": 0}
+        
+    count = len(requests)
+    for req in requests:
+        req.status = "APPROVED"
+        req.joined_at = datetime.utcnow()
+        db.add(req)
+        assign_active_exams_to_new_member(db, group_id, req.user_id)
+        
+    db.commit()
+    return {"message": f"Successfully approved {count} join request(s).", "count": count}
+
+
+@router.post("/{group_id}/requests/bulk-reject", summary="Reject multiple join requests")
+def bulk_reject_join_requests(
+    group_id: int,
+    body: BulkRequestAction,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Reject multiple pending join requests for a study group.
+    Only the owner of the group or Super Admin is authorized.
+    """
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study group not found.",
+        )
+    if group.owner_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group owner or Super Admin can reject join requests.",
+        )
+        
+    query = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.status == "PENDING"
+    )
+    if not body.all_members:
+        if not body.member_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either member_ids must be provided or all_members must be set to True.",
+            )
+        query = query.filter(GroupMember.user_id.in_(body.member_ids))
+        
+    requests = query.all()
+    if not requests:
+        return {"message": "No pending join requests found to reject.", "count": 0}
+        
+    count = len(requests)
+    for req in requests:
+        db.delete(req)
+        
+    db.commit()
+    return {"message": f"Successfully rejected {count} join request(s).", "count": count}
+
+
 @router.post("/{group_id}/requests/{member_id}/approve", summary="Approve a pending join request")
 def approve_join_request(
     group_id: int,
@@ -335,6 +537,7 @@ def approve_join_request(
     member.status = "APPROVED"
     member.joined_at = datetime.utcnow()
     db.add(member)
+    assign_active_exams_to_new_member(db, group_id, member_id)
     db.commit()
 
     return {"message": "User request approved and added to the study group."}
@@ -447,6 +650,7 @@ def invite_member_to_group(
             member.joined_at = datetime.utcnow()
             member.invited_by = current_user.id
             db.add(member)
+            assign_active_exams_to_new_member(db, group_id, invited_user.id)
             db.commit()
             return {"message": "User had a pending request, automatically approved their membership."}
         elif member.status == "INVITED":
@@ -515,6 +719,7 @@ def accept_group_invitation(
     member.status = "APPROVED"
     member.joined_at = datetime.utcnow()
     db.add(member)
+    assign_active_exams_to_new_member(db, group_id, current_user.id)
 
     # Mark corresponding notifications as read
     notifications = db.query(Notification).filter(
@@ -570,4 +775,91 @@ def decline_group_invitation(
     db.commit()
 
     return {"message": "Invitation declined."}
+
+
+@router.get("/{group_id}/roster", response_model=List[RosterMemberResponse], summary="Get roster with exam statistics of group members")
+def read_group_roster(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Get detailed roster list for Host.
+    Includes student name, email, exams completed, average score,
+    and detailed score breakdown of the 3 most recently assigned exams.
+    """
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study group not found.",
+        )
+    if group.owner_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this group roster.",
+        )
+
+    members = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.status == "APPROVED"
+    ).all()
+
+    exams = db.query(Exam).filter(
+        Exam.group_id == group_id
+    ).order_by(Exam.created_at.desc()).all()
+    
+    total_assigned_count = len(exams)
+
+    result = []
+    for member in members:
+        user = db.query(User).filter(User.id == member.user_id).first()
+        if not user:
+            continue
+
+        assignees = db.query(ExamAssignee).filter(
+            ExamAssignee.user_id == member.user_id,
+            ExamAssignee.exam_id.in_([e.id for e in exams])
+        ).all() if total_assigned_count > 0 else []
+
+        assignees_dict = {a.exam_id: a for a in assignees}
+
+        exams_completed = sum(1 for a in assignees if a.submitted_at is not None)
+
+        completed_scores = [a.score for a in assignees if a.score is not None and a.submitted_at is not None]
+        avg_score_str = "N/A"
+        if completed_scores:
+            avg_score_val = sum(completed_scores) / len(completed_scores)
+            avg_score_str = f"{round(avg_score_val)}%"
+
+        last_3_exams = exams[:3]
+        exam_scores = []
+        for ex in last_3_exams:
+            score_item = assignees_dict.get(ex.id)
+            if score_item:
+                score_str = f"{round(score_item.score)}%" if score_item.score is not None else "--"
+                status_str = "Completed" if score_item.submitted_at is not None else ("In Progress" if score_item.started_at is not None else "Not Started")
+            else:
+                score_str = "--"
+                status_str = "Not Started"
+
+            exam_scores.append({
+                "examTitle": ex.title,
+                "score": score_str,
+                "status": status_str
+            })
+
+        result.append({
+            "id": member.id,
+            "name": user.fullname or user.email,
+            "email": user.email,
+            "role": member.role_in_group,
+            "joined_at": member.joined_at,
+            "examsCompleted": exams_completed,
+            "totalExamsAssigned": total_assigned_count,
+            "averageScore": avg_score_str,
+            "examScores": exam_scores
+        })
+
+    return result
 

@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # --- QUESTION OPTION SCHEMAS ---
 class QuestionOptionBase(BaseModel):
@@ -13,7 +13,7 @@ class QuestionOptionCreate(QuestionOptionBase):
     pass
 
 class QuestionOptionUpdate(QuestionOptionBase):
-    pass
+    id: Optional[int] = None
 
 class QuestionOptionResponse(QuestionOptionBase):
     id: int
@@ -38,10 +38,43 @@ class QuestionBase(BaseModel):
 
 class QuestionCreate(QuestionBase):
     options: List[QuestionOptionCreate] = Field(default_factory=list)
+    
+    @model_validator(mode='after')
+    def validate_options_count(self):
+        q_type = (self.type or "").strip().lower()
+        if q_type in ["true/false", "true_false"]:
+            if len(self.options) != 2:
+                raise ValueError("True/False questions must have exactly 2 options.")
+        elif q_type in ["short answer", "short", "fill in the blank"]:
+            if len(self.options) < 1 or len(self.options) > 5:
+                raise ValueError("Short Answer / Fill in the blank questions must have between 1 and 5 acceptable options.")
+        elif q_type in ["multiple choice", "multiple_choice", "multiple"]:
+            if len(self.options) < 2:
+                raise ValueError("Multiple Choice questions must have at least 2 options.")
+            if not any(opt.is_correct for opt in self.options):
+                raise ValueError("Multiple Choice questions must have at least one correct option.")
+        return self
 
 class QuestionUpdate(QuestionBase):
     content: Optional[str] = None
-    options: Optional[List[QuestionOptionCreate]] = None
+    options: Optional[List[QuestionOptionUpdate]] = None
+
+    @model_validator(mode='after')
+    def validate_options_count(self):
+        if self.options is not None:
+            q_type = (self.type or "").strip().lower()
+            if q_type in ["true/false", "true_false"]:
+                if len(self.options) != 2:
+                    raise ValueError("True/False questions must have exactly 2 options.")
+            elif q_type in ["short answer", "short", "fill in the blank"]:
+                if len(self.options) < 1 or len(self.options) > 5:
+                    raise ValueError("Short Answer / Fill in the blank questions must have between 1 and 5 acceptable options.")
+            elif q_type in ["multiple choice", "multiple_choice", "multiple"]:
+                if len(self.options) < 2:
+                    raise ValueError("Multiple Choice questions must have at least 2 options.")
+                if not any(opt.is_correct for opt in self.options):
+                    raise ValueError("Multiple Choice questions must have at least one correct option.")
+        return self
 
 class QuestionResponse(QuestionBase):
     id: int
@@ -52,3 +85,12 @@ class QuestionResponse(QuestionBase):
 
     class Config:
         from_attributes = True
+
+class QuestionPageResponse(BaseModel):
+    data: List[QuestionResponse]
+    total: int
+    pageIndex: int
+    pageSize: int
+
+class QuestionImport(BaseModel):
+    question_ids: List[int] = Field(..., max_length=100, description="List of question IDs to import into the quiz")

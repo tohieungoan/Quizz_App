@@ -2,7 +2,7 @@
 API Endpoints for Badge management.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_active_admin
@@ -15,19 +15,20 @@ router = APIRouter()
 @router.get("", response_model=BadgePageResponse, summary="Get all badges with pagination")
 def read_badges(
     db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100,
+    pageIndex: int = Query(1, ge=1),
+    pageSize: int = Query(25, ge=1, le=1000),
     current_admin=Depends(get_current_active_admin),
 ):
     """
     Retrieve all badges from the system (Admin only). Returns data and total count.
     """
-    badges, total = crud_badge.get_multi_with_total(db, skip=skip, limit=limit)
+    skip = (pageIndex - 1) * pageSize
+    badges, total = crud_badge.get_multi_with_total(db, skip=skip, limit=pageSize)
     return {
         "data": badges,
         "total": total,
-        "skip": skip,
-        "limit": limit
+        "pageIndex": pageIndex,
+        "pageSize": pageSize
     }
 
 

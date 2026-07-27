@@ -54,3 +54,32 @@ class GroupInviteRequest(BaseModel):
     email: str
 
 
+class BulkRequestAction(BaseModel):
+    member_ids: List[int] = []
+    all_members: bool = False
+
+
+class BulkInvitationAction(BaseModel):
+    group_ids: List[int] = []
+    all_invitations: bool = False
+
+
+class ExamScoreDetail(BaseModel):
+    examTitle: str
+    score: str
+    status: str
+
+
+class RosterMemberResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    role: str
+    joined_at: Optional[datetime] = None
+    examsCompleted: int
+    totalExamsAssigned: int
+    averageScore: str
+    examScores: List[ExamScoreDetail] = []
+
+
+
