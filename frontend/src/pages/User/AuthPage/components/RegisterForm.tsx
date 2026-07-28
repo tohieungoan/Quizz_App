@@ -1,8 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Mail, Lock, User, Eye, EyeOff, CheckCircle } from 'lucide-react'
 import { InputField } from './InputField'
 import { RegisterFormData } from '../types'
+import { authService, saveTokens, saveUserProfile } from '@/services'
+import { LegalModal } from '@/components/ui/LegalModal'
 
 interface RegisterFormProps {
   onSwitchLogin: () => void
@@ -17,7 +19,93 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchLogin }) => 
   const [errors, setErrors] = useState<Partial<Record<keyof RegisterFormData, string>>>({})
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [isVerifiedRequired, setIsVerifiedRequired] = useState(false)
+  const [legalModalType, setLegalModalType] = useState<'terms' | 'privacy' | null>(null)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMessage, setResendMessage] = useState<string | null>(null)
+  const [resendError, setResendError] = useState<string | null>(null)
+  const [countdown, setCountdown] = useState<number>(0)
   const navigate = useNavigate()
+
+  // Countdown timer for Resend button
+  useEffect(() => {
+    if (countdown <= 0) return
+    const timer = setInterval(() => {
+      setCountdown((prev) => prev - 1)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [countdown])
+
+  // Initialize countdown when verification request is shown
+  useEffect(() => {
+    if (isVerifiedRequired && form.email) {
+      const lastSentStr = localStorage.getItem(`verification_sent_at_${form.email}`)
+      if (lastSentStr) {
+        const lastSent = new Date(lastSentStr)
+        const elapsedSeconds = Math.floor((new Date().getTime() - lastSent.getTime()) / 1000)
+        const remaining = 900 - elapsedSeconds
+        if (remaining > 0) {
+          setCountdown(remaining)
+        }
+      }
+    }
+  }, [isVerifiedRequired, form.email])
+
+  const handleResend = async () => {
+    if (!form.email || countdown > 0) return
+    setResendLoading(true)
+    setResendMessage(null)
+    setResendError(null)
+    try {
+      const res = await authService.resendVerification(form.email)
+      setResendMessage(res.message || 'Verification email has been resent successfully.')
+      localStorage.setItem(`verification_sent_at_${form.email}`, new Date().toISOString())
+      setCountdown(900) // Start 15-minute countdown
+    } catch (err: any) {
+      setResendError(err.message || 'Failed to resend verification email.')
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  const sendSocialToken = async (provider: string, token: string) => {
+    setLoading(true)
+    setErrors({})
+    try {
+      const data = await authService.socialLogin(provider, token)
+      setSuccess(true)
+      saveTokens(data)
+      try {
+        const profile = await authService.getProfileWithToken(data.access_token)
+        saveUserProfile(profile)
+      } catch {
+        localStorage.setItem('user', JSON.stringify({ name: '', email: '' }))
+      }
+      setTimeout(() => navigate('/dashboard'), 1000)
+    } catch (err: any) {
+      setErrors({ email: err.message || `Authentication with ${provider} failed.` })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGoogleLogin = () => {
+    const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+    if (!(window as any).google) {
+      alert("Google Identity Services script failed to load. Please check your internet connection.")
+      return
+    }
+    const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+      client_id: googleClientId,
+      scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+      callback: (tokenResponse: any) => {
+        if (tokenResponse.access_token) {
+          sendSocialToken('google', tokenResponse.access_token)
+        }
+      },
+    })
+    tokenClient.requestAccessToken()
+  }
 
   const passwordStrength = (pwd: string): { score: number; label: string; color: string } => {
     let score = 0
@@ -55,15 +143,86 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchLogin }) => 
     e.preventDefault()
     if (!validate()) return
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 1500))
-    setLoading(false)
-    setSuccess(true)
-    localStorage.setItem('token', 'mock-jwt-token')
-    localStorage.setItem('user', JSON.stringify({ name: form.fullName, email: form.email }))
-    setTimeout(() => navigate('/dashboard'), 1200)
+    setErrors({})
+
+    try {
+      // Step 1: Register
+      await authService.register(form.email, form.fullName, form.password)
+      localStorage.setItem(`verification_sent_at_${form.email}`, new Date().toISOString())
+
+      // Step 2: Auto-login to obtain tokens immediately after registration
+      try {
+        const loginData = await authService.login(form.email, form.password)
+        setSuccess(true)
+        saveTokens(loginData)
+
+        // Step 3: Fetch user profile
+        try {
+          const profile = await authService.getProfileWithToken(loginData.access_token)
+          saveUserProfile(profile)
+        } catch {
+          localStorage.setItem('user', JSON.stringify({ name: form.fullName, email: form.email }))
+        }
+
+        setTimeout(() => navigate('/dashboard'), 1200)
+      } catch {
+        // Registration succeeded but auto-login failed (due to unverified email) - show verification notice
+        setIsVerifiedRequired(true)
+        setSuccess(true)
+      }
+    } catch (err: any) {
+      setErrors({ email: err.message || 'Registration failed.' })
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (success) {
+    if (isVerifiedRequired) {
+      return (
+        <div className="flex flex-col items-center justify-center text-center gap-5 py-6 animate-in fade-in duration-500">
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary animate-bounce">
+            <Mail className="w-8 h-8" />
+          </div>
+          <h3 className="font-headline-md text-headline-md text-on-surface font-bold">Verify your email 📧</h3>
+          <p className="text-on-surface-variant font-body-md max-w-sm">
+            We've sent a verification link to <strong className="text-on-surface">{form.email}</strong>. Please check your inbox and verify your account.
+          </p>
+
+          <div className="flex flex-col gap-3 w-full mt-4">
+            <button
+              type="button"
+              onClick={onSwitchLogin}
+              className="font-button text-button bg-primary text-on-primary w-full py-3.5 rounded-full hover:shadow-md transition-all"
+            >
+              Go to Sign In
+            </button>
+
+            <button
+              type="button"
+              disabled={resendLoading || countdown > 0}
+              onClick={handleResend}
+              className="text-xs text-primary font-bold hover:underline self-center disabled:opacity-75 focus:outline-none flex items-center gap-1.5 disabled:no-underline"
+            >
+              {resendLoading
+                ? 'Resending verification email...'
+                : countdown > 0
+                ? `Resend in ${Math.floor(countdown / 60)}:${countdown % 60 < 10 ? '0' : ''}${countdown % 60}`
+                : 'Resend verification email'}
+            </button>
+            
+            {resendError && (
+              <p className="text-xs text-error font-bold">{resendError}</p>
+            )}
+
+            {resendMessage && (
+              <p className="text-xs text-green-600 font-bold">{resendMessage}</p>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-8 animate-in fade-in duration-500">
         <div className="w-20 h-20 rounded-full bg-secondary-container flex items-center justify-center animate-bounce">
@@ -168,9 +327,9 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchLogin }) => 
           </div>
           <span className="font-body-md text-sm text-on-surface-variant leading-relaxed">
             I agree to the{' '}
-            <a href="#" className="text-primary hover:underline font-label-bold">Terms of Service</a>{' '}
+            <button type="button" onClick={() => setLegalModalType('terms')} className="text-primary hover:underline font-label-bold">Terms of Service</button>{' '}
             and{' '}
-            <a href="#" className="text-primary hover:underline font-label-bold">Privacy Policy</a>
+            <button type="button" onClick={() => setLegalModalType('privacy')} className="text-primary hover:underline font-label-bold">Privacy Policy</button>
           </span>
         </label>
         {errors.agreeTerms && (
@@ -203,6 +362,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchLogin }) => 
           Sign In
         </button>
       </p>
+
+      {legalModalType && (
+        <LegalModal
+          isOpen={!!legalModalType}
+          onClose={() => setLegalModalType(null)}
+          type={legalModalType}
+        />
+      )}
     </form>
   )
 }

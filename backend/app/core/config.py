@@ -9,8 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Quizz App Backend"
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = "your-super-secret-key-change-in-production"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    SECRET_KEY: str = "change-this-in-production-use-a-real-secret"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Shorter = more secure
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173"]
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # PostgreSQL Database URL
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/quizz_db"

@@ -55,7 +55,7 @@ class ExamAssignDetailResponse(BaseModel):
     assignees: List[ExamAssigneeResponse]
 
 class StudentExamResponse(BaseModel):
-    id: int  # ID của ExamAssignee
+    id: int  # ExamAssignee ID
     exam_id: int
     status: Optional[str]
     score: Optional[float]

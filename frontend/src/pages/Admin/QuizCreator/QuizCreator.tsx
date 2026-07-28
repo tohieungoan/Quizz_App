@@ -94,7 +94,6 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setAudioUrl(undefined);
     setMediaFile(null);
     setAudioFile(null);
-    setShowUploadType(null);
     setEditingId(null);
     setFormResetKey(prev => prev + 1);
     
@@ -114,7 +113,6 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setAudioUrl(q.audioUrl);
     setMediaFile(null);
     setAudioFile(null);
-    setShowUploadType(null);
     setEditingId(q.id);
     setFormResetKey(prev => prev + 1);
     if (q.type === 'multiple') {
@@ -247,7 +245,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         const hasMatch = prev.some(q => String(q.id) === String(editingId));
         if (!hasMatch) {
            // We'll show an alert if it somehow couldn't find the match!
-           alert("DEBUG: Không tìm thấy ID " + editingId + " trong mảng questions có độ dài " + prev.length + ". Các ID hiện có: " + prev.map(q => q.id).join(", "));
+           alert("DEBUG: ID " + editingId + " not found in questions array of length " + prev.length + ". Existing IDs: " + prev.map(q => q.id).join(", "));
         }
         return prev.map(q => String(q.id) === String(editingId) ? newQ : q);
       });

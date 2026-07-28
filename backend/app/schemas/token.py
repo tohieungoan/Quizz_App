@@ -18,3 +18,9 @@ class TokenPayload(BaseModel):
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
 
+
+class SocialLoginIn(BaseModel):
+    provider: str
+    token: str
+
+

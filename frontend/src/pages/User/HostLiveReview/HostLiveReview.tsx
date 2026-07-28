@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, BarChart2, LogOut, Flame } from 'lucide-react'
+import { roomService } from '@/services'
 
 interface StudentAnswerState {
   id: string
@@ -59,15 +60,20 @@ export const HostLiveReview: React.FC = () => {
   const location = useLocation()
 
   // State variables passed from Lobby
-  const state = location.state as { roomCode?: string; quizTitle?: string } | null
+  const state = location.state as { roomCode?: string; quizTitle?: string; roomId?: number; progressionMode?: string } | null
   const roomCode = state?.roomCode || '823914'
   const quizTitle = state?.quizTitle || 'Advanced Web Fundamentals Quiz'
 
+  const [autoAdvance, setAutoAdvance] = useState(false)
+
+  const handleAutoAdvanceChange = (val: boolean) => {
+    setAutoAdvance(val)
+  }
+
   // Host Control States
-  const [questionNumber, setQuestionNumber] = useState(1)
-  const [timeLeft, setTimeLeft] = useState(20)
-  const [revealAnswer, setRevealAnswer] = useState(false)
-  const [students, setStudents] = useState<StudentAnswerState[]>([
+  const isDemoMode = true
+  
+  const DUMMY_STUDENTS = [
     { id: '1', name: 'SpeedRunner', answered: false, answerKey: null, streak: 4, score: 3200 },
     { id: '2', name: 'SarahM', answered: false, answerKey: null, streak: 2, score: 2800 },
     { id: '3', name: 'Alex Johnson', answered: false, answerKey: null, streak: 3, score: 2400 },
@@ -75,18 +81,96 @@ export const HostLiveReview: React.FC = () => {
     { id: '5', name: 'Lara Croft', score: 1950, streak: 0, answered: false, answerKey: null },
     { id: '6', name: 'BugHunter', score: 1800, streak: 1, answered: false, answerKey: null },
     { id: '7', name: 'FlexboxKing', score: 1500, streak: 0, answered: false, answerKey: null }
-  ])
+  ]
 
-  const activeQuestion = MOCK_QUESTIONS[((questionNumber - 1) % 3) + 1]
+  const [questionNumber, setQuestionNumber] = useState(1)
+  const [timeLeft, setTimeLeft] = useState(20)
+  const [revealAnswer, setRevealAnswer] = useState(false)
+  const [students, setStudents] = useState<StudentAnswerState[]>(isDemoMode ? DUMMY_STUDENTS : [])
+  const [distribution, setDistribution] = useState<Record<string, number>>({ A: 0, B: 0, C: 0, D: 0 })
+  const [activeQuestion, setActiveQuestion] = useState<QuestionDetails>(
+    isDemoMode ? MOCK_QUESTIONS[1] : {
+      id: 0,
+      text: 'Loading active question...',
+      options: [],
+      correctKey: ''
+    }
+  )
 
-  // Simulate students answering in real time
+  // Poll live session data from Backend (Active Room Mode)
   useEffect(() => {
+    if (isDemoMode) return
+    const token = localStorage.getItem('token')
+    if (!state?.roomId || !token) return
+    const roomId = state.roomId
+
+    const fetchLiveSession = async () => {
+      try {
+        const data = await roomService.getLiveSession(roomId)
+          
+          if (data.status === 'ENDED') {
+            navigate('/dashboard')
+            return
+          }
+
+          setQuestionNumber(data.current_question_index)
+          
+          // Map participants
+          setStudents(data.participants.map((p: any) => ({
+            id: String(p.id),
+            name: p.nickname,
+            answered: p.answered,
+            answerKey: null,
+            streak: 0,
+            score: p.score
+          })))
+
+          // Map active question
+          if (data.active_question) {
+            setActiveQuestion({
+              id: data.active_question.id,
+              text: data.active_question.text,
+              options: data.active_question.options,
+              correctKey: data.active_question.correct_option_key || ''
+            })
+
+            // Sync timer
+            if (data.current_question_started_at) {
+              const startedAt = new Date(data.current_question_started_at + 'Z').getTime()
+              const elapsed = (Date.now() - startedAt) / 1000
+              const limit = data.active_question.time_limit || 20
+              const remaining = Math.max(0, Math.ceil(limit - elapsed))
+              setTimeLeft(remaining)
+              
+              if (remaining === 0) {
+                setRevealAnswer(true)
+              } else {
+                setRevealAnswer(false)
+              }
+            }
+          }
+
+          // Map distribution
+          setDistribution(data.answer_distribution)
+      } catch (err) {
+        console.error("Failed to fetch live session:", err)
+      }
+    }
+
+    fetchLiveSession()
+    const interval = setInterval(fetchLiveSession, 1500)
+    return () => clearInterval(interval)
+  }, [state?.roomId, navigate, isDemoMode])
+
+  // Demo Mode: Simulate student responses
+  useEffect(() => {
+    if (!isDemoMode) return
+    
     // Reset answers
     setStudents(prev => prev.map(s => ({ ...s, answered: false, answerKey: null })))
     setTimeLeft(20)
     setRevealAnswer(false)
 
-    // Interval to randomly make students answer
     let answeredCount = 0
     const interval = setInterval(() => {
       setStudents(prev => {
@@ -96,10 +180,8 @@ export const HostLiveReview: React.FC = () => {
           return prev
         }
 
-        // Pick a random thinking student and assign an answer
         const randomStudent = thinkingStudents[Math.floor(Math.random() * thinkingStudents.length)]
         const randomKeys = ['A', 'B', 'C', 'D']
-        // 70% chance to choose the correct key
         const chosenKey = Math.random() < 0.7 ? activeQuestion.correctKey : randomKeys[Math.floor(Math.random() * 4)]
 
         return prev.map(s => {
@@ -111,16 +193,17 @@ export const HostLiveReview: React.FC = () => {
       })
 
       answeredCount++
-      if (answeredCount >= students.length) {
+      if (answeredCount >= DUMMY_STUDENTS.length) {
         clearInterval(interval)
       }
     }, 1500)
 
     return () => clearInterval(interval)
-  }, [questionNumber])
+  }, [questionNumber, isDemoMode, activeQuestion.correctKey])
 
-  // Countdown clock effect
+  // Demo Mode: Local countdown timer
   useEffect(() => {
+    if (!isDemoMode) return
     if (timeLeft <= 0) {
       setRevealAnswer(true)
       return
@@ -131,36 +214,76 @@ export const HostLiveReview: React.FC = () => {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [timeLeft])
+  }, [timeLeft, isDemoMode])
 
-  // Calculate answer counts for distribution chart
-  const getAnswerDistribution = () => {
+  // Demo Mode: Dynamic answer distribution computation
+  useEffect(() => {
+    if (!isDemoMode) return
     const counts = { A: 0, B: 0, C: 0, D: 0 }
     students.forEach(s => {
       if (s.answered && s.answerKey) {
         counts[s.answerKey as keyof typeof counts]++
       }
     })
-    return counts
-  }
+    setDistribution(counts)
+  }, [students, isDemoMode])
 
-  const distribution = getAnswerDistribution()
+  // Auto Advance countdown clock trigger (if ON)
+  useEffect(() => {
+    if (timeLeft <= 0 && autoAdvance) {
+      const timer = setTimeout(() => {
+        handleNextQuestion()
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [timeLeft, autoAdvance])
+
   const answeredTotal = students.filter(s => s.answered).length
-  const pctAnswered = Math.round((answeredTotal / students.length) * 100)
+  const pctAnswered = students.length > 0 ? Math.round((answeredTotal / students.length) * 100) : 0
 
-  const handleNextQuestion = () => {
-    if (questionNumber >= 3) {
-      // Game ended, return to dashboard
-      alert('Game session completed! Redirecting back to host Dashboard.')
-      navigate('/dashboard')
-    } else {
-      setQuestionNumber(prev => prev + 1)
+  const handleNextQuestion = async () => {
+    if (isDemoMode) {
+      if (questionNumber >= 3) {
+        alert('Demo session completed! Redirecting back to host Dashboard.')
+        navigate('/dashboard')
+      } else {
+        const nextNum = questionNumber + 1
+        setQuestionNumber(nextNum)
+        setActiveQuestion(MOCK_QUESTIONS[nextNum])
+        setRevealAnswer(false)
+      }
+      return
+    }
+
+    if (!state?.roomId) return
+    const roomId = state.roomId
+    try {
+      const data = await roomService.nextQuestion(roomId)
+      if (data.status === 'ENDED') {
+        alert('Game session completed! Redirecting back to host Dashboard.')
+        navigate('/dashboard')
+      } else {
+        setRevealAnswer(false)
+      }
+    } catch (err) {
+      console.error(err)
     }
   }
 
-  const handleEndSession = () => {
-    if (window.confirm('Are you sure you want to end this live session? All progress will be cleared.')) {
+  const handleEndSession = async () => {
+    if (isDemoMode) {
       navigate('/dashboard')
+      return
+    }
+
+    if (!window.confirm('Are you sure you want to end this live session? All progress will be cleared.')) return
+    if (!state?.roomId) return
+    const roomId = state.roomId
+    try {
+      await roomService.endRoom(roomId)
+      navigate('/dashboard')
+    } catch (err) {
+      console.error(err)
     }
   }
 
@@ -232,6 +355,24 @@ export const HostLiveReview: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Auto Advance Toggle */}
+            <div className="flex items-center gap-3 bg-[#f5f5fa] border-2 border-outline-variant/30 px-4 py-2 rounded-xl text-xs font-black text-slate-800 shadow-sm">
+              <span>Auto Advance:</span>
+              <button
+                type="button"
+                onClick={() => handleAutoAdvanceChange(!autoAdvance)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  autoAdvance ? 'bg-primary' : 'bg-slate-200'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    autoAdvance ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
             {/* Active Members Count */}
             <div className="flex items-center gap-2 bg-[#eaeaff]/40 px-4 py-2 rounded-xl border-2 border-outline-variant/30 text-xs font-black text-slate-850 shadow-sm">
               <Users className="w-4 h-4 text-primary" />

@@ -127,7 +127,7 @@ def run_test():
             res_body = json.loads(response.read().decode("utf-8"))
             exam_id = res_body["exam"]["id"]
             print(f"Exam created with ID: {exam_id}. Assigned count: {res_body['assignees_count']}")
-            assert res_body["assignees_count"] == 1  # Chỉ có Student A được gán lúc này
+            assert res_body["assignees_count"] == 1  # Only Student A is assigned at this point
 
         # TEST 2: Approve Student B to join group
         print("TEST 2: Approving Student B to join group...")

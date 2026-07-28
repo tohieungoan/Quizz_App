@@ -53,7 +53,6 @@ export const ParticipantAnswer: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // State variables passed from Router
   const state = location.state as { 
     nickname?: string 
     roomCode?: string 
@@ -143,7 +142,7 @@ export const ParticipantAnswer: React.FC = () => {
   }
 
   // Helper colors for option letters
-  const getLetterBgColor = (key: string, isSelected: boolean = false) => {
+  const getLetterBgColor = (key: string) => {
     if (isAnswered && (selectedKey === key || key === activeQuestion.correctKey)) {
       return 'bg-white text-slate-900 font-black shadow-md';
     }
@@ -323,35 +322,36 @@ export const ParticipantAnswer: React.FC = () => {
           </button>
         )}
 
-        {/* Slide-Up Result Details Banner */}
+        {/* Result Popup Overlay (if answered and showResult true) */}
         {showResult && (
-          <div className={`fixed inset-x-0 bottom-0 border-t-4 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] py-6 px-5 z-50 animate-in slide-in-from-bottom duration-300 ${
-            isCorrect ? 'bg-emerald-50 border-emerald-500' : 'bg-red-50 border-red-500'
-          }`}>
-            <div className="max-w-lg mx-auto flex flex-col gap-4 text-center">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 text-center animate-in slide-in-from-bottom-8 duration-300">
               
-              <div className="flex items-center justify-center gap-2">
+              {/* Header result badge */}
+              <div className="flex justify-center mb-4">
                 {isCorrect ? (
-                  <>
-                    <CheckCircle2 className="w-8 h-8 text-emerald-600 fill-emerald-100" />
-                    <h2 className="font-headline-md text-xl font-black text-emerald-900">Correct! Well done</h2>
-                  </>
+                  <span className="text-xs font-black text-emerald-700 bg-emerald-100 border-2 border-emerald-300 px-4 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-100" /> Correct
+                  </span>
                 ) : (
-                  <>
-                    <XCircle className="w-8 h-8 text-red-600 fill-red-100" />
-                    <h2 className="font-headline-md text-xl font-black text-red-900">Incorrect! Keep trying</h2>
-                  </>
+                  <span className="text-xs font-black text-rose-700 bg-rose-100 border-2 border-rose-300 px-4 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                    <XCircle className="w-4 h-4 text-rose-500 fill-rose-100" /> Incorrect
+                  </span>
                 )}
               </div>
 
-              <p className="font-body-md text-xs text-slate-800 font-bold">
+              <h3 className={`text-xl font-black mb-2 ${isCorrect ? 'text-emerald-800' : 'text-rose-800'}`}>
+                {isCorrect ? 'Awesome Job!' : 'Better Luck Next Time!'}
+              </h3>
+
+              <p className="text-xs text-slate-800 font-extrabold mb-6 leading-relaxed">
                 {isCorrect 
                   ? `You answered quickly and earned points + Speed Bonus!` 
-                  : `Correct answer was option: ${activeQuestion.correctKey}. ${activeQuestion.options.find(o => o.key === activeQuestion.correctKey)?.label}`
+                  : `Correct answer was option: ${activeQuestion.correctKey}. ${activeQuestion.options.find(o => o.key === activeQuestion.correctKey)?.label || ''}`
                 }
               </p>
 
-              <div className="flex justify-center items-center gap-6 py-2">
+              <div className="flex justify-center items-center gap-6 py-2 mb-6">
                 <div className="flex flex-col">
                   <span className="text-[10px] text-outline uppercase tracking-wider font-bold">Points Earned</span>
                   <span className={`text-2xl font-black ${isCorrect ? 'text-emerald-700' : 'text-slate-800'}`}>
@@ -372,7 +372,7 @@ export const ParticipantAnswer: React.FC = () => {
 
               <button
                 onClick={handleNextScreen}
-                className="w-full mt-2 py-4 bg-primary text-white rounded-2xl font-button text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-4 bg-primary text-white rounded-2xl font-button text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
               >
                 {questionNumber % 3 === 0 ? (
                   <>View Live Leaderboard <ArrowRight className="w-4 h-4" /></>
