@@ -3,8 +3,8 @@ Pydantic Models for User object.
 Used to validate input data (UserCreate, UserUpdate) and format output data (UserResponse).
 """
 from datetime import datetime
-from typing import Optional
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from typing import Optional, List
 
 
 # Base Schema containing shared attributes
@@ -108,4 +108,18 @@ class UserSettingUpdate(BaseModel):
 class NotificationEmailRequest(BaseModel):
     email: EmailStr
 
+from typing import Literal
 
+class UserImportRow(BaseModel):
+    email: EmailStr
+    fullname: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=6)
+    role: Literal["ADMIN", "USER", "SUPER_ADMIN"] = "USER"
+    status: Literal["ACTIVE", "LOCKED", "BANNED"] = "ACTIVE"
+
+class UserImportResult(BaseModel):
+    success: bool
+    message: str
+    job_id: Optional[str] = None
+    imported_count: int = 0
+    errors: List[str] = []

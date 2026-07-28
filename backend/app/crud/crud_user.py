@@ -4,6 +4,8 @@ Database operations (Create, Read, Update, Delete) for the User object.
 from datetime import datetime, timedelta
 from typing import Optional, List, Union, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.dialects.postgresql import insert
 from app.models.user import User, RefreshToken
 from app.schemas.user import UserCreate, UserUpdate
 from app.core.security import get_password_hash, verify_password, generate_refresh_token_string
@@ -19,9 +21,29 @@ class CRUDUser:
         """Retrieve User information by Email."""
         return db.query(User).filter(User.email == email).first()
 
-    def get_multi(self, db: Session, skip: int = 0, limit: int = 100) -> List[User]:
-        """Retrieve list of Users with pagination."""
-        return db.query(User).offset(skip).limit(limit).all()
+    def get_multi(
+        self, 
+        db: Session, 
+        skip: int = 0, 
+        limit: int = 100,
+        search: Optional[str] = None,
+        role: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[User]:
+        """Retrieve list of Users with pagination and optional filtering."""
+        query = db.query(User)
+        if search:
+            query = query.filter(
+                or_(
+                    User.email.ilike(f"%{search}%"),
+                    User.fullname.ilike(f"%{search}%")
+                )
+            )
+        if role:
+            query = query.filter(User.role == role)
+        if status:
+            query = query.filter(User.status == status)
+        return query.order_by(User.id.desc()).offset(skip).limit(limit).all()
 
     def create(self, db: Session, obj_in: UserCreate) -> User:
         """Create a new User (hashes password if provided)."""
@@ -124,6 +146,39 @@ class CRUDUser:
         return False
 
 
+    def check_existing_emails(self, db: Session, emails: List[str]) -> set[str]:
+        """Return a set of emails that already exist in the database from a given list."""
+        if not emails:
+            return set()
+        results = db.query(User.email).filter(User.email.in_(emails)).all()
+        return {r[0] for r in results}
+
+    def bulk_create(self, db: Session, users_in: List[Dict[str, Any]]) -> int:
+        """Bulk create users using Postgres ON CONFLICT DO NOTHING. Passwords will be hashed here."""
+        if not users_in:
+            return 0
+        
+        # Prepare dictionaries for insert
+        values = [
+            {
+                "email": u["email"],
+                "password": get_password_hash(u["password"]),
+                "fullname": u.get("fullname"),
+                "role": u.get("role", "USER"),
+                "status": u.get("status", "ACTIVE"),
+                "auth_provider": "LOCAL"
+            }
+            for u in users_in
+        ]
+        
+        # Build Postgres insert statement
+        stmt = insert(User).values(values)
+        # On conflict (email), do nothing
+        stmt = stmt.on_conflict_do_nothing(index_elements=['email'])
+        
+        result = db.execute(stmt)
+        db.commit()
+        return result.rowcount
 
 crud_user = CRUDUser()
 
