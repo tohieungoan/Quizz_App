@@ -2,6 +2,7 @@ import { Search, Bell, HelpCircle, Menu, AlertCircle, CheckCircle2, MessageSquar
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ViewState } from '../types';
+import { useLogout } from '../hooks/useLogout';
 
 export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () => void, onNavigate?: (view: ViewState, context?: any) => void }) {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -10,6 +11,7 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { logout } = useLogout();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -180,7 +182,10 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
                 <div className="h-px bg-outline-variant/20 my-1 mx-2"></div>
 
                 {/* Log Out */}
-                <button className="flex items-center gap-3 w-full p-2.5 rounded-lg hover:bg-error-container hover:text-error transition-colors text-on-surface text-[14px] font-semibold text-left group">
+                <button
+                  onClick={() => logout()}
+                  className="flex items-center gap-3 w-full p-2.5 rounded-lg hover:bg-error-container hover:text-error transition-colors text-on-surface text-[14px] font-semibold text-left group"
+                >
                   <div className="w-8 h-8 rounded-full bg-surface-container group-hover:bg-error/10 flex items-center justify-center shrink-0 text-on-surface-variant group-hover:text-error transition-colors">
                     <LogOut className="w-4 h-4" />
                   </div>

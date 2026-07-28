@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
 import { Mail, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
 import { InputField } from './InputField'
 import { LoginFormData } from '../types'
+import { authService, saveTokens, saveUserProfile } from '@/services'
+import { useAuthContext } from '@/store/AuthContext'
 
 interface LoginFormProps {
   onSwitchRegister: () => void
@@ -18,7 +19,114 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [errors, setErrors] = useState<Partial<Record<keyof LoginFormData, string>>>({})
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
-  const navigate = useNavigate()
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMessage, setResendMessage] = useState<string | null>(null)
+  const [countdown, setCountdown] = useState<number>(0)
+  const { setAuthenticated } = useAuthContext()
+
+  // Countdown timer for Resend button
+  useEffect(() => {
+    if (countdown <= 0) return
+    const timer = setInterval(() => {
+      setCountdown((prev) => prev - 1)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [countdown])
+
+  // Initialize countdown from localStorage based on email
+  const updateCountdownFromStorage = (emailAddress: string) => {
+    const lastSentStr = localStorage.getItem(`verification_sent_at_${emailAddress}`)
+    if (lastSentStr) {
+      const lastSent = new Date(lastSentStr)
+      const elapsedSeconds = Math.floor((new Date().getTime() - lastSent.getTime()) / 1000)
+      const remaining = 900 - elapsedSeconds
+      if (remaining > 0) {
+        setCountdown(remaining)
+      } else {
+        setCountdown(0)
+      }
+    } else {
+      setCountdown(0)
+    }
+  }
+
+  // Update countdown when email changes
+  useEffect(() => {
+    if (form.email) {
+      updateCountdownFromStorage(form.email)
+    }
+  }, [form.email])
+
+  // Restore saved email from localStorage (Remember Me)
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('remembered_email')
+    if (savedEmail) {
+      setForm((prev) => ({ ...prev, email: savedEmail, rememberMe: true }))
+    }
+  }, [])
+
+  const handleResendVerification = async () => {
+    if (!form.email || countdown > 0) return
+    setResendLoading(true)
+    setResendMessage(null)
+    try {
+      const res = await authService.resendVerification(form.email)
+      setResendMessage(res.message || 'Verification email has been resent successfully.')
+      localStorage.setItem(`verification_sent_at_${form.email}`, new Date().toISOString())
+      setCountdown(900) // 15-minute countdown
+      // Clear current errors for clean UI
+      setErrors({})
+    } catch (err: any) {
+      setErrors({ email: err.message || 'Failed to resend verification email.' })
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  /** Save profile and update auth status -> App.tsx redirects automatically */
+  const fetchProfileAndNavigate = async (accessToken: string) => {
+    try {
+      const profile = await authService.getProfileWithToken(accessToken)
+      saveUserProfile(profile)
+    } catch (err) {
+      console.error('Failed to fetch user profile:', err)
+    }
+    setAuthenticated()
+  }
+
+  // Send social token (Google) to backend
+  const sendSocialToken = async (provider: string, token: string) => {
+    setLoading(true)
+    setErrors({})
+    try {
+      const data = await authService.socialLogin(provider, token)
+      setSuccess(true)
+      saveTokens(data)
+      await fetchProfileAndNavigate(data.access_token)
+    } catch (err: any) {
+      setErrors({ email: err.message || `Authentication with ${provider} failed.` })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGoogleLogin = () => {
+    const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1098672097728-dummygoogleclientid.apps.googleusercontent.com'
+    if (!(window as any).google) {
+      alert("Google Identity Services script failed to load. Please check your internet connection.")
+      return
+    }
+    const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+      client_id: googleClientId,
+      scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+      callback: (tokenResponse: any) => {
+        if (tokenResponse.access_token) {
+          sendSocialToken('google', tokenResponse.access_token)
+        }
+      },
+    })
+    tokenClient.requestAccessToken()
+  }
 
   const validate = (): boolean => {
     const newErrors: typeof errors = {}
@@ -34,12 +142,53 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     e.preventDefault()
     if (!validate()) return
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 1500))
-    setLoading(false)
-    setSuccess(true)
-    localStorage.setItem('token', 'mock-jwt-token')
-    localStorage.setItem('user', JSON.stringify({ email: form.email }))
-    setTimeout(() => navigate('/dashboard'), 1000)
+    setErrors({})
+    setResendMessage(null)
+
+    try {
+      const data = await authService.login(form.email, form.password)
+      setSuccess(true)
+      saveTokens(data)
+      
+      // Save or remove email based on Remember Me selection
+      if (form.rememberMe) {
+        localStorage.setItem('remembered_email', form.email)
+      } else {
+        localStorage.removeItem('remembered_email')
+      }
+
+      await fetchProfileAndNavigate(data.access_token)
+    } catch (err: any) {
+      const errMsg = err.message || ''
+      if (errMsg.toLowerCase().includes('not verified') || errMsg.toLowerCase().includes('verified')) {
+        const lastSentStr = localStorage.getItem(`verification_sent_at_${form.email}`)
+        let shouldAutoResend = true
+        if (lastSentStr) {
+          const lastSent = new Date(lastSentStr)
+          const diffMinutes = (new Date().getTime() - lastSent.getTime()) / (1000 * 60)
+          if (diffMinutes <= 15) {
+            shouldAutoResend = false
+          }
+        }
+
+        if (shouldAutoResend) {
+          setErrors({ email: 'Your account is not verified yet. Automatically sending a new verification email...' })
+          try {
+            await authService.resendVerification(form.email)
+            setResendMessage('A new verification link has been sent to your email. Please check your inbox.')
+            setErrors({ email: 'Your account is not verified yet. We have sent a new activation link to your email.' })
+          } catch (resendErr: any) {
+            setErrors({ email: `Your account is not verified yet. Failed to send a new link automatically: ${resendErr.message || ''}` })
+          }
+        } else {
+          setErrors({ email: 'Your account is not verified yet. Please check your inbox for the activation link.' })
+        }
+      } else {
+        setErrors({ email: errMsg || 'Incorrect email or password.' })
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (success) {
@@ -56,16 +205,38 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
-      <InputField
-        id="login-email"
-        type="email"
-        label="Email address"
-        value={form.email}
-        onChange={(v) => setForm({ ...form, email: v })}
-        error={errors.email}
-        icon={<Mail className="w-5 h-5" />}
-        autoComplete="email"
-      />
+      <div className="flex flex-col gap-1.5">
+        <InputField
+          id="login-email"
+          type="email"
+          label="Email address"
+          value={form.email}
+          onChange={(v) => {
+            setForm({ ...form, email: v })
+            setResendMessage(null)
+          }}
+          error={errors.email}
+          icon={<Mail className="w-5 h-5" />}
+          autoComplete="email"
+        />
+        {errors.email && errors.email.toLowerCase().includes('verify') && (
+          <button
+            type="button"
+            disabled={resendLoading || countdown > 0}
+            onClick={handleResendVerification}
+            className="text-xs text-primary font-bold hover:underline self-start disabled:opacity-75 focus:outline-none flex items-center gap-1.5 disabled:no-underline"
+          >
+            {resendLoading
+              ? 'Resending verification email...'
+              : countdown > 0
+              ? `Resend in ${Math.floor(countdown / 60)}:${countdown % 60 < 10 ? '0' : ''}${countdown % 60}`
+              : 'Resend verification email'}
+          </button>
+        )}
+        {resendMessage && (
+          <p className="text-xs text-green-600 font-bold">{resendMessage}</p>
+        )}
+      </div>
       <InputField
         id="login-password"
         type={showPwd ? 'text' : 'password'}
@@ -139,11 +310,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       </div>
 
       {/* Social Login */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="flex flex-col gap-3">
         <button
           type="button"
           id="googleLoginBtn"
-          className="flex items-center justify-center gap-2 border-2 border-outline-variant rounded-xl py-3 font-body-md text-sm text-on-surface hover:border-primary hover:bg-primary-fixed/10 transition-all"
+          onClick={handleGoogleLogin}
+          className="flex items-center justify-center gap-2 border-2 border-outline-variant rounded-xl py-3.5 font-body-md text-sm text-on-surface hover:border-primary hover:bg-primary-fixed/10 transition-all cursor-pointer w-full"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -151,20 +323,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
           </svg>
-          Google
-        </button>
-        <button
-          type="button"
-          id="microsoftLoginBtn"
-          className="flex items-center justify-center gap-2 border-2 border-outline-variant rounded-xl py-3 font-body-md text-sm text-on-surface hover:border-primary hover:bg-primary-fixed/10 transition-all"
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
-            <path fill="#F25022" d="M11.4 11.4H0V0h11.4z"/>
-            <path fill="#7FBA00" d="M24 11.4H12.6V0H24z"/>
-            <path fill="#00A4EF" d="M11.4 24H0V12.6h11.4z"/>
-            <path fill="#FFB900" d="M24 24H12.6V12.6H24z"/>
-          </svg>
-          Microsoft
+          Continue with Google
         </button>
       </div>
 

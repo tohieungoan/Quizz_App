@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Play } from 'lucide-react';
 import { HOST_QUIZZES_LIST, HOST_GROUPS_LIST } from '@/data/userData';
+import { quizService, roomService } from '@/services';
 
 interface HostRoomModalProps {
   isOpen: boolean;
@@ -21,27 +22,46 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
 
   if (!isOpen) return null;
 
-  const handleLaunch = (e: React.FormEvent) => {
+  const handleLaunch = async (e: React.FormEvent) => {
     e.preventDefault();
-    const generatedRoomCode = Math.floor(100000 + Math.random() * 900000).toString();
-    onClose();
+    
+    // Fetch a real quiz ID from Backend to avoid 404
+    let realQuizId = 1;
+    try {
+      const qData = await quizService.getQuizzes();
+      if (qData && qData.length > 0) {
+        realQuizId = qData[0].id;
+      }
+    } catch (err) {
+      console.error("Error fetching quizzes from backend:", err);
+    }
 
-    navigate('/lobby', {
-      state: {
-        roomCode: generatedRoomCode,
-        nickname: 'Host / Sarah Jenkins',
-        isHost: true,
-        settings: {
-          quizId: selectedQuizId,
-          groupId: selectedGroupId,
-          gameMode: selectedGameMode,
-          progressionMode,
-          leaderboardEnabled: leaderboardToggle,
-          randomizeQuestions,
-          randomizeAnswers,
+    try {
+      const roomData = await roomService.launchRoom({
+        quiz_id: realQuizId,
+        group_id: null,
+        mode: selectedGameMode,
+        progression_mode: progressionMode,
+        allow_skip_question: randomizeQuestions,
+        allow_show_rank: leaderboardToggle,
+        shuffle_options: randomizeAnswers
+      });
+
+      onClose();
+      navigate('/lobby', {
+        state: {
+          roomCode: roomData.room_code,
+          roomId: roomData.id,
+          nickname: 'Host / Sarah Jenkins',
+          isHost: true,
+          quizTitle: roomData.title || 'Live Quiz Session',
+          progressionMode: roomData.progression_mode
         },
-      },
-    });
+      });
+    } catch (err: any) {
+      console.error("Failed to connect to backend server:", err);
+      alert(`Failed to launch room: ${err.message || 'Connection failed'}`);
+    }
   };
 
   return (

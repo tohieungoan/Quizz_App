@@ -7,12 +7,14 @@ import { LoginForm } from './components/LoginForm'
 import { RegisterForm } from './components/RegisterForm'
 import { ForgotPasswordForm } from './components/ForgotPasswordForm'
 import { ResetSuccessView } from './components/ResetSuccessView'
+import { LegalModal } from '@/components/ui/LegalModal'
 
 export const AuthPage: React.FC = () => {
   const [searchParams] = useSearchParams()
   const initialMode = (searchParams.get('mode') as AuthMode) || 'login'
   const [mode, setMode] = useState<AuthMode>(initialMode)
   const [resetEmail, setResetEmail] = useState('')
+  const [legalModalType, setLegalModalType] = useState<'terms' | 'privacy' | null>(null)
 
   const testimonials = [
     { text: 'QuizzApp transformed how I engage my members. Real-time results are incredible!', name: 'Ms. Sarah T.', role: 'Quiz Host' },
@@ -230,14 +232,32 @@ export const AuthPage: React.FC = () => {
             © 2026 QuizzApp. All rights reserved.
           </p>
           <div className="flex gap-4">
-            {['Privacy Policy', 'Terms of Service', 'Support'].map((link) => (
-              <a key={link} href="#" className="font-body-md text-xs text-outline hover:text-primary transition-colors">
-                {link}
-              </a>
+            {[
+              { label: 'Privacy Policy', type: 'privacy' as const },
+              { label: 'Terms of Service', type: 'terms' as const },
+              { label: 'Support', type: null }
+            ].map((link) => (
+              link.type ? (
+                <button key={link.label} onClick={() => setLegalModalType(link.type)} className="font-body-md text-xs text-outline hover:text-primary transition-colors">
+                  {link.label}
+                </button>
+              ) : (
+                <a key={link.label} href="#" className="font-body-md text-xs text-outline hover:text-primary transition-colors">
+                  {link.label}
+                </a>
+              )
             ))}
           </div>
         </div>
       </div>
+
+      {legalModalType && (
+        <LegalModal
+          isOpen={!!legalModalType}
+          onClose={() => setLegalModalType(null)}
+          type={legalModalType}
+        />
+      )}
     </div>
   )
 }

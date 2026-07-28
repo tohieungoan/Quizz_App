@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowLeft, GraduationCap } from 'lucide-react';
 import landingPage1 from '@/assets/images/landing-page-1.jpg';
+import { authService } from '@/services';
 
 export const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const rawToken = searchParams.get('token');
-  const token = rawToken || 'demo-token-verify-email';
+  const token = searchParams.get('token');
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -15,11 +15,16 @@ export const ResetPasswordPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(token ? '' : 'Password reset token is missing. Please request a new link.');
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!token) {
+      setError('Password reset token is missing. Please request a new link.');
+      return;
+    }
 
     if (!newPassword) {
       setError('Please enter a new password.');
@@ -39,11 +44,14 @@ export const ResetPasswordPage: React.FC = () => {
     setLoading(true);
     setError('');
 
-    // Simulate password update at frontend (no backend connection)
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await authService.resetPassword(token, newPassword);
       setSuccess(true);
-    }, 900);
+    } catch (err: any) {
+      setError(err.message || 'Failed to reset password. The link may have expired or is invalid.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

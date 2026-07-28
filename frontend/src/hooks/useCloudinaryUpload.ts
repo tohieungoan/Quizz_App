@@ -1,12 +1,5 @@
 import { useState } from 'react';
-
-interface UploadSignatureResponse {
-  signature: string;
-  timestamp: number;
-  api_key: string;
-  cloud_name: string;
-  folder: string;
-}
+import { uploadService } from '@/services';
 
 export const useCloudinaryUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
@@ -21,33 +14,12 @@ export const useCloudinaryUpload = () => {
     setUploadedUrl(null);
 
     try {
-      // 1. Request Signature from our Backend
-      // NOTE: In a real app, you MUST include the Admin Authorization token in headers.
-      // We assume the user has a valid token stored in localStorage for this demo.
-      const token = localStorage.getItem('token'); 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const sigResponse = await fetch('http://127.0.0.1:8000/api/v1/upload/request-signature', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-        }),
+      // 1. Request Signature from our Backend using uploadService
+      const sigData = await uploadService.requestSignature({
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
       });
-
-      if (!sigResponse.ok) {
-        const errData = await sigResponse.json();
-        throw new Error(errData.detail || 'Failed to get upload signature');
-      }
-
-      const sigData: UploadSignatureResponse = await sigResponse.json();
 
       // 2. Upload to Cloudinary
       const formData = new FormData();
@@ -109,17 +81,7 @@ export const useCloudinaryUpload = () => {
 
   const deleteFile = async (url: string) => {
     try {
-      const token = localStorage.getItem('token'); 
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      await fetch(`http://127.0.0.1:8000/api/v1/upload/delete-asset?url=${encodeURIComponent(url)}`, {
-        method: 'DELETE',
-        headers: headers,
-      });
-      // We don't necessarily need to handle the response since it's fire-and-forget for drafts
+      await uploadService.deleteAsset(url);
     } catch (err) {
       console.error("Failed to delete orphaned asset:", err);
     }

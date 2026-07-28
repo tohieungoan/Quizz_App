@@ -18,6 +18,7 @@ from app.schemas.user import (
     NotificationEmailRequest
 )
 from app.core.email import send_notification_email_verification
+from app.core.config import settings
 from app.core.security import create_notification_email_verification_token
 
 router = APIRouter()
@@ -213,7 +214,7 @@ def request_notification_email_verification(
         user_id=current_user.id,
         new_email=body.email
     )
-    verify_url = f"http://localhost:5173/verify-notification-email?token={token}"
+    verify_url = f"{settings.FRONTEND_URL}/verify-notification-email?token={token}"
     background_tasks.add_task(
         send_notification_email_verification,
         email_to=body.email,

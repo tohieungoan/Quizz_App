@@ -11,6 +11,7 @@ import { HostStudioTab } from './components/HostStudioTab';
 import { SettingsTab } from './components/SettingsTab';
 import { HostRoomModal } from './components/HostRoomModal';
 import { USER_ASSIGNED_EXAMS } from '@/data/userData';
+import { useLogout } from '@/hooks/useLogout';
 
 type TabType = 'overview' | 'join_room' | 'assigned_exams' | 'history' | 'achievements' | 'host_studio' | 'settings';
 
@@ -52,12 +53,9 @@ export const Dashboard: React.FC = () => {
     navigate('/create-quiz', { state: { activeTab } });
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('dashboard_active_tab');
-    navigate('/login');
-  };
+  const { logout } = useLogout();
+
+  const handleLogout = () => logout();
 
   return (
     <div className="min-h-screen bg-surface-bright text-on-surface flex font-sans antialiased md:ml-64">
