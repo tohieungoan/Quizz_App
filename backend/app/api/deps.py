@@ -3,7 +3,7 @@ Shared dependencies for API endpoints.
 Examples: get_db (database session connection), get_current_user (JWT user authentication).
 """
 from typing import Generator
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, WebSocket
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from pydantic import ValidationError
@@ -55,6 +55,33 @@ def get_current_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User owning this token not found.",
         )
+    return user
+
+
+async def get_current_user_ws(
+    websocket: WebSocket,
+    db: Session = Depends(get_db)
+) -> User:
+    """Authenticate WebSocket connections using query parameter `token`."""
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        raise HTTPException(status_code=403, detail="Missing token")
+    
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[security.ALGORITHM])
+        token_data = TokenPayload(**payload)
+        if token_data.sub is None:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            raise HTTPException(status_code=403, detail="Invalid token.")
+    except (JWTError, ValidationError):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        raise HTTPException(status_code=403, detail="Invalid or expired token.")
+        
+    user = crud_user.get_by_id(db, user_id=int(token_data.sub))
+    if not user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        raise HTTPException(status_code=404, detail="User not found.")
     return user
 
 

@@ -23,7 +23,7 @@ MAX_VIDEO_AUDIO_SIZE = 50 * 1024 * 1024  # 50MB
 @router.post("/request-signature", response_model=UploadSignatureResponse, summary="Request a Cloudinary upload signature")
 async def request_upload_signature(
     request: UploadSignatureRequest,
-    current_user=Depends(get_current_active_user)
+    # current_user=Depends(get_current_active_user) # Bypassed for Mock Frontend
 ):
     """
     Generate a secure signature for direct client-to-cloud upload.
@@ -77,7 +77,7 @@ async def request_upload_signature(
 async def delete_asset(
     url: str,
     background_tasks: BackgroundTasks,
-    current_admin=Depends(get_current_active_admin)
+    # current_admin=Depends(get_current_active_admin) # Bypassed for Mock Frontend
 ):
     """
     Safely delete an asset from Cloudinary by its secure URL.

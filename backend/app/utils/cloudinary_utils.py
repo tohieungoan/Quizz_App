@@ -23,29 +23,29 @@ def extract_public_id(url: str) -> Optional[str]:
         return None
         
     try:
-        # Tách lấy phần sau chữ /upload/
+        # Extract the part after /upload/
         parts = url.split("/upload/")
         if len(parts) < 2:
             return None
             
         path_after_upload = parts[1]
         
-        # Mặc định tất cả file của chúng ta đều nằm trong thư mục 'quizz_app'
-        # Nên cách an toàn nhất là tìm vị trí của chữ 'quizz_app' và lấy toàn bộ phía sau
+        # By default, all our files are located in the 'quizz_app' folder.
+        # The safest way is to find the position of 'quizz_app' and get everything after it.
         root_folder = "quizz_app"
         
         if root_folder in path_after_upload:
-            # Lấy từ 'quizz_app/...' trở đi
+            # Get everything starting from 'quizz_app/...'
             public_id_with_ext = path_after_upload[path_after_upload.find(root_folder):]
         else:
-            # Fallback trong trường hợp không có thư mục quizz_app (dự phòng)
+            # Fallback in case there is no quizz_app folder
             path_parts = path_after_upload.split("/")
-            # Bỏ qua transformation (thường chứa dấu phẩy) hoặc version (v1234)
+            # Skip transformation (usually contains comma) or version (e.g. v1234)
             while path_parts and ("," in path_parts[0] or (path_parts[0].startswith("v") and path_parts[0][1:].isdigit())):
                 path_parts.pop(0)
             public_id_with_ext = "/".join(path_parts)
         
-        # Xóa đuôi mở rộng file (.jpg, .mp3, v.v.)
+        # Remove the file extension (.jpg, .mp3, etc.)
         public_id = public_id_with_ext.rsplit(".", 1)[0]
         return public_id
     except Exception as e:

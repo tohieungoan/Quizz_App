@@ -133,11 +133,11 @@ def import_users_file(
     rows = []
     
     if file.filename.endswith('.csv'):
-        # Dùng utf-8-sig để tự động loại bỏ ký tự BOM (\ufeff) do Excel sinh ra khi export CSV
+        # Use utf-8-sig to automatically strip the BOM character (\ufeff) that Excel adds when exporting CSV
         content = file.file.read().decode("utf-8-sig")
         csv_reader = csv.DictReader(io.StringIO(content))
         for row in csv_reader:
-            # Loại bỏ khoảng trắng thừa ở key (tên cột) và value
+            # Strip leading/trailing whitespace from keys (column names) and values
             clean_row = {
                 (k.strip() if k else k): (v.strip() if isinstance(v, str) else v) 
                 for k, v in row.items()

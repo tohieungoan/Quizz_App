@@ -243,14 +243,16 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }
 
     if (editingId !== null && editingId !== undefined) {
-      setQuestions(prev => {
-        const hasMatch = prev.some(q => String(q.id) === String(editingId));
-        if (!hasMatch) {
-           // We'll show an alert if it somehow couldn't find the match!
-           alert("DEBUG: Không tìm thấy ID " + editingId + " trong mảng questions có độ dài " + prev.length + ". Các ID hiện có: " + prev.map(q => q.id).join(", "));
-        }
-        return prev.map(q => String(q.id) === String(editingId) ? newQ : q);
-      });
+      const hasMatch = questions.some(q => String(q.id) === String(editingId));
+      if (!hasMatch) {
+        setAlertState({
+          isOpen: true,
+          title: "Lỗi đồng bộ",
+          message: `Không tìm thấy ID ${editingId} trong danh sách câu hỏi.`,
+          type: "error"
+        });
+      }
+      setQuestions(prev => prev.map(q => String(q.id) === String(editingId) ? newQ : q));
     } else {
       setQuestions(prev => [...prev, newQ]);
     }

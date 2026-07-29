@@ -1,5 +1,8 @@
 import { useState } from 'react';
 
+const API_URL = import.meta.env.VITE_API_URL;
+const CLOUDINARY_URL = import.meta.env.VITE_CLOUDINARY_URL;
+
 interface UploadSignatureResponse {
   signature: string;
   timestamp: number;
@@ -32,7 +35,7 @@ export const useCloudinaryUpload = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const sigResponse = await fetch('http://127.0.0.1:8000/api/v1/upload/request-signature', {
+      const sigResponse = await fetch(`${API_URL}/upload/request-signature`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify({
@@ -57,7 +60,7 @@ export const useCloudinaryUpload = () => {
       formData.append('signature', sigData.signature);
       formData.append('folder', sigData.folder);
 
-      const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/auto/upload`;
+      const cloudinaryUrl = `${CLOUDINARY_URL}/${sigData.cloud_name}/auto/upload`;
 
       // Use native XMLHttpRequest for upload progress without needing axios dependency
       return new Promise((resolve, reject) => {
@@ -115,7 +118,7 @@ export const useCloudinaryUpload = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      await fetch(`http://127.0.0.1:8000/api/v1/upload/delete-asset?url=${encodeURIComponent(url)}`, {
+      await fetch(`${API_URL}/upload/delete-asset?url=${encodeURIComponent(url)}`, {
         method: 'DELETE',
         headers: headers,
       });
