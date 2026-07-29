@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { uploadService } from '@/services';
 
+const CLOUDINARY_URL = import.meta.env.VITE_CLOUDINARY_URL;
+
 export const useCloudinaryUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -29,12 +31,12 @@ export const useCloudinaryUpload = () => {
       formData.append('signature', sigData.signature);
       formData.append('folder', sigData.folder);
 
-      const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/auto/upload`;
+      const cloudinaryUrl = `${CLOUDINARY_URL}/${sigData.cloud_name}/auto/upload`;
 
-      // Use native XMLHttpRequest for upload progress without needing axios dependency
-      return new Promise((resolve, reject) => {
+      // Use native XMLHttpRequest for upload progress tracking
+      return new Promise((resolve) => {
         const xhr = new XMLHttpRequest();
-        
+
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
             const percentCompleted = Math.round((event.loaded * 100) / event.total);
@@ -45,7 +47,7 @@ export const useCloudinaryUpload = () => {
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const response = JSON.parse(xhr.responseText);//Loggg
+              const response = JSON.parse(xhr.responseText);
               setUploadedUrl(response.secure_url);
               setIsUploading(false);
               resolve(response.secure_url);
@@ -73,7 +75,7 @@ export const useCloudinaryUpload = () => {
 
     } catch (err: any) {
       console.error("Upload error:", err);
-      setError(err.message || 'An error occurred during upload');
+      setError(err?.response?.data?.detail || err.message || 'An error occurred during upload');
       setIsUploading(false);
       return null;
     }

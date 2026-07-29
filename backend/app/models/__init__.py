@@ -7,6 +7,7 @@ from app.models.exam import Exam, ExamAssignee, ExamAnswer, ShortAnswerValidatio
 from app.models.notification import Notification
 from app.models.badge import Badge, UserBadge
 from app.models.export import Export
+from app.models.broadcast import BroadcastLog
 
 __all__ = [
     "Base",
