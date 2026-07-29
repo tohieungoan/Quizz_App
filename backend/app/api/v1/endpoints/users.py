@@ -2,9 +2,13 @@
 API Endpoints for User management.
 Includes role-based access control (RBAC) verification before execution.
 """
-from typing import List, Any
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from typing import List, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, UploadFile, File
+import csv
+import io
+import openpyxl
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 
 from app.api.deps import get_db, get_current_active_user, get_current_active_admin
 from app.crud.crud_user import crud_user
@@ -15,13 +19,54 @@ from app.schemas.user import (
     UserResponse,
     UserSettingResponse,
     UserSettingUpdate,
-    NotificationEmailRequest
+    NotificationEmailRequest,
+    UserImportRow,
+    UserImportResult
 )
 from app.core.email import send_notification_email_verification
 from app.core.config import settings
 from app.core.security import create_notification_email_verification_token
+from app.db.session import SessionLocal
+from app.models.notification import Notification
+import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+def process_import_background(valid_users: List[dict], admin_id: int, job_id: str):
+    """
+    Background task to securely hash passwords and insert users via PostgreSQL Upsert.
+    Also sends an in-app notification to the admin upon completion.
+    """
+    db = SessionLocal()
+    try:
+        # Import data using Upsert (ON CONFLICT DO NOTHING)
+        imported_count = crud_user.bulk_create(db, users_in=valid_users)
+        
+        # Create Success Notification for the Admin
+        notification = Notification(
+            user_id=admin_id,
+            title="Import Users Complete",
+            content=f"Your background import job ({job_id}) has finished successfully. Imported {imported_count} users out of {len(valid_users)} valid records.",
+            type="SYSTEM",
+        )
+        db.add(notification)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error in background import job {job_id}: {str(e)}")
+        # Notify Admin about failure
+        notification = Notification(
+            user_id=admin_id,
+            title="Import Users Failed",
+            content=f"Your background import job ({job_id}) failed due to an internal error: {str(e)}",
+            type="SYSTEM",
+        )
+        db.add(notification)
+        db.commit()
+    finally:
+        db.close()
 
 
 @router.get("/", response_model=List[UserResponse], summary="Get list of users (Admin)")
@@ -29,13 +74,23 @@ def read_users(
     db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = Query(None, description="Search by email or full name"),
+    role: Optional[str] = Query(None, description="Filter by user role (e.g. ADMIN, USER)"),
+    status: Optional[str] = Query(None, description="Filter by account status (e.g. ACTIVE, LOCKED)"),
     current_user: User = Depends(get_current_active_admin),
 ):
     """
-    Retrieve users list with pagination support (`skip`, `limit`).
+    Retrieve users list with pagination support (`skip`, `limit`) and filtering (`search`, `role`, `status`).
     **Required Permission**: Super Admin.
     """
-    users = crud_user.get_multi(db, skip=skip, limit=limit)
+    users = crud_user.get_multi(
+        db, 
+        skip=skip, 
+        limit=limit,
+        search=search,
+        role=role,
+        status=status
+    )
     return users
 
 
@@ -57,6 +112,99 @@ def create_user(
         )
     user = crud_user.create(db, obj_in=user_in)
     return user
+
+
+@router.post("/import", response_model=UserImportResult, status_code=status.HTTP_202_ACCEPTED, summary="Import users from CSV/Excel (Admin)")
+def import_users_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+):
+    """
+    Bulk import users via CSV or Excel file.
+    **Required Permission**: Super Admin.
+    Validates the structure and dispatches the heavy bcrypt hashing + insertion to a Background Task.
+    Uses PostgreSQL Upsert to safely handle concurrent registrations without IntegrityError crashes.
+    Max limit: 10,000 rows per file for enterprise safety.
+    """
+    if not (file.filename.endswith('.csv') or file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
+        raise HTTPException(status_code=400, detail="Only CSV or Excel files are allowed.")
+    
+    rows = []
+    
+    if file.filename.endswith('.csv'):
+        # Dùng utf-8-sig để tự động loại bỏ ký tự BOM (\ufeff) do Excel sinh ra khi export CSV
+        content = file.file.read().decode("utf-8-sig")
+        csv_reader = csv.DictReader(io.StringIO(content))
+        for row in csv_reader:
+            # Loại bỏ khoảng trắng thừa ở key (tên cột) và value
+            clean_row = {
+                (k.strip() if k else k): (v.strip() if isinstance(v, str) else v) 
+                for k, v in row.items()
+            }
+            rows.append(clean_row)
+    else:
+        wb = openpyxl.load_workbook(file.file, data_only=True)
+        sheet = wb.active
+        headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]] if sheet.max_row > 0 else []
+        for row_cells in sheet.iter_rows(min_row=2, values_only=True):
+            if any(cell is not None for cell in row_cells): # Skip entirely empty rows
+                clean_cells = [str(cell).strip() if isinstance(cell, str) else cell for cell in row_cells]
+                row_dict = dict(zip(headers, clean_cells))
+                rows.append(row_dict)
+    
+    errors = []
+    valid_users = []
+    emails_in_file = set()
+    row_count = 0
+    
+    for idx, row in enumerate(rows, start=2): # 1 is header
+        row_count += 1
+        if row_count > 10000:
+            errors.append(f"Row {idx}: Limit exceeded. Maximum 10,000 users allowed per import.")
+            break
+            
+        try:
+            user_data = UserImportRow(**row)
+            if user_data.email in emails_in_file:
+                errors.append(f"Row {idx}: Duplicate email within the CSV file ({user_data.email}).")
+            else:
+                emails_in_file.add(user_data.email)
+                valid_users.append(user_data.model_dump())
+        except ValidationError as e:
+            for err in e.errors():
+                errors.append(f"Row {idx}: Field '{err['loc'][0]}' - {err['msg']}")
+                
+    if not errors and valid_users:
+        # Pre-check existing emails (only those existing at this very moment) to give immediate validation feedback
+        existing_emails = crud_user.check_existing_emails(db, list(emails_in_file))
+        for idx, u in enumerate(valid_users, start=2):
+            if u['email'] in existing_emails:
+                errors.append(f"Row {idx}: Email already exists in database ({u['email']}).")
+
+    if errors:
+        return UserImportResult(
+            success=False,
+            message="Import failed due to validation errors. No users were imported.",
+            imported_count=0,
+            errors=errors
+        )
+        
+    if not valid_users:
+        return UserImportResult(success=False, message="The CSV file is empty.", imported_count=0, errors=[])
+        
+    # Dispatch Background Task
+    job_id = str(uuid.uuid4())
+    background_tasks.add_task(process_import_background, valid_users, current_user.id, job_id)
+    
+    return UserImportResult(
+        success=True,
+        message="File passed validation. Import is now running in the background. You will receive a notification when it completes.",
+        job_id=job_id,
+        imported_count=0,
+        errors=[]
+    )
 
 
 @router.get("/{user_id}", response_model=UserResponse, summary="Get user details")

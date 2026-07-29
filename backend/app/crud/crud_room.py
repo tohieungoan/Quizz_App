@@ -1,9 +1,19 @@
-import random
 import datetime
-from typing import Optional, List, Tuple
+import random
+from typing import List, Optional, Tuple
+
+from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
-from app.models.room import Room, Participant
-from app.schemas.room import RoomCreate, RoomSettingsUpdate
+
+from app.models.quiz import Quiz
+from app.models.room import Participant, Room
+from app.models.user import User
+from app.schemas.room import (
+    RoomAdminPageResponse,
+    RoomAdminResponse,
+    RoomCreate,
+    RoomSettingsUpdate,
+)
 
 
 class CRUDRoom:
@@ -41,7 +51,7 @@ class CRUDRoom:
             if not exists:
                 return code
         
-        # Fallback in case collision rate is extremely high (unlikely with 900k combinations)
+        # Fallback in case collision rate is extremely high
         raise ValueError("Could not generate a unique room code. Please try again.")
 
     def create_room(self, db: Session, obj_in: RoomCreate, host_id: int) -> Room:
@@ -81,7 +91,6 @@ class CRUDRoom:
     def update_status(self, db: Session, room: Room, status: str) -> Room:
         """Update room status (e.g. WAITING -> PLAYING -> ENDED)."""
         room.status = status
-        import datetime
         if status == "ENDED":
             room.ended_at = datetime.datetime.utcnow()
             
@@ -138,7 +147,6 @@ class CRUDRoom:
         If current status is PLAYING, increment question_index.
         If index exceeds total questions, end the session (status=ENDED).
         """
-        import datetime
         total_questions = len(room.quiz.questions) if room.quiz else 0
         
         if room.status == "WAITING":
@@ -172,8 +180,8 @@ class CRUDRoom:
         Validates timeouts, calculates dynamic scores based on speed,
         and aggregates participant score.
         """
-        from app.models.room import ParticipantAnswer
         from app.models.quiz import Question, QuestionOption
+        from app.models.room import ParticipantAnswer
         
         # 1. Verify if participant already answered this question
         existing_answer = db.query(ParticipantAnswer).filter(
@@ -251,6 +259,106 @@ class CRUDRoom:
         db.commit()
         db.refresh(room)
         return room
+
+    def get_admin_rooms(
+        self,
+        db: Session,
+        skip: int = 0,
+        limit: int = 100,
+        search: Optional[str] = None,
+        status: Optional[str] = None
+    ) -> RoomAdminPageResponse:
+        """
+        Get all rooms for the Admin dashboard with pagination, search, and filtering.
+        Calculates participantCount using outer join.
+        """
+        # Base query joining Room, Quiz, User, and counting Participants
+        query = db.query(
+            Room.id,
+            Room.room_code,
+            Room.status,
+            Room.created_at.label("started_at"),
+            Room.ended_at,
+            Quiz.title.label("quiz_title"),
+            User.fullname.label("host_name"),
+            func.count(Participant.id).label("participant_count")
+        ).join(
+            Quiz, Room.quiz_id == Quiz.id
+        ).join(
+            User, Room.host_id == User.id
+        ).outerjoin(
+            Participant, Room.id == Participant.room_id
+        )
+
+        # Apply Status Filter
+        if status and status.upper() != "ALL":
+            query = query.filter(Room.status == status.upper())
+
+        # Apply Search Filter (room_code, quiz_title, host_name)
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Room.room_code.ilike(search_term),
+                    Quiz.title.ilike(search_term),
+                    User.fullname.ilike(search_term)
+                )
+            )
+
+        # Group by Room, Quiz, User to count properly
+        query = query.group_by(
+            Room.id,
+            Quiz.id,
+            User.id
+        )
+
+        # Total count query
+        total_query = db.query(func.count(Room.id))
+        
+        if status and status.upper() != "ALL":
+            total_query = total_query.filter(Room.status == status.upper())
+            
+        if search:
+            search_term = f"%{search}%"
+            total_query = total_query.join(Quiz, Room.quiz_id == Quiz.id).join(User, Room.host_id == User.id)
+            total_query = total_query.filter(
+                or_(
+                    Room.room_code.ilike(search_term),
+                    Quiz.title.ilike(search_term),
+                    User.fullname.ilike(search_term)
+                )
+            )
+            
+        total = total_query.scalar() or 0
+
+        # Apply sorting and pagination
+        query = query.order_by(desc(Room.created_at))
+        if limit > 0:
+            query = query.offset(skip).limit(limit)
+
+        results = query.all()
+        
+        # Map to Schema
+        mapped_results = []
+        for r in results:
+            mapped_results.append(RoomAdminResponse(
+                id=r.id,
+                title=f"Room {r.room_code}", 
+                room_code=r.room_code,
+                host_name=r.host_name or "Unknown",
+                quiz_title=r.quiz_title or "Unknown",
+                status=r.status or "WAITING",
+                participantCount=r.participant_count or 0,
+                started_at=r.started_at,
+                ended_at=r.ended_at
+            ))
+
+        return RoomAdminPageResponse(
+            data=mapped_results,
+            total=total,
+            pageIndex=(skip // limit) + 1 if limit > 0 else 1,
+            pageSize=limit
+        )
 
 
 crud_room = CRUDRoom()

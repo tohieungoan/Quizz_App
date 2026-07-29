@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     auth,
     badges,
     dashboard,
+    reports,
     exams,
     groups,
     questions,
@@ -15,6 +16,7 @@ from app.api.v1.endpoints import (
     rooms,
     upload,
     users,
+    rooms,
 )
 
 api_router = APIRouter()
@@ -32,5 +34,7 @@ api_router.include_router(exams.router, prefix="/exams", tags=["Exams"])
 api_router.include_router(rooms.router, prefix="/rooms", tags=["Rooms"])
 
 # Admin Endpoints
-api_router.include_router(dashboard.router, prefix="/admin/dashboard", tags=["Admin - Dashboard"])
-api_router.include_router(badges.router, prefix="/admin/badges", tags=["Admin - Badges"])
+api_router.include_router(dashboard.router, prefix="/admin/dashboard", tags=["Dashboard"])
+api_router.include_router(reports.router, prefix="/admin/reports", tags=["Reports"])
+api_router.include_router(badges.router, prefix="/admin/badges", tags=["Badges"])
+api_router.include_router(rooms.router, prefix="/admin/rooms", tags=["Rooms"])

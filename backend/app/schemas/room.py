@@ -1,28 +1,32 @@
-from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import datetime
+from typing import List, Optional
+from pydantic import BaseModel, ConfigDict, Field
 
 
+# ----------------------------------------------------------------------
+# Live Question & Option Schemas
+# ----------------------------------------------------------------------
 class OptionLive(BaseModel):
     id: int
     key: str  # A, B, C, D
     label: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class QuestionLive(BaseModel):
     id: int
     text: str
     time_limit: Optional[int] = None
-    options: list[OptionLive]
+    options: List[OptionLive]
     correct_option_key: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
+# ----------------------------------------------------------------------
+# Room Core Schemas
+# ----------------------------------------------------------------------
 class RoomCreate(BaseModel):
     quiz_id: int
     group_id: Optional[int] = None
@@ -62,10 +66,18 @@ class RoomResponse(BaseModel):
     current_question_started_at: Optional[datetime] = None
     active_question: Optional[QuestionLive] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
+class RoomSettingsUpdate(BaseModel):
+    progression_mode: Optional[str] = None
+    allow_show_rank: Optional[bool] = None
+    shuffle_options: Optional[bool] = None
+
+
+# ----------------------------------------------------------------------
+# Participant & Gameplay Schemas
+# ----------------------------------------------------------------------
 class ParticipantJoin(BaseModel):
     nickname: str = Field(..., min_length=1, max_length=50)
 
@@ -80,8 +92,7 @@ class ParticipantResponse(BaseModel):
     joined_at: datetime
     score: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ParticipantLive(BaseModel):
@@ -90,8 +101,7 @@ class ParticipantLive(BaseModel):
     score: float
     answered: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RoomLiveStatus(BaseModel):
@@ -102,7 +112,7 @@ class RoomLiveStatus(BaseModel):
     current_question_started_at: Optional[datetime] = None
     quiz_title: str
     active_question: Optional[QuestionLive] = None
-    participants: list[ParticipantLive]
+    participants: List[ParticipantLive]
     answer_distribution: dict[str, int]  # Option key (A, B, C, D) -> count of answers
 
 
@@ -118,7 +128,25 @@ class SubmitAnswerResponse(BaseModel):
     correct_option_key: Optional[str] = None  # A, B, C, D
 
 
-class RoomSettingsUpdate(BaseModel):
-    progression_mode: Optional[str] = None
-    allow_show_rank: Optional[bool] = None
-    shuffle_options: Optional[bool] = None
+# ----------------------------------------------------------------------
+# Admin Dashboard Schemas
+# ----------------------------------------------------------------------
+class RoomAdminResponse(BaseModel):
+    id: int
+    title: str
+    room_code: str
+    host_name: str
+    quiz_title: str
+    status: str
+    participantCount: int
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RoomAdminPageResponse(BaseModel):
+    data: List[RoomAdminResponse]
+    total: int
+    pageIndex: int
+    pageSize: int

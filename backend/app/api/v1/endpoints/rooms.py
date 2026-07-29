@@ -1,14 +1,58 @@
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, get_current_active_user, get_optional_current_user
-from app.crud.crud_room import crud_room
+
+from app.api.deps import (
+    get_current_active_admin,
+    get_current_active_user,
+    get_db,
+    get_optional_current_user,
+)
 from app.crud.crud_quiz import crud_quiz
-from app.schemas.room import RoomCreate, RoomResponse, ParticipantJoin, ParticipantResponse, RoomLiveStatus, SubmitAnswerIn, SubmitAnswerResponse, RoomSettingsUpdate
+from app.crud.crud_room import crud_room
+from app.schemas.room import (
+    ParticipantJoin,
+    ParticipantResponse,
+    RoomAdminPageResponse,
+    RoomCreate,
+    RoomLiveStatus,
+    RoomResponse,
+    RoomSettingsUpdate,
+    SubmitAnswerIn,
+    SubmitAnswerResponse,
+)
 
 router = APIRouter()
 
 
+# ----------------------------------------------------------------------
+# Admin Endpoints
+# ----------------------------------------------------------------------
+@router.get("/", response_model=RoomAdminPageResponse, summary="Get list of all rooms (Admin)")
+def get_all_rooms(
+    skip: int = Query(0, description="Number of records to skip"),
+    limit: int = Query(10, description="Number of records to return"),
+    search: Optional[str] = Query(None, description="Search by room code, host name, or quiz title"),
+    status: Optional[str] = Query("ALL", description="Filter by status (ALL, RUNNING, WAITING, FINISHED)"),
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_active_admin),
+):
+    """
+    Retrieve all rooms in the system with pagination, search, and status filtering.
+    Requires Super Admin privileges.
+    """
+    return crud_room.get_admin_rooms(
+        db=db,
+        skip=skip,
+        limit=limit,
+        search=search,
+        status=status
+    )
+
+
+# ----------------------------------------------------------------------
+# Live Room Management Endpoints
+# ----------------------------------------------------------------------
 @router.post("/launch", response_model=RoomResponse, status_code=status.HTTP_201_CREATED, summary="Launch a new live quiz room")
 def launch_room(
     *,
@@ -404,7 +448,3 @@ def update_room_settings(
 
     updated_room = crud_room.update_settings(db=db, room=room, obj_in=settings_in)
     return updated_room
-
-
-
-
