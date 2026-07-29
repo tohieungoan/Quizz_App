@@ -22,19 +22,19 @@ def run_test():
         role="USER",
         status="ACTIVE"
     )
-    student = User(
-        email="test_student_exam@example.com",
+    member = User(
+        email="test_member_exam@example.com",
         password=get_password_hash("testpassword"),
-        fullname="Test Student Exam",
+        fullname="Test Member Exam",
         role="USER",
         status="ACTIVE"
     )
-    db.add_all([host, student])
+    db.add_all([host, member])
     db.commit()
     db.refresh(host)
-    db.refresh(student)
+    db.refresh(member)
 
-    print(f"Created test users: Host({host.id}), Student({student.id})")
+    print(f"Created test users: Host({host.id}), Member({member.id})")
 
     try:
         # Create Quiz owned by Host
@@ -65,21 +65,21 @@ def run_test():
         db.refresh(group)
         print(f"Created test group: {group.id} ({group.name})")
 
-        # Add Student as APPROVED member of Group
-        member = GroupMember(
+        # Add Member as APPROVED member of Group
+        g_member = GroupMember(
             group_id=group.id,
-            user_id=student.id,
-            role_in_group="STUDENT",
+            user_id=member.id,
+            role_in_group="MEMBER",
             status="APPROVED",
             joined_at=datetime.utcnow()
         )
-        db.add(member)
+        db.add(g_member)
         db.commit()
-        print("Added Student as APPROVED member")
+        print("Added Member as APPROVED member")
 
         # Generate tokens
         host_token = create_access_token(subject=host.id)
-        student_token = create_access_token(subject=student.id)
+        member_token = create_access_token(subject=member.id)
 
         # Base URL of local server
         base_url = "http://127.0.0.1:8000/api/v1"
@@ -118,11 +118,11 @@ def run_test():
             exam_id = res_body["exam"]["id"]
 
         # Check DB for ExamAssignee and Notification
-        assignee = db.query(ExamAssignee).filter(ExamAssignee.exam_id == exam_id, ExamAssignee.user_id == student.id).first()
+        assignee = db.query(ExamAssignee).filter(ExamAssignee.exam_id == exam_id, ExamAssignee.user_id == member.id).first()
         assert assignee is not None
         assert assignee.status == "PENDING"
 
-        notif = db.query(Notification).filter(Notification.user_id == student.id, Notification.type == "EXAM_ASSIGNED").first()
+        notif = db.query(Notification).filter(Notification.user_id == member.id, Notification.type == "EXAM_ASSIGNED").first()
         assert notif is not None
         assert "Algebra Midterm Exam" in notif.content
         print("TEST 1 PASSED: Exam (with navigation_rule/results_published), ExamAssignee, and Notification created correctly")
@@ -187,25 +187,25 @@ def run_test():
             assert assigned_exam["submitted_count"] == 0
         print("TEST 2 PASSED: Host retrieved correct assigned exam list")
 
-        # TEST 3: Retrieve My Exams (Student perspective)
+        # TEST 3: Retrieve My Exams (Member perspective)
         print("TEST 3: Retrieve My Exams...")
         url = f"{base_url}/exams/my-exams"
         req = urllib.request.Request(
             url,
-            headers={"Authorization": f"Bearer {student_token}"},
+            headers={"Authorization": f"Bearer {member_token}"},
             method="GET"
         )
         with urllib.request.urlopen(req) as response:
             res_body = json.loads(response.read().decode("utf-8"))
             print("Response:", res_body)
             assert len(res_body) >= 1
-            student_exam = next(item for item in res_body if item["exam_id"] == exam_id)
-            assert student_exam["exam_title"] == "Algebra Midterm Exam"
-            assert student_exam["status"] == "PENDING"
-            assert student_exam["timer"] == 90
-            assert student_exam["host_fullname"] == "Test Host Exam"
-            assert student_exam["quiz_subject"] == "Mathematics"
-        print("TEST 3 PASSED: Student retrieved correct assigned exam list")
+            member_exam = next(item for item in res_body if item["exam_id"] == exam_id)
+            assert member_exam["exam_title"] == "Algebra Midterm Exam"
+            assert member_exam["status"] == "PENDING"
+            assert member_exam["timer"] == 90
+            assert member_exam["host_fullname"] == "Test Host Exam"
+            assert member_exam["quiz_subject"] == "Mathematics"
+        print("TEST 3 PASSED: Member retrieved correct assigned exam list")
 
         # TEST 4: Get Exam Details (Read single)
         print("TEST 4: Get Exam Details...")
@@ -220,7 +220,7 @@ def run_test():
             print("Response 4:", res_body)
             assert res_body["exam"]["id"] == exam_id
             assert res_body["assignees_count"] == 1
-            assert res_body["assignees"][0]["user_id"] == student.id
+            assert res_body["assignees"][0]["user_id"] == member.id
         print("TEST 4 PASSED: Retrieved exam details correctly")
 
         # TEST 5: Update Exam Details (Update)
@@ -274,13 +274,13 @@ def run_test():
     finally:
         # Cleanup
         print("Cleaning up database...")
-        db.query(Notification).filter(Notification.user_id.in_([host.id, student.id])).delete(synchronize_session=False)
-        db.query(ExamAssignee).filter(ExamAssignee.user_id.in_([host.id, student.id])).delete(synchronize_session=False)
+        db.query(Notification).filter(Notification.user_id.in_([host.id, member.id])).delete(synchronize_session=False)
+        db.query(ExamAssignee).filter(ExamAssignee.user_id.in_([host.id, member.id])).delete(synchronize_session=False)
         db.query(Exam).filter(Exam.host_id == host.id).delete(synchronize_session=False)
-        db.query(GroupMember).filter(GroupMember.user_id.in_([host.id, student.id])).delete(synchronize_session=False)
+        db.query(GroupMember).filter(GroupMember.user_id.in_([host.id, member.id])).delete(synchronize_session=False)
         db.query(Group).filter(Group.owner_id == host.id).delete(synchronize_session=False)
         db.query(Quiz).filter(Quiz.user_id == host.id).delete(synchronize_session=False)
-        db.query(User).filter(User.id.in_([host.id, student.id])).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_([host.id, member.id])).delete(synchronize_session=False)
         db.commit()
         db.close()
         print("Cleanup done.")

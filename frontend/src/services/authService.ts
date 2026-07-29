@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient'
-import type { TokenResponse, UserProfile, StoredUser } from '@/types/auth.types'
+import type { TokenResponse, UserProfile, StoredUser, UserSetting } from '@/types/auth.types'
 
 /**
  * Auth Service — Repository pattern for all Auth API calls.
@@ -75,6 +75,42 @@ export const authService = {
    */
   resetPassword: (token: string, newPassword: string): Promise<{ message: string }> =>
     apiClient.post<{ message: string }>('/auth/reset-password', { token, new_password: newPassword }),
+
+  /**
+   * Update current user's profile details (fullname, avatar)
+   */
+  updateProfile: (userId: number | string, data: { fullname?: string; avatar?: string | null }): Promise<UserProfile> =>
+    apiClient.put<UserProfile>(`/users/${userId}`, data),
+
+  /**
+   * Change current user's password (when logged in)
+   */
+  changePassword: (oldPassword: string, newPassword: string): Promise<{ message: string }> =>
+    apiClient.post<{ message: string }>('/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
+
+  /**
+   * Fetch current user's notification preferences
+   */
+  getUserSettings: (): Promise<UserSetting> =>
+    apiClient.get<UserSetting>('/users/me/settings'),
+
+  /**
+   * Update current user's notification preferences
+   */
+  updateUserSettings: (data: Partial<UserSetting>): Promise<UserSetting> =>
+    apiClient.put<UserSetting>('/users/me/settings', data),
+
+  /**
+   * Request verification email for a new notification email address
+   */
+  requestNotificationEmail: (email: string): Promise<{ message: string }> =>
+    apiClient.post<{ message: string }>('/users/me/notification-email/request', { email }),
+
+  /**
+   * Verify and activate the new notification email using the token
+   */
+  verifyNotificationEmail: (token: string): Promise<{ message: string }> =>
+    apiClient.post<{ message: string }>('/auth/verify-notification-email', { token }),
 }
 
 /**

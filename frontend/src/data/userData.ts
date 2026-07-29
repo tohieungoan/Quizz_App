@@ -77,7 +77,7 @@ export interface HostQuiz {
   category: string;
 }
 
-export interface StudentExamRecord {
+export interface MemberExamRecord {
   examId: string | number;
   examTitle: string;
   score: string;
@@ -90,10 +90,11 @@ export interface GroupMember {
   name: string;
   email: string;
   joinedDate: string;
+  avatar?: string;
   examsCompleted?: number;
   totalExamsAssigned?: number;
   averageScore?: string;
-  examScores?: StudentExamRecord[];
+  examScores?: MemberExamRecord[];
 }
 
 export interface HostGroup {

@@ -245,11 +245,11 @@ export const LandingPage: React.FC = () => {
               </p>
             </div>
             
-            {/* Feature 2 - Students */}
+            {/* Feature 2 - Participants */}
             <div className="bg-[#f9f9ff] rounded-3xl p-8 border border-outline-variant/30 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col items-start gap-4 group">
               <div className="w-full h-44 mb-4 overflow-hidden rounded-2xl shadow-sm border border-outline-variant/20 relative">
                 <img 
-                  alt="Students playing gamified quiz" 
+                  alt="Participants playing gamified quiz" 
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   src={landingPage2} 
                 />

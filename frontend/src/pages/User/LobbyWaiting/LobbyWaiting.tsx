@@ -87,8 +87,8 @@ export const LobbyWaiting: React.FC = () => {
 
   // Host specific states
   const [countdown, setCountdown] = useState(900) // 15 minutes (900 seconds)
-  const [showAllStudents, setShowAllStudents] = useState(false)
-  const [hostStudents, setHostStudents] = useState<string[]>([])
+  const [showAllMembers, setShowAllMembers] = useState(false)
+  const [hostMembers, setHostMembers] = useState<string[]>([])
 
   // Countdown timer for Host Lobby
   useEffect(() => {
@@ -126,14 +126,14 @@ export const LobbyWaiting: React.FC = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       if (isHost) {
-        // Host: Simulate adding extra students
+        // Host: Simulate adding extra members
         const idx = nextIndexRef.current
         if (idx >= HOST_MOCK_PLAYERS_MORE.length) {
           clearInterval(interval)
           return
         }
-        const newStudent = HOST_MOCK_PLAYERS_MORE[idx]
-        setHostStudents(prev => [...prev, newStudent])
+        const newMember = HOST_MOCK_PLAYERS_MORE[idx]
+        setHostMembers(prev => [...prev, newMember])
         nextIndexRef.current = idx + 1
       } else {
         // Participant: Add simple chips
@@ -282,47 +282,47 @@ export const LobbyWaiting: React.FC = () => {
                   <span className="material-symbols-outlined text-[28px] fill-icon">groups</span>
                 </div>
                 <div>
-                  <h3 className="font-headline-md text-2xl font-bold text-on-surface">{hostStudents.length} Members Joined</h3>
+                  <h3 className="font-headline-md text-2xl font-bold text-on-surface">{hostMembers.length} Members Joined</h3>
                   <p className="text-on-surface-variant text-xs font-body-md">Participants currently in the room</p>
                 </div>
               </div>
               <div className="flex -space-x-3">
-                {hostStudents.slice(0, 6).map((student, i) => (
+                {hostMembers.slice(0, 6).map((member, i) => (
                   <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-surface-container-highest shadow-sm flex items-center justify-center text-[10px] font-bold text-on-surface-variant">
-                    {getInitials(student)}
+                    {getInitials(member)}
                   </div>
                 ))}
-                {hostStudents.length > 6 && (
+                {hostMembers.length > 6 && (
                   <div className="w-10 h-10 rounded-full border-2 border-white bg-primary text-on-primary flex items-center justify-center text-xs font-bold shadow-sm">
-                    +{hostStudents.length - 6}
+                    +{hostMembers.length - 6}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Students Grid */}
+            {/* Members Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-              {(showAllStudents ? hostStudents : hostStudents.slice(0, 8)).map((student, idx) => {
+              {(showAllMembers ? hostMembers : hostMembers.slice(0, 8)).map((member, idx) => {
                 const gradient = GRADIENTS[idx % GRADIENTS.length]
                 return (
                   <div key={idx} className="bg-white/90 p-3 px-5 rounded-full border border-white shadow-sm flex items-center gap-3.5 hover:shadow-md hover:border-primary/20 transition-all cursor-default group">
                     <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${gradient} flex items-center justify-center text-primary group-hover:scale-110 transition-transform font-bold text-xs`}>
                       <span className="material-symbols-outlined text-[16px]">person</span>
                     </div>
-                    <span className="font-semibold text-on-surface truncate text-base text-left flex-1">{student}</span>
+                    <span className="font-semibold text-on-surface truncate text-base text-left flex-1">{member}</span>
                   </div>
                 )
               })}
             </div>
 
-            {hostStudents.length > 8 && (
+            {hostMembers.length > 8 && (
               <div className="mt-8 flex justify-center">
                 <button
-                  onClick={() => setShowAllStudents(!showAllStudents)}
+                  onClick={() => setShowAllMembers(!showAllMembers)}
                   className="flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-primary text-on-primary font-button text-sm shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-98 transition-all group"
                 >
-                  <span className="font-bold">{showAllStudents ? 'Show Less' : 'Show All'}</span>
-                  <span className={`material-symbols-outlined transition-transform ${showAllStudents ? 'rotate-180' : 'group-hover:translate-y-0.5'}`}>
+                  <span className="font-bold">{showAllMembers ? 'Show Less' : 'Show All'}</span>
+                  <span className={`material-symbols-outlined transition-transform ${showAllMembers ? 'rotate-180' : 'group-hover:translate-y-0.5'}`}>
                     expand_more
                   </span>
                 </button>

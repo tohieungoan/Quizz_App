@@ -76,6 +76,44 @@ def read_my_groups(
     return groups
 
 
+
+@router.get("/my-memberships", summary="Retrieve study groups that the current user has joined or requested to join")
+def read_my_memberships(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Get a list of study groups where the current user is a member (APPROVED or PENDING).
+    """
+    memberships = db.query(GroupMember).filter(
+        GroupMember.user_id == current_user.id,
+        GroupMember.status.in_(["APPROVED", "PENDING"])
+    ).all()
+
+    result = []
+    for member in memberships:
+        group = db.query(Group).filter(Group.id == member.group_id).first()
+        if group:
+            owner = db.query(User).filter(User.id == group.owner_id).first()
+            
+            # Count other members in the group
+            members_count = db.query(GroupMember).filter(
+                GroupMember.group_id == group.id,
+                GroupMember.status == "APPROVED"
+            ).count()
+
+            result.append({
+                "id": group.id,
+                "name": group.name,
+                "host": (owner.fullname or owner.email) if owner else "Unknown Host",
+                "membersCount": members_count,
+                "lastActivity": "Join request pending approval" if member.status == "PENDING" else "Active member",
+                "status": "PENDING" if member.status == "PENDING" else "ACTIVE",
+                "group_code": group.group_code,
+            })
+    return result
+
+
 @router.get("/invitations", summary="List all pending group invitations for the current user")
 def list_my_invitations(
     db: Session = Depends(get_db),
@@ -394,7 +432,23 @@ def list_group_join_requests(
         GroupMember.group_id == group_id,
         GroupMember.status == "PENDING"
     ).all()
-    return requests
+    
+    result = []
+    for req in requests:
+        user = db.query(User).filter(User.id == req.user_id).first()
+        req_res = GroupMemberResponse(
+            id=req.id,
+            group_id=req.group_id,
+            user_id=req.user_id,
+            role_in_group=req.role_in_group,
+            status=req.status,
+            joined_at=req.joined_at,
+            name=(user.fullname or user.email) if user else "Unknown User",
+            email=user.email if user else "Unknown Email",
+            avatar=user.avatar if user else None
+        )
+        result.append(req_res)
+    return result
 
 
 @router.post("/{group_id}/requests/bulk-approve", summary="Approve multiple join requests")
@@ -785,7 +839,7 @@ def read_group_roster(
 ) -> Any:
     """
     Get detailed roster list for Host.
-    Includes student name, email, exams completed, average score,
+    Includes member name, email, exams completed, average score,
     and detailed score breakdown of the 3 most recently assigned exams.
     """
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -858,8 +912,48 @@ def read_group_roster(
             "examsCompleted": exams_completed,
             "totalExamsAssigned": total_assigned_count,
             "averageScore": avg_score_str,
+            "avatar": user.avatar,
             "examScores": exam_scores
         })
 
     return result
+
+
+@router.delete("/{group_id}/members/{member_id}", summary="Remove a member from a study group")
+def remove_member_from_group(
+    group_id: int,
+    member_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Remove a member from a study group by group member ID.
+    Only the owner of the group or Super Admin is allowed to do this.
+    """
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study group not found.",
+        )
+    if group.owner_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group owner or Super Admin can remove members.",
+        )
+
+    member = db.query(GroupMember).filter(
+        GroupMember.id == member_id,
+        GroupMember.group_id == group_id
+    ).first()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group member not found in this group.",
+        )
+
+    db.delete(member)
+    db.commit()
+    return {"message": "Member removed successfully from the group."}
 

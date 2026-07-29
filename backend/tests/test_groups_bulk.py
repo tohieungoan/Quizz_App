@@ -23,21 +23,21 @@ class TestGroupsBulk(unittest.TestCase):
         # 1. Setup mock data
         owner = User(
             email="test_owner@example.com",
-            hashed_password=get_password_hash("testpassword"),
+            password=get_password_hash("testpassword"),
             fullname="Test Owner",
             role="USER",
             status="ACTIVE"
         )
         user_a = User(
             email="test_usera@example.com",
-            hashed_password=get_password_hash("testpassword"),
+            password=get_password_hash("testpassword"),
             fullname="Test User A",
             role="USER",
             status="ACTIVE"
         )
         user_b = User(
             email="test_userb@example.com",
-            hashed_password=get_password_hash("testpassword"),
+            password=get_password_hash("testpassword"),
             fullname="Test User B",
             role="USER",
             status="ACTIVE"

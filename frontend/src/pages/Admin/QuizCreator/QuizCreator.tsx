@@ -657,15 +657,15 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         title="Delete Question"
         message="Are you sure you want to delete this question? This action cannot be undone."
         onConfirm={confirmDeleteQuestion}
-        onCancel={() => setDeleteConfirmOpen(false)}
+        onClose={() => setDeleteConfirmOpen(false)}
       />
 
       <ConfirmModal
         isOpen={publishConfirmOpen}
         title="Publish Quiz"
-        message="Are you ready to publish this quiz? It will become available to all assigned students."
+        message="Are you ready to publish this quiz? It will become available to all assigned members."
         onConfirm={confirmPublish}
-        onCancel={() => setPublishConfirmOpen(false)}
+        onClose={() => setPublishConfirmOpen(false)}
       />
 
       <AlertModal

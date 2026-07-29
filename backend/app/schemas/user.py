@@ -18,7 +18,7 @@ class UserBase(BaseModel):
 
 # Schema used when creating a new User (POST /api/v1/users)
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6, description="Password minimum 6 characters")
+    password: str = Field(..., min_length=8, description="Password minimum 8 characters")
     auth_provider: Optional[str] = "LOCAL"
     provider_id: Optional[str] = None
 
@@ -27,7 +27,7 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     fullname: Optional[str] = None
     avatar: Optional[str] = None
-    password: Optional[str] = Field(None, min_length=6)
+    password: Optional[str] = Field(None, min_length=8)
     role: Optional[str] = None
     status: Optional[str] = None
     email_verified: Optional[bool] = None
@@ -36,7 +36,7 @@ class UserUpdate(BaseModel):
 # Schema used for password change (when logged in)
 class UserChangePassword(BaseModel):
     old_password: str
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=8)
 
 
 # Schema used for Forgot Password API
@@ -47,7 +47,7 @@ class UserForgotPassword(BaseModel):
 # Schema used for Reset Password with Token API
 class UserResetPassword(BaseModel):
     token: str
-    new_password: str = Field(..., min_length=6, description="New password minimum 6 characters")
+    new_password: str = Field(..., min_length=8, description="New password minimum 8 characters")
 
 
 # Schema used for Email Verification API

@@ -40,6 +40,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const [activeTitle, setActiveTitle] = useState<string | null>('Perfect Score');
+
   const [hostRoomModalOpen, setHostRoomModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 

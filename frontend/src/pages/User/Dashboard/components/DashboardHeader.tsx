@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Bell, Trophy, HelpCircle, Clock } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { AiSupportModal } from './AiSupportModal';
@@ -14,7 +14,42 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const { notifications, unreadCount, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAllAsRead, markAsRead } = useNotifications();
+
+  const [user, setUser] = useState<{ name: string; email: string; avatar?: string; role?: string } | null>(() => {
+    const stored = localStorage.getItem('user');
+    return stored ? JSON.parse(stored) : null;
+  });
+
+  useEffect(() => {
+    const handleProfileChange = () => {
+      const stored = localStorage.getItem('user');
+      setUser(stored ? JSON.parse(stored) : null);
+    };
+
+    window.addEventListener('storage', handleProfileChange);
+    window.addEventListener('user-profile-updated', handleProfileChange);
+
+    return () => {
+      window.removeEventListener('storage', handleProfileChange);
+      window.removeEventListener('user-profile-updated', handleProfileChange);
+    };
+  }, []);
+
+  const getInitials = (name: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+    return name.charAt(0).toUpperCase();
+  };
+
+  const getRoleLabel = (role?: string) => {
+    if (!role) return 'Member';
+    if (role === 'ADMIN' || role === 'SUPER_ADMIN') return 'Host';
+    return 'Member';
+  };
 
   return (
     <>
@@ -93,6 +128,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     return (
                       <div
                         key={item.id}
+                        onClick={() => {
+                          if (item.unread) {
+                            markAsRead(item.id);
+                          }
+                          if (item.action_url) {
+                            window.location.href = item.action_url;
+                          }
+                        }}
                         className={`p-3.5 hover:bg-surface-bright transition-colors flex items-start gap-3 cursor-pointer ${item.unread ? 'bg-primary/5' : ''}`}
                       >
                         <div
@@ -113,7 +156,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 </div>
 
                 <div className="p-2.5 bg-surface-container-low border-t border-outline-variant/20 text-center">
-                  <button className="text-xs font-bold text-primary hover:underline">
+                  <button 
+                    onClick={markAllAsRead}
+                    className="text-xs font-bold text-primary hover:underline"
+                  >
                     Mark all as read
                   </button>
                 </div>
@@ -125,12 +171,20 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
           {/* User Profile */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-secondary text-white font-bold flex items-center justify-center text-xs shadow-sm">
-              AJ
+            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-secondary text-white font-bold flex items-center justify-center text-xs shadow-sm overflow-hidden shrink-0">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                getInitials(user?.name || 'User')
+              )}
             </div>
             <div className="hidden md:flex flex-col text-left">
-              <span className="text-xs font-bold text-on-surface leading-snug">Alex Johnson</span>
-              <span className="text-[10px] text-on-surface-variant font-medium">Member</span>
+              <span className="text-xs font-bold text-on-surface leading-snug truncate max-w-[120px]" title={user?.name || 'User'}>
+                {user?.name || 'Alex Johnson'}
+              </span>
+              <span className="text-[10px] text-on-surface-variant font-medium">
+                {getRoleLabel(user?.role)}
+              </span>
             </div>
           </div>
         </div>

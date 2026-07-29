@@ -93,23 +93,18 @@ def save_broadcast_to_db(job_id: Optional[str], admin_id: int, target_type: str,
                 pass
 
         if target_type == "ALL_USERS":
-            select_stmt = select(
-                literal(admin_id).label("sender_id"),
-                User.id.label("user_id"),
-                literal(target_type).label("target_type"),
-                literal(None).label("target_group_id"),
-                literal(request_data["title"]).label("title"),
-                literal(request_data["content"]).label("content"),
-                literal(request_data["type"]).label("type"),
-                literal(request_data.get("actionUrl")).label("action_url"),
-                literal(parsed_scheduled_at).label("scheduled_at")
-            ).where(User.status == "ACTIVE")
-            
-            insert_stmt = insert(Notification).from_select(
-                ["sender_id", "user_id", "target_type", "target_group_id", "title", "content", "type", "action_url", "scheduled_at"],
-                select_stmt
+            new_notif = Notification(
+                sender_id=admin_id,
+                user_id=None,
+                target_type="ALL_USERS",
+                target_group_id=None,
+                title=request_data["title"],
+                content=request_data["content"],
+                type=request_data["type"],
+                action_url=request_data.get("actionUrl"),
+                scheduled_at=parsed_scheduled_at
             )
-            db.execute(insert_stmt)
+            db.add(new_notif)
 
         elif target_type == "GROUP" and target_group_id:
             select_stmt = select(

@@ -22,27 +22,27 @@ def run_test():
         role="USER",
         status="ACTIVE"
     )
-    student_a = User(
+    member_a = User(
         email="alex.j@example.com",
         password=get_password_hash("testpassword"),
         fullname="Alex Johnson",
         role="USER",
         status="ACTIVE"
     )
-    student_b = User(
+    member_b = User(
         email="sarah.s@example.com",
         password=get_password_hash("testpassword"),
         fullname="Sarah Smith",
         role="USER",
         status="ACTIVE"
     )
-    db.add_all([host, student_a, student_b])
+    db.add_all([host, member_a, member_b])
     db.commit()
     db.refresh(host)
-    db.refresh(student_a)
-    db.refresh(student_b)
+    db.refresh(member_a)
+    db.refresh(member_b)
 
-    print(f"Created test users: Host({host.id}), Student A({student_a.id}), Student B({student_b.id})")
+    print(f"Created test users: Host({host.id}), Member A({member_a.id}), Member B({member_b.id})")
 
     try:
         # Create 3 Quizzes owned by Host
@@ -67,10 +67,10 @@ def run_test():
         db.commit()
         db.refresh(group)
 
-        # Add Student A and B as APPROVED members
-        member_a = GroupMember(group_id=group.id, user_id=student_a.id, role_in_group="STUDENT", status="APPROVED", joined_at=datetime.utcnow())
-        member_b = GroupMember(group_id=group.id, user_id=student_b.id, role_in_group="STUDENT", status="APPROVED", joined_at=datetime.utcnow())
-        db.add_all([member_a, member_b])
+        # Add Member A and B as APPROVED members
+        g_member_a = GroupMember(group_id=group.id, user_id=member_a.id, role_in_group="MEMBER", status="APPROVED", joined_at=datetime.utcnow())
+        g_member_b = GroupMember(group_id=group.id, user_id=member_b.id, role_in_group="MEMBER", status="APPROVED", joined_at=datetime.utcnow())
+        db.add_all([g_member_a, g_member_b])
         db.commit()
 
         # Assign 3 Exams to Group (with different schedules to avoid duplicate filter)
@@ -84,16 +84,16 @@ def run_test():
         db.refresh(exam2)
         db.refresh(exam3)
 
-        # Create ExamAssignees for Student A (completed 3/3 with scores: 85, 95, 96)
-        assignee_a1 = ExamAssignee(exam_id=exam1.id, user_id=student_a.id, status="COMPLETED", score=85.0, submitted_at=now - timedelta(hours=1))
-        assignee_a2 = ExamAssignee(exam_id=exam2.id, user_id=student_a.id, status="COMPLETED", score=95.0, submitted_at=now - timedelta(hours=1))
-        assignee_a3 = ExamAssignee(exam_id=exam3.id, user_id=student_a.id, status="COMPLETED", score=96.0, submitted_at=now - timedelta(hours=1))
+        # Create ExamAssignees for Member A (completed 3/3 with scores: 85, 95, 96)
+        assignee_a1 = ExamAssignee(exam_id=exam1.id, user_id=member_a.id, status="COMPLETED", score=85.0, submitted_at=now - timedelta(hours=1))
+        assignee_a2 = ExamAssignee(exam_id=exam2.id, user_id=member_a.id, status="COMPLETED", score=95.0, submitted_at=now - timedelta(hours=1))
+        assignee_a3 = ExamAssignee(exam_id=exam3.id, user_id=member_a.id, status="COMPLETED", score=96.0, submitted_at=now - timedelta(hours=1))
         
-        # Create ExamAssignees for Student B (completed 2/3 with scores: 92, 86; 1 not started)
-        assignee_b1 = ExamAssignee(exam_id=exam1.id, user_id=student_b.id, status="COMPLETED", score=92.0, submitted_at=now - timedelta(hours=1))
-        assignee_b2 = ExamAssignee(exam_id=exam2.id, user_id=student_b.id, status="COMPLETED", score=86.0, submitted_at=now - timedelta(hours=1))
+        # Create ExamAssignees for Member B (completed 2/3 with scores: 92, 86; 1 not started)
+        assignee_b1 = ExamAssignee(exam_id=exam1.id, user_id=member_b.id, status="COMPLETED", score=92.0, submitted_at=now - timedelta(hours=1))
+        assignee_b2 = ExamAssignee(exam_id=exam2.id, user_id=member_b.id, status="COMPLETED", score=86.0, submitted_at=now - timedelta(hours=1))
         # (Third exam exam3 not started - no ExamAssignee or status PENDING)
-        assignee_b3 = ExamAssignee(exam_id=exam3.id, user_id=student_b.id, status="PENDING")
+        assignee_b3 = ExamAssignee(exam_id=exam3.id, user_id=member_b.id, status="PENDING")
         
         db.add_all([assignee_a1, assignee_a2, assignee_a3, assignee_b1, assignee_b2, assignee_b3])
         db.commit()
@@ -117,15 +117,15 @@ def run_test():
             
             assert len(res_body) == 2
             
-            # Verify Student A (Alex Johnson)
-            student_a_data = next(item for item in res_body if item["email"] == "alex.j@example.com")
-            assert student_a_data["name"] == "Alex Johnson"
-            assert student_a_data["examsCompleted"] == 3
-            assert student_a_data["totalExamsAssigned"] == 3
-            assert student_a_data["averageScore"] == "92%" # (85 + 95 + 96) / 3 = 92
+            # Verify Member A (Alex Johnson)
+            member_a_data = next(item for item in res_body if item["email"] == "alex.j@example.com")
+            assert member_a_data["name"] == "Alex Johnson"
+            assert member_a_data["examsCompleted"] == 3
+            assert member_a_data["totalExamsAssigned"] == 3
+            assert member_a_data["averageScore"] == "92%" # (85 + 95 + 96) / 3 = 92
             
             # Order of exam scores breakdown should match order_by created_at DESC (exam3, exam2, exam1)
-            exam_scores_a = student_a_data["examScores"]
+            exam_scores_a = member_a_data["examScores"]
             assert len(exam_scores_a) == 3
             assert exam_scores_a[0]["examTitle"] == "Calculus III Vector Calculus"
             assert exam_scores_a[0]["score"] == "96%"
@@ -137,14 +137,14 @@ def run_test():
             assert exam_scores_a[2]["examTitle"] == "Midterm Biology 101"
             assert exam_scores_a[2]["score"] == "85%"
 
-            # Verify Student B (Sarah Smith)
-            student_b_data = next(item for item in res_body if item["email"] == "sarah.s@example.com")
-            assert student_b_data["name"] == "Sarah Smith"
-            assert student_b_data["examsCompleted"] == 2
-            assert student_b_data["totalExamsAssigned"] == 3
-            assert student_b_data["averageScore"] == "89%" # (92 + 86) / 2 = 89
+            # Verify Member B (Sarah Smith)
+            member_b_data = next(item for item in res_body if item["email"] == "sarah.s@example.com")
+            assert member_b_data["name"] == "Sarah Smith"
+            assert member_b_data["examsCompleted"] == 2
+            assert member_b_data["totalExamsAssigned"] == 3
+            assert member_b_data["averageScore"] == "89%" # (92 + 86) / 2 = 89
             
-            exam_scores_b = student_b_data["examScores"]
+            exam_scores_b = member_b_data["examScores"]
             assert len(exam_scores_b) == 3
             assert exam_scores_b[0]["examTitle"] == "Calculus III Vector Calculus"
             assert exam_scores_b[0]["score"] == "--"
@@ -161,13 +161,13 @@ def run_test():
     finally:
         # Cleanup
         print("Cleaning up database...")
-        db.query(Notification).filter(Notification.user_id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
-        db.query(ExamAssignee).filter(ExamAssignee.user_id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
+        db.query(Notification).filter(Notification.user_id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
+        db.query(ExamAssignee).filter(ExamAssignee.user_id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
         db.query(Exam).filter(Exam.host_id == host.id).delete(synchronize_session=False)
-        db.query(GroupMember).filter(GroupMember.user_id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
+        db.query(GroupMember).filter(GroupMember.user_id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
         db.query(Group).filter(Group.owner_id == host.id).delete(synchronize_session=False)
         db.query(Quiz).filter(Quiz.user_id == host.id).delete(synchronize_session=False)
-        db.query(User).filter(User.id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
         db.commit()
         db.close()
         print("Cleanup done.")

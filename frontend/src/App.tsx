@@ -8,6 +8,7 @@ import { Feedback } from './pages/User/Feedback/Feedback';
 import { AuthPage } from './pages/User/AuthPage/AuthPage';
 import { ResetPasswordPage } from './pages/User/ResetPasswordPage/ResetPasswordPage';
 import { VerifyEmailPage } from './pages/User/VerifyEmailPage/VerifyEmailPage';
+import { VerifyNotificationEmailPage } from './pages/User/VerifyNotificationEmailPage/VerifyNotificationEmailPage';
 import { Dashboard } from './pages/User/Dashboard/Dashboard';
 import { NotFoundPage } from './pages/User/NotFoundPage/NotFoundPage';
 import { LobbyWaiting } from './pages/User/LobbyWaiting/LobbyWaiting';
@@ -46,7 +47,7 @@ const PROTECTED_ROUTES = [
 
 // Routes without Header/Footer (except public pages with header)
 const NO_LAYOUT_ROUTES = [
-  '/login', '/register', '/reset-password', '/verify-email',
+  '/login', '/register', '/reset-password', '/verify-email', '/verify-notification-email',
   ...PROTECTED_ROUTES,
 ];
 
@@ -108,6 +109,7 @@ const App: React.FC = () => {
         <Route path="/register" element={<AuthPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/verify-notification-email" element={<VerifyNotificationEmailPage />} />
 
         {/* Protected — authentication required */}
         <Route path="/dashboard" element={<Dashboard />} />

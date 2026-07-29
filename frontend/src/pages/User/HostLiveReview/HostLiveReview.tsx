@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, BarChart2, LogOut, Flame } from 'lucide-react'
 import { roomService } from '@/services'
 
-interface StudentAnswerState {
+interface ParticipantAnswerState {
   id: string
   name: string
   answered: boolean
@@ -73,7 +73,7 @@ export const HostLiveReview: React.FC = () => {
   // Host Control States
   const isDemoMode = true
   
-  const DUMMY_STUDENTS = [
+  const DUMMY_PARTICIPANTS = [
     { id: '1', name: 'SpeedRunner', answered: false, answerKey: null, streak: 4, score: 3200 },
     { id: '2', name: 'SarahM', answered: false, answerKey: null, streak: 2, score: 2800 },
     { id: '3', name: 'Alex Johnson', answered: false, answerKey: null, streak: 3, score: 2400 },
@@ -86,7 +86,7 @@ export const HostLiveReview: React.FC = () => {
   const [questionNumber, setQuestionNumber] = useState(1)
   const [timeLeft, setTimeLeft] = useState(20)
   const [revealAnswer, setRevealAnswer] = useState(false)
-  const [students, setStudents] = useState<StudentAnswerState[]>(isDemoMode ? DUMMY_STUDENTS : [])
+  const [participants, setParticipants] = useState<ParticipantAnswerState[]>(isDemoMode ? DUMMY_PARTICIPANTS : [])
   const [distribution, setDistribution] = useState<Record<string, number>>({ A: 0, B: 0, C: 0, D: 0 })
   const [activeQuestion, setActiveQuestion] = useState<QuestionDetails>(
     isDemoMode ? MOCK_QUESTIONS[1] : {
@@ -116,7 +116,7 @@ export const HostLiveReview: React.FC = () => {
           setQuestionNumber(data.current_question_index)
           
           // Map participants
-          setStudents(data.participants.map((p: any) => ({
+          setParticipants(data.participants.map((p: any) => ({
             id: String(p.id),
             name: p.nickname,
             answered: p.answered,
@@ -162,30 +162,30 @@ export const HostLiveReview: React.FC = () => {
     return () => clearInterval(interval)
   }, [state?.roomId, navigate, isDemoMode])
 
-  // Demo Mode: Simulate student responses
+  // Demo Mode: Simulate participant responses
   useEffect(() => {
     if (!isDemoMode) return
     
     // Reset answers
-    setStudents(prev => prev.map(s => ({ ...s, answered: false, answerKey: null })))
+    setParticipants(prev => prev.map(s => ({ ...s, answered: false, answerKey: null })))
     setTimeLeft(20)
     setRevealAnswer(false)
 
     let answeredCount = 0
     const interval = setInterval(() => {
-      setStudents(prev => {
-        const thinkingStudents = prev.filter(s => !s.answered)
-        if (thinkingStudents.length === 0) {
+      setParticipants(prev => {
+        const thinkingParticipants = prev.filter(s => !s.answered)
+        if (thinkingParticipants.length === 0) {
           clearInterval(interval)
           return prev
         }
 
-        const randomStudent = thinkingStudents[Math.floor(Math.random() * thinkingStudents.length)]
+        const randomParticipant = thinkingParticipants[Math.floor(Math.random() * thinkingParticipants.length)]
         const randomKeys = ['A', 'B', 'C', 'D']
         const chosenKey = Math.random() < 0.7 ? activeQuestion.correctKey : randomKeys[Math.floor(Math.random() * 4)]
 
         return prev.map(s => {
-          if (s.id === randomStudent.id) {
+          if (s.id === randomParticipant.id) {
             return { ...s, answered: true, answerKey: chosenKey }
           }
           return s
@@ -193,7 +193,7 @@ export const HostLiveReview: React.FC = () => {
       })
 
       answeredCount++
-      if (answeredCount >= DUMMY_STUDENTS.length) {
+      if (answeredCount >= DUMMY_PARTICIPANTS.length) {
         clearInterval(interval)
       }
     }, 1500)
@@ -220,13 +220,13 @@ export const HostLiveReview: React.FC = () => {
   useEffect(() => {
     if (!isDemoMode) return
     const counts = { A: 0, B: 0, C: 0, D: 0 }
-    students.forEach(s => {
+    participants.forEach(s => {
       if (s.answered && s.answerKey) {
         counts[s.answerKey as keyof typeof counts]++
       }
     })
     setDistribution(counts)
-  }, [students, isDemoMode])
+  }, [participants, isDemoMode])
 
   // Auto Advance countdown clock trigger (if ON)
   useEffect(() => {
@@ -238,8 +238,8 @@ export const HostLiveReview: React.FC = () => {
     }
   }, [timeLeft, autoAdvance])
 
-  const answeredTotal = students.filter(s => s.answered).length
-  const pctAnswered = students.length > 0 ? Math.round((answeredTotal / students.length) * 100) : 0
+  const answeredTotal = participants.filter(s => s.answered).length
+  const pctAnswered = participants.length > 0 ? Math.round((answeredTotal / participants.length) * 100) : 0
 
   const handleNextQuestion = async () => {
     if (isDemoMode) {
@@ -376,7 +376,7 @@ export const HostLiveReview: React.FC = () => {
             {/* Active Members Count */}
             <div className="flex items-center gap-2 bg-[#eaeaff]/40 px-4 py-2 rounded-xl border-2 border-outline-variant/30 text-xs font-black text-slate-850 shadow-sm">
               <Users className="w-4 h-4 text-primary" />
-              <span>{students.length} Members Active</span>
+              <span>{participants.length} Members Active</span>
             </div>
 
             {/* Countdown Clock */}
@@ -473,7 +473,7 @@ export const HostLiveReview: React.FC = () => {
               <div className="mt-6 pt-4 border-t-2 border-outline-variant/20 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-black text-slate-800">Response Status:</span>
-                  <span className="text-xs text-primary font-black bg-primary/5 border border-primary/20 px-2.5 py-1 rounded-full shadow-inner">{answeredTotal} / {students.length} Responded</span>
+                  <span className="text-xs text-primary font-black bg-primary/5 border border-primary/20 px-2.5 py-1 rounded-full shadow-inner">{answeredTotal} / {participants.length} Responded</span>
                 </div>
 
                 <div className="w-1/3 bg-slate-200 h-2.5 rounded-full overflow-hidden border border-outline-variant shadow-inner">
@@ -497,21 +497,21 @@ export const HostLiveReview: React.FC = () => {
 
             {/* List */}
             <div className="flex-grow overflow-y-auto flex flex-col gap-2.5 pr-1">
-              {students.map((student) => (
+              {participants.map((participant) => (
                 <div 
-                  key={student.id} 
+                  key={participant.id} 
                   className={`flex items-center justify-between p-2.5 rounded-xl border-2 border-outline-variant/25 bg-slate-50 hover:bg-slate-100/50 transition-colors`}
                 >
                   <div className="flex items-center gap-2.5">
                     {/* Status indicator */}
                     <div className="w-6 h-6 rounded-md bg-slate-300 text-slate-800 flex items-center justify-center font-black text-[9px] shadow-sm">
-                      {student.name.slice(0,2).toUpperCase()}
+                      {participant.name.slice(0,2).toUpperCase()}
                     </div>
                     <div className="flex flex-col text-left">
-                      <span className="text-xs font-black text-on-surface">{student.name}</span>
-                      {student.streak > 0 && (
+                      <span className="text-xs font-black text-on-surface">{participant.name}</span>
+                      {participant.streak > 0 && (
                         <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-250 px-2 py-0.5 rounded-full font-black flex items-center gap-0.5 mt-1 shadow-sm">
-                          <Flame className="w-2.5 h-2.5 fill-current text-amber-500" /> {student.streak} streak
+                          <Flame className="w-2.5 h-2.5 fill-current text-amber-500" /> {participant.streak} streak
                         </span>
                       )}
                     </div>
@@ -519,7 +519,7 @@ export const HostLiveReview: React.FC = () => {
 
                   {/* Submission indicator badge */}
                   <div>
-                    {student.answered ? (
+                    {participant.answered ? (
                       <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 border-2 border-emerald-300 px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
                         <CheckCircle2 className="w-3 h-3 text-emerald-500 fill-emerald-100" /> Done
                       </span>

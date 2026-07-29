@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
 
+    # Redis Configuration
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

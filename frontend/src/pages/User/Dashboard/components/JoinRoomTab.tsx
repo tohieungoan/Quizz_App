@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DoorOpen, ArrowRight, ShieldCheck, User, Users, PlusCircle, CheckCircle2, BookOpen, Trash2 } from 'lucide-react';
+import { groupService } from '@/services';
 
 interface EnrolledGroup {
   id: string;
@@ -25,33 +26,32 @@ export const JoinRoomTab: React.FC = () => {
   const [groupError, setGroupError] = useState('');
 
   // Part 3: Enrolled Groups List State
-  const [enrolledGroups, setEnrolledGroups] = useState<EnrolledGroup[]>([
-    {
-      id: 'GRP-PHYS-ALPHA',
-      name: 'Alpha Team - Advanced Physics',
-      host: 'Sarah Jenkins',
-      membersCount: 32,
-      lastActivity: 'Physics Ch. 4 Exam (Yesterday)',
-      status: 'ACTIVE',
-    },
-    {
-      id: 'GRP-ENG-B',
-      name: 'English Intensive Group B',
-      host: 'Marcus Thorne',
-      membersCount: 28,
-      lastActivity: 'Grammar Quiz 3 (3 days ago)',
-      status: 'ACTIVE',
-    },
+  const [enrolledGroups, setEnrolledGroups] = useState<EnrolledGroup[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
 
-    {
-      id: 'GRP-CS-2026',
-      name: 'Computer Science Honors 2026',
-      host: 'T.A. Marcus',
-      membersCount: 45,
-      lastActivity: 'Data Structures Quiz (5 days ago)',
-      status: 'ACTIVE',
-    },
-  ]);
+  const loadEnrolledGroups = async () => {
+    try {
+      setIsLoadingGroups(true);
+      const data = await groupService.getMyMemberships();
+      const mapped = data.map((eg): EnrolledGroup => ({
+        id: eg.group_code,
+        name: eg.name,
+        host: eg.host,
+        membersCount: eg.membersCount,
+        lastActivity: eg.lastActivity,
+        status: eg.status,
+      }));
+      setEnrolledGroups(mapped);
+    } catch (err) {
+      console.error("Failed to load enrolled groups:", err);
+    } finally {
+      setIsLoadingGroups(false);
+    }
+  };
+
+  useEffect(() => {
+    loadEnrolledGroups();
+  }, []);
 
   // Handle PIN Digit Change
   const handleDigitChange = (index: number, value: string) => {
@@ -94,7 +94,7 @@ export const JoinRoomTab: React.FC = () => {
     });
   };
 
-  const handleJoinGroup = (e: React.FormEvent) => {
+  const handleJoinGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = groupInviteCode.trim().toUpperCase();
     if (!cleanCode) return;
@@ -102,25 +102,19 @@ export const JoinRoomTab: React.FC = () => {
     setGroupError('');
     setGroupSuccess('');
 
-    // Check if group is locked (e.g. ENG-CLASSB is locked in demo)
-    if (cleanCode === 'ENG-CLASSB' || cleanCode === 'LOCKED') {
-      setGroupError('This group has been LOCKED by the teacher. New join requests are not accepted.');
-      return;
+    try {
+      const res = await groupService.requestToJoinGroup(cleanCode);
+      setGroupSuccess(res.message || `Join request submitted for group #${cleanCode}! Waiting for host approval.`);
+      setGroupInviteCode('');
+      
+      // Reload the groups list to show the new pending group
+      await loadEnrolledGroups();
+      
+      setTimeout(() => setGroupSuccess(''), 5000);
+    } catch (err: any) {
+      console.error("Failed to join group:", err);
+      setGroupError(err?.response?.data?.detail || "Failed to submit join request. Please verify the group code.");
     }
-
-    const newGroup: EnrolledGroup = {
-      id: `GRP-${cleanCode}`,
-      name: `Class Group (${cleanCode})`,
-      host: 'Instructor / Host',
-      membersCount: 16,
-      lastActivity: 'Join request pending approval',
-      status: 'PENDING',
-    };
-
-    setEnrolledGroups([newGroup, ...enrolledGroups]);
-    setGroupSuccess(`Join request submitted for group #${cleanCode}! Waiting for host approval.`);
-    setGroupInviteCode('');
-    setTimeout(() => setGroupSuccess(''), 5000);
   };
 
   const handleLeaveGroup = (id: string) => {
@@ -298,7 +292,7 @@ export const JoinRoomTab: React.FC = () => {
                 <h4 className="font-bold text-base text-on-surface">{group.name}</h4>
                 <p className="text-xs text-on-surface-variant">Host: <span className="font-semibold text-on-surface">{group.host}</span></p>
                 <p className="text-xs text-on-surface-variant">
-                  {group.membersCount} Enrolled Students
+                  {group.membersCount} Enrolled Members
                 </p>
               </div>
 

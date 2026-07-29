@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Send, Megaphone, AlertCircle, Info, CheckCircle2, Radio, Smartphone, Monitor, Link as LinkIcon, Users, UsersRound, User, CalendarClock } from 'lucide-react';
-import { useNotifications } from '@/hooks/useNotifications';
+import { notificationService } from '@/services/notificationService';
 
 export function Broadcast() {
-  const { addNotification } = useNotifications();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [type, setType] = useState('ANNOUNCEMENT');
@@ -17,38 +16,22 @@ export function Broadcast() {
   const [isSending, setIsSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!title.trim() || !content.trim()) return;
     if (targetType === 'GROUP' && !targetGroupId.trim()) return;
     if (isScheduled && !scheduledAt) return;
     
     setIsSending(true);
-    // Simulate network delay
-    setTimeout(() => {
-      let iconName = 'Megaphone';
-      let color = 'text-primary';
-      let bg = 'bg-primary/10';
-
-      if (type === 'SYSTEM') {
-        iconName = 'AlertCircle';
-        color = 'text-error';
-        bg = 'bg-error-container';
-      } else if (type === 'ANNOUNCEMENT') {
-        iconName = 'Megaphone';
-        color = 'text-orange-600';
-        bg = 'bg-orange-100';
-      }
-
-      // Add to local state (Mocking DB insertion)
-      addNotification({
+    try {
+      await notificationService.sendBroadcast({
         title,
-        desc: content,
-        time: isScheduled ? 'Scheduled' : 'Just now',
-        date: isScheduled ? new Date(scheduledAt).toLocaleDateString() : 'Today',
-        iconName,
-        color,
-        bg,
-        unread: true
+        content: content,
+        type,
+        targetType,
+        targetGroupId: targetType === 'GROUP' ? parseInt(targetGroupId, 10) : null,
+        actionUrl: actionUrl.trim() || null,
+        isScheduled,
+        scheduledAt: isScheduled ? new Date(scheduledAt).toISOString() : null,
       });
 
       setTitle('');
@@ -60,11 +43,15 @@ export function Broadcast() {
       setIsScheduled(false);
       setScheduledAt('');
       
-      setIsSending(false);
       const targetStr = targetType === 'ALL_USERS' ? 'all users' : targetType === 'GROUP' ? 'group' : 'user';
       setSuccessMsg(`Broadcast ${isScheduled ? 'scheduled' : 'sent'} successfully to ${targetStr}!`);
       setTimeout(() => setSuccessMsg(''), 3000);
-    }, 800);
+    } catch (err: any) {
+      console.error('Failed to send broadcast:', err);
+      alert(err?.response?.data?.detail || 'Failed to send system broadcast.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const getPreviewIcon = () => {
