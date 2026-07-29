@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Mail, ArrowLeft, ShieldAlert } from 'lucide-react'
 import { InputField } from './InputField'
+import { authService } from '@/services'
 
 interface ForgotPasswordFormProps {
   onBackToLogin: () => void
@@ -28,19 +29,22 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
     return true
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
     setLoading(true)
     setError('')
 
-    // Simulate forgot password API request (frontend only)
-    setTimeout(() => {
-      setLoading(false)
+    try {
+      await authService.forgotPassword(email)
       if (onSuccess) {
         onSuccess(email)
       }
-    }, 800)
+    } catch (err: any) {
+      setError(err.message || 'Failed to send password reset email. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

@@ -11,11 +11,16 @@ class Room(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     quiz_id: Mapped[int] = mapped_column(Integer, ForeignKey("quizzes.id"), nullable=False)
     host_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    group_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True)
     room_code: Mapped[Optional[str]] = mapped_column(String, unique=True, index=True, nullable=True)
     qr_code_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     mode: Mapped[str] = mapped_column(String, default="GAME")
+    progression_mode: Mapped[str] = mapped_column(String, default="manual")
+    current_question_index: Mapped[int] = mapped_column(Integer, default=0)
+    current_question_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
 
     allow_skip_question: Mapped[bool] = mapped_column(Boolean, default=True)
     allow_show_rank: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -31,9 +36,16 @@ class Room(Base):
     # Relationships
     quiz = relationship("Quiz")
     host = relationship("User", foreign_keys=[host_id])
+    group = relationship("Group")
     teams = relationship("RoomTeam", back_populates="room", cascade="all, delete-orphan")
     participants = relationship("Participant", back_populates="room", cascade="all, delete-orphan")
     qa_questions = relationship("LiveQAQuestion", back_populates="room", cascade="all, delete-orphan")
+
+    @property
+    def participants_count(self) -> int:
+        return len(self.participants) if self.participants else 0
+
+
 
 
 class RoomTeam(Base):

@@ -128,7 +128,7 @@ export const CloudUpload = forwardRef<CloudUploadRef, CloudUploadProps>(({
                   }}
                   className="px-2.5 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors flex items-center gap-1.5"
                 >
-                  <Eye className="w-3.5 h-3.5" /> Xem trước
+                  <Eye className="w-3.5 h-3.5" /> Preview
                 </button>
               )}
               {!isImage && (
@@ -142,7 +142,7 @@ export const CloudUpload = forwardRef<CloudUploadRef, CloudUploadProps>(({
                 }}
                 className="px-2.5 py-1.5 text-xs font-bold text-error hover:bg-error/10 rounded-md transition-colors border border-error/20 flex items-center gap-1.5"
               >
-                <X className="w-3.5 h-3.5" /> Gỡ
+                <X className="w-3.5 h-3.5" /> Remove
               </button>
             </div>
           </div>

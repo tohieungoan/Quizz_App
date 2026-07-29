@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GraduationCap, Share2, Play, Mail, ArrowRight, Check } from 'lucide-react'
+import { LegalModal } from '@/components/ui/LegalModal'
 
 export const Footer: React.FC = () => {
   const [email, setEmail] = useState('')
   const [subscribed, setSubscribed] = useState(false)
+  const [legalModalType, setLegalModalType] = useState<'terms' | 'privacy' | null>(null)
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault()
@@ -18,6 +20,7 @@ export const Footer: React.FC = () => {
   }
 
   return (
+    <>
     <footer className="bg-[#1e1b4b] text-indigo-200 py-16 px-margin-mobile md:px-margin-desktop border-t border-indigo-950">
       <div className="max-w-container-max mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 mb-12">
@@ -81,8 +84,8 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="font-headline-md text-sm text-white font-semibold mb-6">Legal</h4>
             <ul className="space-y-3 font-body-md text-sm">
-              <li><a className="hover:text-white transition-colors duration-150" href="#">Terms of Service</a></li>
-              <li><a className="hover:text-white transition-colors duration-150" href="#">Privacy Policy</a></li>
+              <li><button onClick={() => setLegalModalType('terms')} className="hover:text-white transition-colors duration-150 text-left">Terms of Service</button></li>
+              <li><button onClick={() => setLegalModalType('privacy')} className="hover:text-white transition-colors duration-150 text-left">Privacy Policy</button></li>
               <li><a className="hover:text-white transition-colors duration-150" href="#">Cookie Policy</a></li>
               <li><a className="hover:text-white transition-colors duration-150" href="#">Security</a></li>
             </ul>
@@ -108,5 +111,14 @@ export const Footer: React.FC = () => {
         </div>
       </div>
     </footer>
+
+    {legalModalType && (
+      <LegalModal
+        isOpen={!!legalModalType}
+        onClose={() => setLegalModalType(null)}
+        type={legalModalType}
+      />
+    )}
+    </>
   )
 }

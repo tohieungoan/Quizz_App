@@ -73,7 +73,7 @@ export const LobbyWaiting: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const state = location.state as { roomCode?: string; nickname?: string; isHost?: boolean; fromSource?: 'landing' | 'dashboard'; activeTab?: string } | null
+  const state = location.state as { roomCode?: string; nickname?: string; isHost?: boolean; fromSource?: 'landing' | 'dashboard'; activeTab?: string; roomId?: number; participantId?: number; quizTitle?: string; progressionMode?: string } | null
   const roomCode = state?.roomCode || '823914'
   const nickname = state?.nickname || 'Guest'
   const isHost = !!state?.isHost
@@ -88,7 +88,7 @@ export const LobbyWaiting: React.FC = () => {
   // Host specific states
   const [countdown, setCountdown] = useState(900) // 15 minutes (900 seconds)
   const [showAllStudents, setShowAllStudents] = useState(false)
-  const [hostStudents, setHostStudents] = useState<string[]>(HOST_MOCK_PLAYERS_INITIAL)
+  const [hostStudents, setHostStudents] = useState<string[]>([])
 
   // Countdown timer for Host Lobby
   useEffect(() => {
@@ -99,6 +99,7 @@ export const LobbyWaiting: React.FC = () => {
     return () => clearInterval(timer)
   }, [isHost])
 
+  // Common lobby players representation for participant lobby
   // Build participant "me" player
   const myPlayer: Player = {
     id: 'me',
@@ -153,6 +154,15 @@ export const LobbyWaiting: React.FC = () => {
     return () => clearInterval(interval)
   }, [isHost])
 
+  // Simulate redirection to quiz game
+  useEffect(() => {
+    if (isHost) return
+    const timer = setTimeout(() => {
+      navigate('/play', { state: { nickname, roomCode, score: 0, streak: 0, questionNumber: 1, fromSource, activeTab } })
+    }, 6000)
+    return () => clearTimeout(timer)
+  }, [isHost, nickname, roomCode, navigate, fromSource, activeTab])
+
   const handleCopy = () => {
     navigator.clipboard.writeText(roomCode).catch(() => { })
     setCopied(true)
@@ -169,7 +179,12 @@ export const LobbyWaiting: React.FC = () => {
   }
 
   const handleStartGame = () => {
-    alert('Starting game live session! Connecting to members...')
+    navigate('/host-panel', {
+      state: {
+        roomCode,
+        quizTitle: state?.quizTitle || 'Advanced Web Fundamentals Quiz'
+      }
+    })
   }
 
   const formatTime = (seconds: number) => {
@@ -237,7 +252,7 @@ export const LobbyWaiting: React.FC = () => {
                   {copied ? 'Copied!' : 'Copy Code'}
                 </button>
                 <button
-                  onClick={() => navigate('/host-panel', { state: { roomCode, quizTitle: 'Advanced Web Fundamentals Quiz' } })}
+                  onClick={handleStartGame}
                   className="bg-secondary text-on-secondary px-8 py-3.5 rounded-full font-button text-base shadow-xl shadow-secondary/20 hover:shadow-secondary/35 hover:-translate-y-0.5 active:scale-98 transition-all flex items-center justify-center gap-2 min-w-[200px]"
                 >
                   Start Quiz Session <span className="material-symbols-outlined">rocket_launch</span>

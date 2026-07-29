@@ -45,7 +45,7 @@ class CRUDQuestion:
         if not question_ids:
             return []
 
-        # 1. BATCH FETCH: Lấy toàn bộ câu hỏi gốc thuộc sở hữu của user
+        # 1. BATCH FETCH: Fetch all original questions owned by the user
         from app.models.quiz import Quiz
         original_qs = db.query(Question).join(Quiz).filter(
             Question.id.in_(question_ids),
@@ -54,11 +54,11 @@ class CRUDQuestion:
         if not original_qs:
             return []
 
-        # 2. Tạo Map chứa ultimate_parent_id của các câu hỏi được gửi lên
+        # 2. Map containing ultimate_parent_id of original questions
         q_to_ultimate_id = {q: (q.parent_question_id or q.id) for q in original_qs}
         all_ultimate_ids = list(q_to_ultimate_id.values())
 
-        # 3. BATCH DUPLICATE CHECK: Quét 1 lần duy nhất trong Quiz đích xem đã có ID gốc nào chưa
+        # 3. BATCH DUPLICATE CHECK: Scan the target quiz once to check if any original ID has already been imported
         from sqlalchemy import or_
         existing_overlapping_qs = db.query(Question).filter(
             Question.quiz_id == target_quiz_id,
@@ -68,7 +68,7 @@ class CRUDQuestion:
             )
         ).all()
         
-        # Đưa vào kiểu dữ liệu Set để tra cứu với tốc độ O(1)
+        # Add to a Set for O(1) fast lookup
         existing_ultimate_ids = set(
             eq.parent_question_id or eq.id for eq in existing_overlapping_qs
         )
@@ -77,11 +77,11 @@ class CRUDQuestion:
         for original_q in original_qs:
             ultimate_parent_id = q_to_ultimate_id[original_q]
             
-            # Bỏ qua nếu đã tồn tại trong Quiz (hoặc đã được import ở vòng lặp trước đó cùng 1 lô)
+            # Skip if already exists in target Quiz (or was imported in a previous iteration of the same batch)
             if ultimate_parent_id in existing_ultimate_ids:
                 continue
                 
-            # Đánh dấu là đã tồn tại để chống import trùng lặp trong cùng 1 cục Payload
+            # Mark as existing to prevent duplicate imports within the same payload batch
             existing_ultimate_ids.add(ultimate_parent_id)
                 
             # 4. Clone Question
@@ -99,7 +99,7 @@ class CRUDQuestion:
                 is_original=False
             )
             db.add(new_q)
-            db.flush() # Lấy ID mới sinh ra để nhét vào Options
+            db.flush() # Retrieve newly generated ID to insert into Options
             
             # 5. Clone Options
             for opt in original_q.options:

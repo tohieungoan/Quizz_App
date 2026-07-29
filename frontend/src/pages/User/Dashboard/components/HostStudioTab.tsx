@@ -60,7 +60,7 @@ export interface HostAssignedExam {
   due: string;
   subject: string;
   quizId: string;
-  duration: number; // phút
+  duration: number; // minutes
   groupId: string;
   groupName: string;
   totalStudents: number;
@@ -871,7 +871,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       <div className="space-y-1 flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-bold text-secondary uppercase tracking-wider">{exam.subject}</span>
-                          {/* Status Badge — click để toggle trạng thái */}
+                          {/* Status Badge — click to toggle status */}
                           <button
                             onClick={() => handleToggleExamStatus(exam.id)}
                             title="Click to toggle status (Pending → Active → Closed)"
@@ -888,7 +888,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                                 ? 'bg-amber-500 animate-pulse'
                                 : 'bg-slate-400'
                               }`} />
-                            {exam.status === 'Pending' ? 'Pending (Đang chờ)' : exam.status}
+                            {exam.status === 'Pending' ? 'Pending' : exam.status}
                           </button>
                         </div>
                         <h3 className="font-bold text-base text-on-surface leading-tight">{exam.title}</h3>
@@ -1020,7 +1020,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             </div>
 
             <form onSubmit={handleSaveExam} className="space-y-3">
-              {/* Quiz Selection + Group Selection — cùng hàng */}
+              {/* Quiz Selection + Group Selection — same row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
@@ -1073,7 +1073,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <p className="text-[10px] text-on-surface-variant mt-0.5">If left blank, the quiz title will be used.</p>
               </div>
 
-              {/* Due Date + Duration — cùng hàng */}
+              {/* Due Date + Duration — same row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
@@ -1848,10 +1848,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant" title="Số bài exam đã làm">
+                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant" title="Number of exams completed">
                             Exams: {member.examsCompleted || 0}/{member.totalExamsAssigned || 3}
                           </span>
-                          <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800" title="Điểm trung bình">
+                          <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800" title="Average score">
                             AVG: {member.averageScore || 'N/A'}
                           </span>
                           <button

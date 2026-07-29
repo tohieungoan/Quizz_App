@@ -21,8 +21,8 @@ from app.schemas.exam import (
 
 def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) -> None:
     """
-    Tìm tất cả các đề thi đang active và chưa hết hạn của group_id,
-    sau đó tự động gán cho user_id (nếu chưa được gán).
+    Find all active, non-expired exams belonging to the given group_id,
+    then automatically assign them to user_id (if not already assigned).
     """
     now = datetime.utcnow()
     active_exams = db.query(Exam).filter(
@@ -50,8 +50,8 @@ def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) 
                 sender_id=exam.host_id,
                 target_type="PERSONAL",
                 target_group_id=group_id,
-                title="MỞ ĐỀ THI MỚI (THÀNH VIÊN MỚI)",
-                content=f"Bạn vừa gia nhập nhóm và có đề thi đang diễn ra '{exam.title}' cần hoàn thành trước {exam.end_time.strftime('%Y-%m-%d %H:%M')}.",
+                title="NEW EXAM ASSIGNED (NEW MEMBER)",
+                content=f"You just joined the group and have an ongoing exam '{exam.title}' that must be completed before {exam.end_time.strftime('%Y-%m-%d %H:%M')}.",
                 type="EXAM_ASSIGNED",
                 action_url=f"/exams/{exam.id}",
                 is_read=False,
@@ -159,8 +159,8 @@ def assign_exam(
                 sender_id=current_user.id,
                 target_type="PERSONAL",
                 target_group_id=group.id,
-                title="MỞ ĐỀ THI MỚI",
-                content=f"Bạn có đề thi mới '{exam_title}' từ nhóm '{group.name}' cần hoàn thành trước {body.end_time.strftime('%Y-%m-%d %H:%M')}.",
+                title="NEW EXAM ASSIGNED",
+                content=f"You have a new exam '{exam_title}' from the group '{group.name}' that must be completed before {body.end_time.strftime('%Y-%m-%d %H:%M')}.",
                 type="EXAM_ASSIGNED",
                 action_url=f"/exams/{db_exam.id}",
             )

@@ -4,11 +4,12 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_user, get_current_active_user
+from app.core.config import settings
 from app.core import security
 from app.core.email import send_reset_password_email, send_verification_email
 from app.crud.crud_user import crud_user
 from app.models.user import User, UserSetting
-from app.schemas.token import Token, TokenRefreshRequest
+from app.schemas.token import Token, TokenRefreshRequest, SocialLoginIn
 from app.schemas.user import (
     UserCreate,
     UserResponse,
@@ -126,18 +127,27 @@ def register_user(
             detail="This email address is already registered.",
         )
     
-    # Create new user (with email_verified = False and status = UNVERIFIED)
+    # Create new user
     user = crud_user.create(db, obj_in=user_in)
-    user.email_verified = False
-    user.status = "UNVERIFIED"
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    # Generate email verification token and send email
-    verify_token = security.create_email_verification_token(email=user.email)
-    verify_url = f"http://localhost:5173/verify-email?token={verify_token}"
-    background_tasks.add_task(send_verification_email, email_to=user.email, verify_url=verify_url)
+    
+    # If SMTP is not configured, auto-activate user for easier local development
+    if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        user.email_verified = True
+        user.status = "ACTIVE"
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        user.email_verified = False
+        user.status = "UNVERIFIED"
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        
+        # Generate email verification token and send email in background
+        verify_token = security.create_email_verification_token(email=user.email)
+        verify_url = f"{settings.FRONTEND_URL}/verify-email?token={verify_token}"
+        background_tasks.add_task(send_verification_email, email_to=user.email, verify_url=verify_url)
 
     return user
 
@@ -248,7 +258,7 @@ def resend_verification(
         )
 
     verify_token = security.create_email_verification_token(email=user.email)
-    verify_url = f"http://localhost:5173/verify-email?token={verify_token}"
+    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={verify_token}"
     background_tasks.add_task(send_verification_email, email_to=user.email, verify_url=verify_url)
 
     return {"message": "Verification email has been resent successfully."}
@@ -288,7 +298,7 @@ def forgot_password(
         password_hash=user.password or "",
         updated_at=user.updated_at,
     )
-    reset_url = f"http://localhost:5173/reset-password?token={reset_token}"
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
 
     background_tasks.add_task(send_reset_password_email, email_to=user.email, reset_url=reset_url)
 
@@ -370,3 +380,142 @@ def read_user_me(
     Return user profile info using Bearer Token.
     """
     return current_user
+
+
+import urllib.request
+import json
+import secrets
+
+
+def get_google_user_info(access_token: str) -> dict:
+    url = "https://www.googleapis.com/oauth2/v3/userinfo"
+    try:
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", f"Bearer {access_token}")
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
+            if "error" in data:
+                raise ValueError(data.get("error_description") or "Invalid token")
+            return {
+                "email": data["email"],
+                "name": data.get("name") or data.get("given_name") or "Google User",
+                "provider_id": data["sub"],
+                "avatar": data.get("picture")
+            }
+    except Exception as e:
+        raise ValueError(f"Google token validation failed: {str(e)}")
+
+
+def get_microsoft_user_info(access_token: str) -> dict:
+    url = "https://graph.microsoft.com/v1.0/me"
+    try:
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", f"Bearer {access_token}")
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
+            email = data.get("mail") or data.get("userPrincipalName")
+            name = data.get("displayName") or "Microsoft User"
+            if not email:
+                raise ValueError("Email not found in Microsoft profile.")
+            return {
+                "email": email,
+                "name": name,
+                "provider_id": data["id"],
+                "avatar": None
+            }
+    except Exception as e:
+        raise ValueError(f"Microsoft token validation failed: {str(e)}")
+
+
+@router.post("/social", response_model=Token, summary="Login / Register using Google or Microsoft token")
+def social_login(
+    body: SocialLoginIn,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Login or auto-register using social provider token (Google ID Token or Microsoft Access Token).
+    """
+    provider = body.provider.lower()
+    token = body.token
+
+    email = None
+    name = "Social User"
+    provider_id = None
+    avatar = None
+
+    try:
+        if provider == "google":
+            info = get_google_user_info(token)
+            email = info["email"]
+            name = info["name"]
+            provider_id = info["provider_id"]
+            avatar = info["avatar"]
+        elif provider == "microsoft":
+            info = get_microsoft_user_info(token)
+            email = info["email"]
+            name = info["name"]
+            provider_id = info["provider_id"]
+            avatar = info["avatar"]
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported social provider: {body.provider}"
+            )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Find user in DB
+    user = crud_user.get_by_email(db, email=email)
+    from datetime import datetime
+    
+    if not user:
+        # Create a new user with random password
+        from app.models.user import User as UserModel
+        from app.core.security import get_password_hash
+        random_password = secrets.token_urlsafe(16)
+        
+        user = UserModel(
+            email=email,
+            fullname=name,
+            password=get_password_hash(random_password),
+            role="USER",
+            status="ACTIVE",
+            email_verified=True,
+            auth_provider=provider.upper(),
+            provider_id=provider_id,
+            avatar=avatar,
+            last_login=datetime.utcnow()
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        # Update existing user metadata and record the last login timestamp
+        user.last_login = datetime.utcnow()
+        if avatar and not user.avatar:
+            user.avatar = avatar
+        if not user.provider_id:
+            user.provider_id = provider_id
+            user.auth_provider = provider.upper()
+        db.commit()
+        db.refresh(user)
+
+    # Check active status
+    if user.status != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account has been deactivated or locked."
+        )
+
+    # Issue JWT tokens
+    access_token = security.create_access_token(subject=user.id)
+    refresh_token_obj = crud_user.create_refresh_token(db, user_id=user.id)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token_obj.token,
+        "token_type": "bearer"
+    }
