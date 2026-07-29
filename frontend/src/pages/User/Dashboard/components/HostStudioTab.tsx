@@ -40,6 +40,8 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { HOST_QUIZZES_LIST, HOST_GROUPS_LIST, HostGroup, GroupMember, USER_ASSIGNED_EXAMS, AssignedExam } from '@/data/userData';
+import { groupService } from '@/services';
+import { useEffect } from 'react';
 
 const GROUP_ICONS = {
   GraduationCap,
@@ -63,15 +65,15 @@ export interface HostAssignedExam {
   duration: number; // minutes
   groupId: string;
   groupName: string;
-  totalStudents: number;
+  totalMembers: number;
   submittedCount: number;
   status: 'Pending' | 'Active' | 'Closed';
   navigationRule?: 'FREE_NAV' | 'FIXED_NAV';
   resultsPublished?: boolean;
   submissions?: {
-    studentId: string;
-    studentName: string;
-    studentEmail: string;
+    memberId: string;
+    memberName: string;
+    memberEmail: string;
     status: 'Submitted' | 'In Progress' | 'Not Started';
     score?: string;
     submittedAt?: string;
@@ -112,8 +114,65 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   onEditQuiz,
 }) => {
   const [subTab, setSubTab] = useState<'quizzes' | 'groups' | 'exams'>('quizzes');
-  const [groups, setGroups] = useState<HostGroup[]>(HOST_GROUPS_LIST);
+  const [groups, setGroups] = useState<HostGroup[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const loadGroups = async () => {
+    try {
+      setIsLoadingGroups(true);
+      setGroupsError(null);
+      const data = await groupService.getMyGroups();
+      const hostGroups = data.map((bg): HostGroup => ({
+        id: String(bg.id),
+        name: bg.name,
+        joinCode: bg.group_code,
+        isLocked: bg.status === 'CLOSED',
+        membersCount: 0,
+        description: bg.description || '',
+        icon: bg.icon || 'GraduationCap',
+        members: [],
+        pendingRequests: []
+      }));
+      setGroups(hostGroups);
+
+      // Fetch membersCount and pendingRequests asynchronously for each group
+      for (const g of hostGroups) {
+        try {
+          const [roster, requests] = await Promise.all([
+            groupService.getGroupRoster(g.id),
+            groupService.getGroupJoinRequests(g.id)
+          ]);
+
+          const mappedRequests: GroupMember[] = requests.map(r => ({
+            id: String(r.user_id),
+            name: r.name || 'Unknown Member',
+            email: r.email || 'Unknown Email',
+            joinedDate: r.joined_at ? r.joined_at.split('T')[0] : '',
+            avatar: r.avatar || undefined,
+          }));
+
+          setGroups(prev => prev.map(item => item.id === g.id ? {
+            ...item,
+            membersCount: roster.length,
+            pendingRequests: mappedRequests
+          } : item));
+        } catch (err) {
+          console.warn(`Failed to fetch details for group ${g.id}:`, err);
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to load study groups:", err);
+      setGroupsError("Failed to load study groups from server.");
+    } finally {
+      setIsLoadingGroups(false);
+    }
+  };
+
+  useEffect(() => {
+    loadGroups();
+  }, []);
 
   // Copy Feedback State
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -146,13 +205,13 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       groupName: 'Alpha Team - Advanced Physics',
 
 
-      totalStudents: 3,
+      totalMembers: 3,
       submittedCount: 2,
       status: 'Active',
       submissions: [
-        { studentId: 'M-1', studentName: 'Alex Johnson', studentEmail: 'alex.j@example.com', status: 'Submitted', score: '85%', submittedAt: '2026-07-20 09:30' },
-        { studentId: 'M-2', studentName: 'Sarah Smith', studentEmail: 'sarah.s@example.com', status: 'Submitted', score: '92%', submittedAt: '2026-07-20 10:15' },
-        { studentId: 'M-3', studentName: 'Michael Brown', studentEmail: 'michael.b@example.com', status: 'In Progress' }
+        { memberId: 'M-1', memberName: 'Alex Johnson', memberEmail: 'alex.j@example.com', status: 'Submitted', score: '85%', submittedAt: '2026-07-20 09:30' },
+        { memberId: 'M-2', memberName: 'Sarah Smith', memberEmail: 'sarah.s@example.com', status: 'Submitted', score: '92%', submittedAt: '2026-07-20 10:15' },
+        { memberId: 'M-3', memberName: 'Michael Brown', memberEmail: 'michael.b@example.com', status: 'In Progress' }
       ]
     },
     {
@@ -164,11 +223,11 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       duration: 90,
       groupId: 'GRP-02',
       groupName: 'English Intensive Group B',
-      totalStudents: 2,
+      totalMembers: 2,
       submittedCount: 0,
       status: 'Active',
       submissions: [
-        { studentId: 'M-4', studentName: 'Emily Davis', studentEmail: 'emily.d@example.com', status: 'Not Started' },
+        { memberId: 'M-4', memberName: 'Emily Davis', memberEmail: 'emily.d@example.com', status: 'Not Started' },
       ]
     }
   ]);
@@ -190,7 +249,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   // Submissions Modal State
   const [submissionsModalExam, setSubmissionsModalExam] = useState<HostAssignedExam | null>(null);
   const [submissionsViewTab, setSubmissionsViewTab] = useState<'roster' | 'analytics'>('roster');
-  const [editingSubmissionStudentId, setEditingSubmissionStudentId] = useState<string | null>(null);
+  const [editingSubmissionMemberId, setEditingSubmissionMemberId] = useState<string | null>(null);
   const [tempScore, setTempScore] = useState('');
 
   // Export Excel Helpers (.xls HTML Table Spreadsheet)
@@ -232,16 +291,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           <tr>
             <td>Description:</td>
             <td colspan="2">${group.description || 'No description provided'}</td>
-            <td>Total Students:</td>
-            <td>${group.members?.length || 0} Students</td>
+            <td>Total Members:</td>
+            <td>${group.members?.length || 0} Members</td>
           </tr>
           <tr></tr>
           <thead>
             <tr>
               <th style="width: 40px;">No.</th>
-              <th style="width: 100px;">Student ID</th>
+              <th style="width: 100px;">Member ID</th>
               <th style="width: 180px;">Full Name</th>
-              <th style="width: 220px;">Student Email</th>
+              <th style="width: 220px;">Member Email</th>
               <th style="width: 110px;">Exams Completed</th>
               <th style="width: 110px;">Average Score</th>
               <th style="width: 320px;">Detailed Exam Scores</th>
@@ -259,7 +318,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <td style="text-align: center;">${m.id}</td>
                   <td><b>${m.name}</b></td>
                   <td>${m.email}</td>
-                  <td style="text-align: center; font-weight: bold;">${m.examsCompleted || 0} / ${m.totalExamsAssigned || 3}</td>
+                  <td style="text-align: center; font-weight: bold;">${m.examsCompleted ?? 0} / ${m.totalExamsAssigned ?? 0}</td>
                   <td style="text-align: center; font-weight: bold; color: #047857;">${m.averageScore || 'N/A'}</td>
                   <td style="font-size: 10pt;">${scoresText || 'No exams taken'}</td>
                 </tr>
@@ -336,16 +395,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             <td colspan="2">Due Date:</td>
             <td colspan="2">${exam.due}</td>
             <td colspan="2">Submission Rate:</td>
-            <td>${exam.submittedCount} / ${exam.totalStudents} Students</td>
+            <td>${exam.submittedCount} / ${exam.totalMembers} Members</td>
           </tr>
           <tr></tr>
-          <tr><td colspan="7" class="section-title">I. DETAILED STUDENT GRADEBOOK</td></tr>
+          <tr><td colspan="7" class="section-title">I. DETAILED MEMBER GRADEBOOK</td></tr>
           <thead>
             <tr>
               <th style="width: 50px;">No.</th>
-              <th style="width: 100px;">Student ID</th>
+              <th style="width: 100px;">Member ID</th>
               <th style="width: 180px;">Full Name</th>
-              <th style="width: 220px;">Student Email</th>
+              <th style="width: 220px;">Member Email</th>
               <th style="width: 120px;">Status</th>
               <th style="width: 100px;">Score</th>
               <th style="width: 150px;">Submission Time</th>
@@ -355,9 +414,9 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             ${(exam.submissions || []).map((sub, idx) => `
               <tr>
                 <td style="text-align: center;">${idx + 1}</td>
-                <td style="text-align: center;">${sub.studentId}</td>
-                <td><b>${sub.studentName}</b></td>
-                <td>${sub.studentEmail}</td>
+                <td style="text-align: center;">${sub.memberId}</td>
+                <td><b>${sub.memberName}</b></td>
+                <td>${sub.memberEmail}</td>
                 <td style="text-align: center;">${sub.status}</td>
                 <td style="text-align: center; font-weight: bold; color: #047857;">${sub.score || 'N/A'}</td>
                 <td style="text-align: center;">${sub.submittedAt || '-'}</td>
@@ -411,12 +470,23 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   };
 
   // Toggle Group Lock Handler
-  const handleToggleLock = (groupId: string) => {
-    setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, isLocked: !g.isLocked } : g))
-    );
-    if (rosterGroup && rosterGroup.id === groupId) {
-      setRosterGroup((prev) => (prev ? { ...prev, isLocked: !prev.isLocked } : null));
+  const handleToggleLock = async (groupId: string) => {
+    const groupToToggle = groups.find(g => g.id === groupId);
+    if (!groupToToggle) return;
+    const nextLocked = !groupToToggle.isLocked;
+    const nextStatus = nextLocked ? 'CLOSED' : 'OPEN';
+
+    try {
+      await groupService.updateGroup(groupId, { status: nextStatus });
+      setGroups((prev) =>
+        prev.map((g) => (g.id === groupId ? { ...g, isLocked: nextLocked } : g))
+      );
+      if (rosterGroup && rosterGroup.id === groupId) {
+        setRosterGroup((prev) => (prev ? { ...prev, isLocked: nextLocked } : null));
+      }
+    } catch (err) {
+      console.error("Failed to toggle group lock:", err);
+      alert("Failed to update group status on server.");
     }
   };
 
@@ -426,7 +496,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setGroupName('');
     setGroupIcon('GraduationCap');
     setGroupDescription('');
-    setGroupJoinCode(`GRP-${Math.floor(1000 + Math.random() * 9000)}`);
+    setGroupJoinCode('AUTO-GENERATED');
     setGroupIsLocked(false);
     setIsGroupModalOpen(true);
   };
@@ -441,146 +511,269 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setIsGroupModalOpen(true);
   };
 
-  const handleSaveGroup = (e: React.FormEvent) => {
+  const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupName.trim()) return;
 
-    const finalJoinCode = groupJoinCode.trim().toUpperCase() || `GRP-${Math.floor(1000 + Math.random() * 9000)}`;
+    try {
+      const finalStatus = groupIsLocked ? 'CLOSED' : 'OPEN';
 
-    if (editingGroup) {
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.id === editingGroup.id
-            ? {
-              ...g,
-              name: groupName.trim(),
-              description: groupDescription.trim(),
-              joinCode: finalJoinCode,
-              isLocked: groupIsLocked,
-              icon: groupIcon,
-            }
-            : g
-        )
-      );
-      if (rosterGroup && rosterGroup.id === editingGroup.id) {
-        setRosterGroup((prev) =>
-          prev
-            ? {
-              ...prev,
-              name: groupName.trim(),
-              description: groupDescription.trim(),
-              joinCode: finalJoinCode,
-              isLocked: groupIsLocked,
-              icon: groupIcon,
-            }
-            : null
+      if (editingGroup) {
+        const bg = await groupService.updateGroup(editingGroup.id, {
+          name: groupName.trim(),
+          description: groupDescription.trim(),
+          icon: groupIcon,
+          status: finalStatus
+        });
+
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.id === editingGroup.id
+              ? {
+                ...g,
+                name: bg.name,
+                description: bg.description || '',
+                isLocked: bg.status === 'CLOSED',
+                icon: bg.icon || 'GraduationCap',
+              }
+              : g
+          )
         );
-      }
-    } else {
-      const newGroup: HostGroup = {
-        id: `GRP-${(groups.length + 1).toString().padStart(2, '0')}`,
-        name: groupName.trim(),
-        description: groupDescription.trim() || 'No description provided.',
-        joinCode: finalJoinCode,
-        isLocked: groupIsLocked,
-        icon: groupIcon,
-        membersCount: 0,
-        members: [],
-        pendingRequests: [],
-      };
-      setGroups((prev) => [...prev, newGroup]);
-    }
+        if (rosterGroup && rosterGroup.id === editingGroup.id) {
+          setRosterGroup((prev) =>
+            prev
+              ? {
+                ...prev,
+                name: bg.name,
+                description: bg.description || '',
+                isLocked: bg.status === 'CLOSED',
+                icon: bg.icon || 'GraduationCap',
+              }
+              : null
+          );
+        }
+      } else {
+        const bg = await groupService.createGroup({
+          name: groupName.trim(),
+          description: groupDescription.trim() || undefined,
+          icon: groupIcon,
+          status: finalStatus
+        });
 
-    setIsGroupModalOpen(false);
+        const newGroup: HostGroup = {
+          id: String(bg.id),
+          name: bg.name,
+          description: bg.description || 'No description provided.',
+          joinCode: bg.group_code,
+          isLocked: bg.status === 'CLOSED',
+          icon: bg.icon || 'GraduationCap',
+          membersCount: 0,
+          members: [],
+          pendingRequests: [],
+        };
+        setGroups((prev) => [...prev, newGroup]);
+      }
+      setIsGroupModalOpen(false);
+    } catch (err) {
+      console.error("Failed to save study group:", err);
+      alert("Failed to save study group to server.");
+    }
   };
 
-  const handleDeleteGroup = (groupId: string) => {
+  const handleDeleteGroup = async (groupId: string) => {
     if (window.confirm('Are you sure you want to delete this group?')) {
-      setGroups((prev) => prev.filter((g) => g.id !== groupId));
-      if (rosterGroup && rosterGroup.id === groupId) {
-        setRosterGroup(null);
+      try {
+        await groupService.deleteGroup(groupId);
+        setGroups((prev) => prev.filter((g) => g.id !== groupId));
+        if (rosterGroup && rosterGroup.id === groupId) {
+          setRosterGroup(null);
+        }
+      } catch (err) {
+        console.error("Failed to delete group:", err);
+        alert("Failed to delete group from server.");
       }
     }
   };
 
   // Handlers for Roster Management
-  const handleOpenRosterModal = (group: HostGroup, initialTab: 'enrolled' | 'pending' = 'enrolled') => {
+  const handleOpenRosterModal = async (group: HostGroup, initialTab: 'enrolled' | 'pending' = 'enrolled') => {
     setRosterGroup(group);
     setRosterTab(initialTab);
     setNewMemberName('');
     setNewMemberEmail('');
+
+    try {
+      const [roster, requests] = await Promise.all([
+        groupService.getGroupRoster(group.id),
+        groupService.getGroupJoinRequests(group.id)
+      ]);
+
+      const updatedMembers: GroupMember[] = roster.map(m => ({
+        id: String(m.id),
+        name: m.name,
+        email: m.email,
+        joinedDate: m.joined_at ? m.joined_at.split('T')[0] : '',
+        avatar: m.avatar || undefined,
+        examsCompleted: m.examsCompleted,
+        totalExamsAssigned: m.totalExamsAssigned,
+        averageScore: m.averageScore,
+        examScores: m.examScores.map(es => ({
+          examId: es.examTitle,
+          examTitle: es.examTitle,
+          score: es.score,
+          date: '',
+          status: es.status as any
+        }))
+      }));
+
+      const updatedRequests: GroupMember[] = requests.map(r => ({
+        id: String(r.user_id),
+        name: r.name || 'Unknown Member',
+        email: r.email || 'Unknown Email',
+        joinedDate: r.joined_at ? r.joined_at.split('T')[0] : '',
+        avatar: r.avatar || undefined,
+      }));
+
+      const updatedGroup: HostGroup = {
+        ...group,
+        members: updatedMembers,
+        membersCount: updatedMembers.length,
+        pendingRequests: updatedRequests
+      };
+
+      setRosterGroup(updatedGroup);
+      setGroups(prev => prev.map(g => g.id === group.id ? updatedGroup : g));
+    } catch (err) {
+      console.error("Failed to fetch roster details:", err);
+    }
   };
 
-  const handleAddMember = (e: React.FormEvent) => {
+  const handleBulkApprove = async () => {
+    if (!rosterGroup || !rosterGroup.pendingRequests || rosterGroup.pendingRequests.length === 0) return;
+    if (window.confirm(`Are you sure you want to approve all ${rosterGroup.pendingRequests.length} pending requests?`)) {
+      try {
+        await groupService.bulkApproveJoinRequests(rosterGroup.id, true);
+
+        const updatedMembers = [...(rosterGroup.members || []), ...rosterGroup.pendingRequests];
+        const updatedGroup: HostGroup = {
+          ...rosterGroup,
+          members: updatedMembers,
+          membersCount: updatedMembers.length,
+          pendingRequests: [],
+        };
+
+        setRosterGroup(updatedGroup);
+        setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
+      } catch (err) {
+        console.error("Failed to bulk approve:", err);
+        alert("Failed to approve all requests on server.");
+      }
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (!rosterGroup || !rosterGroup.pendingRequests || rosterGroup.pendingRequests.length === 0) return;
+    if (window.confirm(`Are you sure you want to decline all ${rosterGroup.pendingRequests.length} pending requests?`)) {
+      try {
+        await groupService.bulkRejectJoinRequests(rosterGroup.id, true);
+
+        const updatedGroup: HostGroup = {
+          ...rosterGroup,
+          pendingRequests: [],
+        };
+
+        setRosterGroup(updatedGroup);
+        setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
+      } catch (err) {
+        console.error("Failed to bulk reject:", err);
+        alert("Failed to reject all requests on server.");
+      }
+    }
+  };
+
+  const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rosterGroup || !newMemberName.trim() || !newMemberEmail.trim()) return;
+    if (!rosterGroup || !newMemberEmail.trim()) return;
 
-    const newMember: GroupMember = {
-      id: `M-${Date.now().toString().slice(-4)}`,
-      name: newMemberName.trim(),
-      email: newMemberEmail.trim(),
-      joinedDate: new Date().toISOString().split('T')[0],
-    };
-
-    const updatedMembers = [...(rosterGroup.members || []), newMember];
-
-    const updatedGroup: HostGroup = {
-      ...rosterGroup,
-      members: updatedMembers,
-      membersCount: updatedMembers.length,
-    };
-
-    setRosterGroup(updatedGroup);
-    setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g)));
-    setNewMemberName('');
-    setNewMemberEmail('');
+    try {
+      await groupService.inviteMember(rosterGroup.id, newMemberEmail.trim());
+      alert(`Invitation sent successfully to ${newMemberEmail}! The member will be added once they accept the invitation.`);
+      setNewMemberName('');
+      setNewMemberEmail('');
+    } catch (err: any) {
+      console.error("Failed to invite member:", err);
+      alert(err?.response?.data?.detail || "Failed to send invitation on server.");
+    }
   };
 
-  const handleRemoveMember = (memberId: string) => {
+  const handleRemoveMember = async (memberId: string) => {
     if (!rosterGroup) return;
 
-    const updatedMembers = (rosterGroup.members || []).filter((m) => m.id !== memberId);
+    if (window.confirm('Are you sure you want to remove this member from the group?')) {
+      try {
+        await groupService.removeMember(rosterGroup.id, memberId);
 
-    const updatedGroup: HostGroup = {
-      ...rosterGroup,
-      members: updatedMembers,
-      membersCount: updatedMembers.length,
-    };
+        const updatedMembers = (rosterGroup.members || []).filter((m) => m.id !== memberId);
 
-    setRosterGroup(updatedGroup);
-    setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g)));
+        const updatedGroup: HostGroup = {
+          ...rosterGroup,
+          members: updatedMembers,
+          membersCount: updatedMembers.length,
+        };
+
+        setRosterGroup(updatedGroup);
+        setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g)));
+      } catch (err: any) {
+        console.error("Failed to remove member from group:", err);
+        alert(err?.response?.data?.detail || "Failed to remove member on server.");
+      }
+    }
   };
 
-  // Student Approval Handlers
-  const handleApproveStudent = (student: GroupMember) => {
+  // Member Approval Handlers
+  const handleApproveMember = async (member: GroupMember) => {
     if (!rosterGroup) return;
 
-    const updatedPending = (rosterGroup.pendingRequests || []).filter((p) => p.id !== student.id);
-    const updatedMembers = [...(rosterGroup.members || []), student];
+    try {
+      await groupService.approveJoinRequest(rosterGroup.id, member.id);
 
-    const updatedGroup: HostGroup = {
-      ...rosterGroup,
-      members: updatedMembers,
-      membersCount: updatedMembers.length,
-      pendingRequests: updatedPending,
-    };
+      const updatedPending = (rosterGroup.pendingRequests || []).filter((p) => p.id !== member.id);
+      const updatedMembers = [...(rosterGroup.members || []), member];
 
-    setRosterGroup(updatedGroup);
-    setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g)));
+      const updatedGroup: HostGroup = {
+        ...rosterGroup,
+        members: updatedMembers,
+        membersCount: updatedMembers.length,
+        pendingRequests: updatedPending,
+      };
+
+      setRosterGroup(updatedGroup);
+      setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g)));
+    } catch (err) {
+      console.error("Failed to approve member:", err);
+      alert("Failed to approve join request on server.");
+    }
   };
 
-  const handleRejectStudent = (studentId: string) => {
+  const handleRejectMember = async (memberId: string) => {
     if (!rosterGroup) return;
 
-    const updatedPending = (rosterGroup.pendingRequests || []).filter((p) => p.id !== studentId);
+    try {
+      await groupService.rejectJoinRequest(rosterGroup.id, memberId);
 
-    const updatedGroup: HostGroup = {
-      ...rosterGroup,
-      pendingRequests: updatedPending,
-    };
+      const updatedPending = (rosterGroup.pendingRequests || []).filter((p) => p.id !== memberId);
 
-    setRosterGroup(updatedGroup);
-    setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g)));
+      const updatedGroup: HostGroup = {
+        ...rosterGroup,
+        pendingRequests: updatedPending,
+      };
+
+      setRosterGroup(updatedGroup);
+      setGroups((prev) => prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g)));
+    } catch (err) {
+      console.error("Failed to reject member:", err);
+      alert("Failed to reject join request on server.");
+    }
   };
 
   const filteredGroups = groups.filter(
@@ -670,12 +863,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         resultsPublished: resultsPublished,
         groupId: selectedGroup.id,
         groupName: selectedGroup.name,
-        totalStudents: members.length,
+        totalMembers: members.length,
         submittedCount: 0,
         submissions: members.map((m) => ({
-          studentId: m.id,
-          studentName: m.name,
-          studentEmail: m.email,
+          memberId: m.id,
+          memberName: m.name,
+          memberEmail: m.email,
           status: 'Not Started' as const,
         })),
       };
@@ -690,12 +883,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     }
   };
 
-  const handleResetSubmission = (studentId: string) => {
+  const handleResetSubmission = (memberId: string) => {
     if (!submissionsModalExam) return;
     const updated = {
       ...submissionsModalExam,
       submissions: (submissionsModalExam.submissions || []).map((s) =>
-        s.studentId === studentId ? { ...s, status: 'Not Started' as const, score: undefined, submittedAt: undefined } : s
+        s.memberId === memberId ? { ...s, status: 'Not Started' as const, score: undefined, submittedAt: undefined } : s
       ),
       submittedCount: Math.max(0, submissionsModalExam.submittedCount - 1),
     };
@@ -703,17 +896,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setExams((prev) => prev.map((ex) => (ex.id === updated.id ? updated : ex)));
   };
 
-  const handleSaveScore = (studentId: string) => {
+  const handleSaveScore = (memberId: string) => {
     if (!submissionsModalExam) return;
     const updated = {
       ...submissionsModalExam,
       submissions: (submissionsModalExam.submissions || []).map((s) =>
-        s.studentId === studentId ? { ...s, score: tempScore } : s
+        s.memberId === memberId ? { ...s, score: tempScore } : s
       ),
     };
     setSubmissionsModalExam(updated);
     setExams((prev) => prev.map((ex) => (ex.id === updated.id ? updated : ex)));
-    setEditingSubmissionStudentId(null);
+    setEditingSubmissionMemberId(null);
     setTempScore('');
   };
 
@@ -767,10 +960,21 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
         <button
           onClick={() => setSubTab('groups')}
-          className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'groups' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+          className={`pb-3 text-sm font-bold transition-all relative flex items-center gap-1.5 ${subTab === 'groups' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
             }`}
         >
-          My Study Groups ({groups.length})
+          <span>My Study Groups ({groups.length})</span>
+          {(() => {
+            const totalPending = groups.reduce((acc, g) => acc + (g.pendingRequests?.length || 0), 0);
+            return totalPending > 0 ? (
+              <span
+                className="inline-flex items-center justify-center w-4 h-4 bg-amber-500 text-white text-[10px] font-extrabold rounded-full animate-pulse"
+                title={`${totalPending} pending join requests`}
+              >
+                !
+              </span>
+            ) : null;
+          })()}
 
           {subTab === 'groups' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
         </button>
@@ -855,7 +1059,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           {/* Exam Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {filteredExams.map((exam) => {
-              const progressPct = exam.totalStudents > 0 ? Math.round((exam.submittedCount / exam.totalStudents) * 100) : 0;
+              const progressPct = exam.totalMembers > 0 ? Math.round((exam.submittedCount / exam.totalMembers) * 100) : 0;
               const inProgressCount = (exam.submissions || []).filter((s) => s.status === 'In Progress').length;
               const notStartedCount = (exam.submissions || []).filter((s) => s.status === 'Not Started').length;
               const formattedDue = exam.due ? new Date(exam.due).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }) : 'No deadline';
@@ -933,7 +1137,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <div className="px-5 py-3 bg-surface-container/50 border-t border-outline-variant/20 space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-medium text-on-surface-variant">Submissions</span>
-                      <span className="font-bold text-on-surface">{exam.submittedCount} / {exam.totalStudents} Submitted</span>
+                      <span className="font-bold text-on-surface">{exam.submittedCount} / {exam.totalMembers} Submitted</span>
                     </div>
                     {/* Progress bar */}
                     <div className="w-full h-2 bg-outline-variant/20 rounded-full overflow-hidden">
@@ -969,7 +1173,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       }}
                       className="col-span-4 py-2.5 bg-secondary/10 hover:bg-secondary/20 text-secondary text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2"
                     >
-                      <ClipboardList className="w-4 h-4" /> Submissions & Analytics ({exam.totalStudents})
+                      <ClipboardList className="w-4 h-4" /> Submissions & Analytics ({exam.totalMembers})
                     </button>
                     <button
                       onClick={() => handleExportExamExcel(exam)}
@@ -1221,7 +1425,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   </div>
                 </div>
                 <button
-                  onClick={() => { setSubmissionsModalExam(null); setEditingSubmissionStudentId(null); }}
+                  onClick={() => { setSubmissionsModalExam(null); setEditingSubmissionMemberId(null); }}
                   className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors shrink-0"
                 >
                   <X className="w-5 h-5" />
@@ -1235,7 +1439,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   className={`pb-2 text-xs font-bold transition-all relative flex items-center gap-1.5 ${submissionsViewTab === 'roster' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
                     }`}
                 >
-                  <ClipboardList className="w-3.5 h-3.5" /> Student Gradebook ({submissionsModalExam.totalStudents})
+                  <ClipboardList className="w-3.5 h-3.5" /> Member Gradebook ({submissionsModalExam.totalMembers})
                   {submissionsViewTab === 'roster' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
                 </button>
                 <button
@@ -1269,18 +1473,18 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </div>
             </div>
 
-            {/* View Tab 1: Student Gradebook Roster */}
+            {/* View Tab 1: Member Gradebook Roster */}
             {submissionsViewTab === 'roster' && (
               <div className="flex-1 overflow-y-auto p-6 space-y-3">
                 {(submissionsModalExam.submissions || []).length === 0 && (
                   <div className="py-10 text-center text-on-surface-variant text-xs">
                     <Users className="w-8 h-8 mx-auto text-outline/40 mb-2" />
-                    <p>No students in this group.</p>
+                    <p>No members in this group.</p>
                   </div>
                 )}
                 {(submissionsModalExam.submissions || []).map((sub) => (
                   <div
-                    key={sub.studentId}
+                    key={sub.memberId}
                     className={`flex items-center justify-between p-4 rounded-2xl border transition-all gap-3 ${sub.status === 'Submitted'
                       ? 'bg-emerald-50/40 border-emerald-200/60'
                       : sub.status === 'In Progress'
@@ -1288,18 +1492,18 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         : 'bg-slate-50/60 border-slate-200/40'
                       }`}
                   >
-                    {/* Student info */}
+                    {/* Member info */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className={`w-10 h-10 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 ${sub.status === 'Submitted' ? 'bg-emerald-200 text-emerald-900'
                         : sub.status === 'In Progress' ? 'bg-amber-200 text-amber-900 animate-pulse'
                           : 'bg-slate-200 text-slate-700'
                         }`}>
-                        {sub.studentName.charAt(0)}
+                        {sub.memberName.charAt(0)}
                       </div>
                       <div className="min-w-0">
-                        <h5 className="font-bold text-xs text-on-surface">{sub.studentName}</h5>
+                        <h5 className="font-bold text-xs text-on-surface">{sub.memberName}</h5>
                         <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5">
-                          <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 text-outline" />{sub.studentEmail}</span>
+                          <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 text-outline" />{sub.memberEmail}</span>
                           {sub.submittedAt && <span>• {sub.submittedAt}</span>}
                         </div>
                       </div>
@@ -1317,7 +1521,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
                       {/* Score display / edit */}
                       {sub.status === 'Submitted' && (
-                        editingSubmissionStudentId === sub.studentId ? (
+                        editingSubmissionMemberId === sub.memberId ? (
                           <div className="flex items-center gap-1">
                             <input
                               type="text"
@@ -1328,13 +1532,13 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                               autoFocus
                             />
                             <button
-                              onClick={() => handleSaveScore(sub.studentId)}
+                              onClick={() => handleSaveScore(sub.memberId)}
                               className="p-1 bg-secondary text-white rounded-lg hover:bg-secondary/90 transition-all"
                             >
                               <Check className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => { setEditingSubmissionStudentId(null); setTempScore(''); }}
+                              onClick={() => { setEditingSubmissionMemberId(null); setTempScore(''); }}
                               className="p-1 text-on-surface-variant hover:text-error rounded-lg transition-all"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -1342,7 +1546,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                           </div>
                         ) : (
                           <button
-                            onClick={() => { setEditingSubmissionStudentId(sub.studentId); setTempScore(sub.score || ''); }}
+                            onClick={() => { setEditingSubmissionMemberId(sub.memberId); setTempScore(sub.score || ''); }}
                             className="text-xs font-bold text-secondary bg-secondary/10 hover:bg-secondary/20 px-2.5 py-1 rounded-lg transition-all"
                           >
                             {sub.score || 'Grade'}
@@ -1353,7 +1557,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       {/* Reset button */}
                       {(sub.status === 'Submitted' || sub.status === 'In Progress') && (
                         <button
-                          onClick={() => handleResetSubmission(sub.studentId)}
+                          onClick={() => handleResetSubmission(sub.memberId)}
                           className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all"
                           title="Reset attempt"
                         >
@@ -1372,7 +1576,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <div className="flex items-center justify-between bg-amber-50 p-3.5 rounded-2xl border border-amber-200 text-xs text-amber-900">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Top questions that students most frequently answered incorrectly in this exam.</span>
+                    <span>Top questions that members most frequently answered incorrectly in this exam.</span>
                   </div>
                   <button
                     onClick={() => handleExportExamExcel(submissionsModalExam)}
@@ -1395,7 +1599,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         <div>
                           <h5 className="font-bold text-on-surface text-sm">{item.question}</h5>
                           <p className="text-on-surface-variant text-[11px] mt-0.5">
-                            <strong className="text-rose-600">{item.wrongCount} / {item.totalCount}</strong> students answered incorrectly ({item.wrongPercentage}% error rate)
+                            <strong className="text-rose-600">{item.wrongCount} / {item.totalCount}</strong> members answered incorrectly ({item.wrongPercentage}% error rate)
                           </p>
                         </div>
                       </div>
@@ -1428,10 +1632,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             <div className="px-6 py-4 border-t border-outline-variant/20 flex items-center justify-between bg-surface-container/30">
               <p className="text-xs text-on-surface-variant">
                 <span className="font-bold text-on-surface">{submissionsModalExam.submittedCount}</span> of{' '}
-                <span className="font-bold text-on-surface">{submissionsModalExam.totalStudents}</span> students submitted
+                <span className="font-bold text-on-surface">{submissionsModalExam.totalMembers}</span> members submitted
               </p>
               <button
-                onClick={() => { setSubmissionsModalExam(null); setEditingSubmissionStudentId(null); }}
+                onClick={() => { setSubmissionsModalExam(null); setEditingSubmissionMemberId(null); }}
                 className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all shadow-sm"
               >
                 Done
@@ -1562,7 +1766,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-medium text-on-surface-variant">Enrolled Roster</span>
                       <span className="font-bold text-secondary bg-secondary/10 px-2.5 py-0.5 rounded-full">
-                        {count} Students
+                        {count} Members
                       </span>
                     </div>
 
@@ -1592,7 +1796,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             {filteredGroups.length === 0 && (
               <div className="col-span-full py-12 text-center text-on-surface-variant space-y-3 bg-white rounded-2xl border border-dashed border-outline-variant/40">
                 <Users className="w-10 h-10 mx-auto text-outline/50" />
-                <p className="text-sm font-medium">No student groups found.</p>
+                <p className="text-sm font-medium">No study groups found.</p>
                 <button
                   onClick={handleOpenCreateModal}
                   className="px-4 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all inline-flex items-center gap-1.5"
@@ -1612,7 +1816,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             <div className="flex items-center justify-between border-b border-outline-variant/20 pb-4">
               <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
                 <Users className="w-5 h-5 text-secondary" />
-                {editingGroup ? 'Edit Student Group' : 'Create New Group'}
+                {editingGroup ? 'Edit Group' : 'Create New Group'}
               </h3>
               <button
                 onClick={() => setIsGroupModalOpen(false)}
@@ -1702,7 +1906,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     {groupIsLocked ? <Lock className="w-4 h-4 text-amber-600" /> : <Unlock className="w-4 h-4 text-green-600" />}
                     Lock Group
                   </span>
-                  <p className="text-[11px] text-on-surface-variant">Prevent new student join requests</p>
+                  <p className="text-[11px] text-on-surface-variant">Prevent new join requests</p>
                 </div>
                 <input
                   type="checkbox"
@@ -1754,7 +1958,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <span className="font-mono font-bold bg-surface-container px-2 py-0.5 rounded">
                     Code: {rosterGroup.joinCode || rosterGroup.id}
                   </span>
-                  <span>{rosterGroup.members?.length || 0} Enrolled Students</span>
+                  <span>{rosterGroup.members?.length || 0} Enrolled Members</span>
                 </div>
               </div>
               <button
@@ -1772,7 +1976,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 className={`pb-2.5 text-xs font-bold transition-all relative ${rosterTab === 'enrolled' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
                   }`}
               >
-                Enrolled Students ({rosterGroup.members?.length || 0})
+                Enrolled Members ({rosterGroup.members?.length || 0})
                 {rosterTab === 'enrolled' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
               </button>
 
@@ -1791,19 +1995,19 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </button>
             </div>
 
-            {/* Tab 1: Enrolled Students */}
+            {/* Tab 1: Enrolled Members */}
             {rosterTab === 'enrolled' && (
               <div className="flex-1 flex flex-col min-h-0 space-y-4 overflow-hidden">
                 {/* Add Member Form */}
                 <form onSubmit={handleAddMember} className="bg-surface-bright p-4 rounded-2xl border border-outline-variant/30 space-y-3 shrink-0">
                   <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
-                    <UserPlus className="w-4 h-4 text-secondary" /> Add Student Directly
+                    <UserPlus className="w-4 h-4 text-secondary" /> Add Member Directly
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                     <input
                       type="text"
                       required
-                      placeholder="Student Full Name"
+                      placeholder="Member Full Name"
                       value={newMemberName}
                       onChange={(e) => setNewMemberName(e.target.value)}
                       className="sm:col-span-2 px-3.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
@@ -1811,7 +2015,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     <input
                       type="email"
                       required
-                      placeholder="student@school.edu"
+                      placeholder="member@school.edu"
                       value={newMemberEmail}
                       onChange={(e) => setNewMemberEmail(e.target.value)}
                       className="sm:col-span-2 px-3.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
@@ -1834,8 +2038,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-secondary/10 text-secondary font-extrabold text-xs flex items-center justify-center">
-                            {member.name.charAt(0)}
+                          <div className="w-10 h-10 rounded-full bg-secondary/10 text-secondary font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+                            {member.avatar ? (
+                              <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                            ) : (
+                              member.name.charAt(0)
+                            )}
                           </div>
                           <div>
                             <h5 className="font-bold text-xs text-on-surface">{member.name}</h5>
@@ -1849,7 +2057,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant" title="Number of exams completed">
-                            Exams: {member.examsCompleted || 0}/{member.totalExamsAssigned || 3}
+                            Exams: {member.examsCompleted ?? 0}/{member.totalExamsAssigned ?? 0}
                           </span>
                           <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800" title="Average score">
                             AVG: {member.averageScore || 'N/A'}
@@ -1857,7 +2065,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                           <button
                             onClick={() => handleRemoveMember(member.id)}
                             className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg transition-all"
-                            title="Remove Student"
+                            title="Remove Member"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1899,7 +2107,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   {(!rosterGroup.members || rosterGroup.members.length === 0) && (
                     <div className="py-8 text-center text-on-surface-variant text-xs space-y-1">
                       <Users className="w-8 h-8 mx-auto text-outline/40" />
-                      <p>No students enrolled in this group yet.</p>
+                      <p>No members enrolled in this group yet.</p>
                     </div>
                   )}
                 </div>
@@ -1909,39 +2117,60 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             {/* Tab 2: Pending Approvals */}
             {rosterTab === 'pending' && (
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                <p className="text-xs text-on-surface-variant">
-                  Students who used Join Code <strong className="font-mono">{rosterGroup.joinCode || rosterGroup.id}</strong> requesting to join this group:
+                <p className="text-xs text-on-surface-variant mb-1">
+                  Members who used Join Code <strong className="font-mono">{rosterGroup.joinCode || rosterGroup.id}</strong> requesting to join this group:
                 </p>
 
-                {(rosterGroup.pendingRequests || []).map((student) => (
+                {rosterGroup.pendingRequests && rosterGroup.pendingRequests.length > 0 && (
+                  <div className="flex gap-3 mb-4 shrink-0">
+                    <button
+                      onClick={handleBulkApprove}
+                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                    >
+                      <UserCheck className="w-4 h-4" /> Approve All ({rosterGroup.pendingRequests.length})
+                    </button>
+                    <button
+                      onClick={handleBulkReject}
+                      className="flex-1 py-2.5 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
+                    >
+                      <UserX className="w-4 h-4" /> Decline All ({rosterGroup.pendingRequests.length})
+                    </button>
+                  </div>
+                )}
+
+                {(rosterGroup.pendingRequests || []).map((member) => (
                   <div
-                    key={student.id}
+                    key={member.id}
                     className="flex items-center justify-between p-4 bg-amber-50/40 rounded-2xl border border-amber-200/80 hover:border-amber-400 transition-all"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 font-extrabold text-xs flex items-center justify-center">
-                        {student.name.charAt(0)}
+                      <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+                        {member.avatar ? (
+                          <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                        ) : (
+                          member.name.charAt(0)
+                        )}
                       </div>
                       <div>
-                        <h5 className="font-bold text-xs text-on-surface">{student.name}</h5>
+                        <h5 className="font-bold text-xs text-on-surface">{member.name}</h5>
                         <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5">
                           <span className="flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-outline" /> {student.email}
+                            <Mail className="w-3 h-3 text-outline" /> {member.email}
                           </span>
-                          <span>• Requested {student.joinedDate}</span>
+                          <span>• Requested {member.joinedDate}</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleApproveStudent(student)}
+                        onClick={() => handleApproveMember(member)}
                         className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
                       >
                         <UserCheck className="w-4 h-4" /> Approve
                       </button>
                       <button
-                        onClick={() => handleRejectStudent(student.id)}
+                        onClick={() => handleRejectMember(member.id)}
                         className="px-3.5 py-2 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
                       >
                         <UserX className="w-4 h-4" /> Decline
@@ -1954,7 +2183,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <div className="py-12 text-center text-on-surface-variant text-xs space-y-2 bg-surface-bright rounded-2xl border border-dashed border-outline-variant/40">
                     <CheckCircle2 className="w-9 h-9 mx-auto text-green-600/70" />
                     <p className="font-bold text-on-surface">No Pending Requests</p>
-                    <p className="text-[11px]">All student join requests have been processed.</p>
+                    <p className="text-[11px]">All join requests have been processed.</p>
                   </div>
                 )}
               </div>

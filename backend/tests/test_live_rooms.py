@@ -14,7 +14,7 @@ def run_test():
     print("Testing Live Room Launch & Management APIs...")
 
     # Clean up leftover test data from previous runs
-    test_user_ids = [u[0] for u in db.query(User.id).filter(User.email.in_(["test_host_room@example.com", "test_student_room@example.com"])).all()]
+    test_user_ids = [u[0] for u in db.query(User.id).filter(User.email.in_(["test_host_room@example.com", "test_member_room@example.com"])).all()]
     if test_user_ids:
         db.query(Room).filter(Room.host_id.in_(test_user_ids)).delete(synchronize_session=False)
         db.query(Quiz).filter(Quiz.user_id.in_(test_user_ids)).delete(synchronize_session=False)
@@ -29,17 +29,17 @@ def run_test():
         role="USER",
         status="ACTIVE"
     )
-    student = User(
-        email="test_student_room@example.com",
+    member = User(
+        email="test_member_room@example.com",
         password=get_password_hash("testpassword"),
-        fullname="Test Student Room",
+        fullname="Test Member Room",
         role="USER",
         status="ACTIVE"
     )
-    db.add_all([host, student])
+    db.add_all([host, member])
     db.commit()
     db.refresh(host)
-    db.refresh(student)
+    db.refresh(member)
 
     try:
         # Create a Quiz
@@ -181,27 +181,27 @@ def run_test():
             assert e.code == 400
             print("Successfully verified duplicate nickname join returns 400")
 
-        # C. Logged-in student joins
-        student_token = create_access_token(subject=student.id)
-        student_headers = {
+        # C. Logged-in member joins
+        member_token = create_access_token(subject=member.id)
+        member_headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {student_token}"
+            "Authorization": f"Bearer {member_token}"
         }
-        student_payload = {"nickname": "Registered Student"}
-        req_student = urllib.request.Request(
+        member_payload = {"nickname": "Registered Member"}
+        req_member = urllib.request.Request(
             join_url,
-            data=json.dumps(student_payload).encode('utf-8'),
-            headers=student_headers,
+            data=json.dumps(member_payload).encode('utf-8'),
+            headers=member_headers,
             method="POST"
         )
-        with urllib.request.urlopen(req_student) as res:
+        with urllib.request.urlopen(req_member) as res:
             data = json.loads(res.read().decode('utf-8'))
             assert res.status == 201
-            assert data["nickname"] == "Registered Student"
-            assert data["user_id"] == student.id
+            assert data["nickname"] == "Registered Member"
+            assert data["user_id"] == member.id
             assert data["room_id"] == room_id
-            student_participant_id = data["id"]
-            print("Registered student successfully joined room.")
+            member_participant_id = data["id"]
+            print("Registered member successfully joined room.")
 
         # TEST 2.7: Get Room Participants (GET /rooms/{room_id}/participants) & Start Room (POST /rooms/{room_id}/start)
         print("TEST 2.7: Getting room participants list and starting room...")
@@ -213,7 +213,7 @@ def run_test():
             assert len(data) == 2
             nicknames = [p["nickname"] for p in data]
             assert "Anonymous Guest" in nicknames
-            assert "Registered Student" in nicknames
+            assert "Registered Member" in nicknames
             print("Successfully verified room participants list.")
 
         # Start Room
@@ -231,7 +231,7 @@ def run_test():
             print("Successfully started room session and verified participants_count = 2.")
 
         # TEST 2.8: Submit Answers & Verify Dynamic Scoring & Timeouts
-        print("TEST 2.8: Simulating students submitting answers...")
+        print("TEST 2.8: Simulating members submitting answers...")
         
         # We need to sleep briefly to simulate response time
         time.sleep(2)  # 2 seconds elapsed
@@ -261,24 +261,24 @@ def run_test():
         # B. Sleep another 9 seconds (total 11 seconds elapsed since start) to trigger timeout
         time.sleep(9)
         
-        # C. Student submits CORRECT answer (opt2) but AFTER time limit (10s)
-        student_answer_payload = {
-            "participant_id": student_participant_id,
+        # C. Member submits CORRECT answer (opt2) but AFTER time limit (10s)
+        member_answer_payload = {
+            "participant_id": member_participant_id,
             "question_id": q1.id,
             "selected_option_id": opt2.id
         }
-        req_student_ans = urllib.request.Request(
+        req_member_ans = urllib.request.Request(
             submit_url,
-            data=json.dumps(student_answer_payload).encode('utf-8'),
+            data=json.dumps(member_answer_payload).encode('utf-8'),
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req_student_ans) as res:
+        with urllib.request.urlopen(req_member_ans) as res:
             data = json.loads(res.read().decode('utf-8'))
             assert res.status == 200
             assert data["is_correct"] is True
             assert data["score"] == 0.0
-            print(f"Student answer submitted after timeout. Correct: True, Score: {data['score']} (Expected: 0.0)")
+            print(f"Member answer submitted after timeout. Correct: True, Score: {data['score']} (Expected: 0.0)")
 
         # TEST 2.9: Fetch Live Session Data (GET /rooms/{room_id}/live-session)
         print("TEST 2.9: Fetching Host Live Dashboard statistics...")
@@ -297,11 +297,11 @@ def run_test():
             assert len(data["participants"]) == 2
             
             p_guest = next(p for p in data["participants"] if p["id"] == guest_participant_id)
-            p_student = next(p for p in data["participants"] if p["id"] == student_participant_id)
+            p_member = next(p for p in data["participants"] if p["id"] == member_participant_id)
             assert p_guest["answered"] is True
-            assert p_student["answered"] is True
+            assert p_member["answered"] is True
             assert p_guest["score"] > 0
-            assert p_student["score"] == 0.0
+            assert p_member["score"] == 0.0
             
             assert data["answer_distribution"]["B"] == 2
             assert data["answer_distribution"]["A"] == 0
@@ -360,7 +360,7 @@ def run_test():
         # Clean up database records
         db.query(Room).filter(Room.host_id == host.id).delete(synchronize_session=False)
         db.query(Quiz).filter(Quiz.user_id == host.id).delete(synchronize_session=False)
-        db.query(User).filter(User.id.in_([host.id, student.id])).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_([host.id, member.id])).delete(synchronize_session=False)
         db.commit()
         db.close()
         print("Cleanup done.")

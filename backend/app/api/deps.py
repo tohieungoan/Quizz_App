@@ -40,8 +40,8 @@ def get_current_user(
             from app.core.security import get_password_hash
             user = User(
                 email="host@example.com",
-                hashed_password=get_password_hash("password123"),
-                full_name="Sarah Jenkins",
+                password=get_password_hash("password123"),
+                fullname="Sarah Jenkins",
                 role="TEACHER",
                 status="ACTIVE",
                 email_verified=True

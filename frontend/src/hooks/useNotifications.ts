@@ -1,104 +1,158 @@
 import { useState, useEffect, useCallback } from 'react';
-import { DUMMY_NOTIFICATIONS, NotificationItem } from '@/data/mockDb';
-import * as LucideIcons from 'lucide-react';
+import { AlertCircle, CheckCircle2, MessageSquare, Bell, Megaphone, Info } from 'lucide-react';
+import { notificationService, NotificationResponse } from '@/services/notificationService';
 
-const STORAGE_KEY = 'quizzapp_notifications';
+export interface NotificationItem {
+  id: number;
+  title: string;
+  desc: string;
+  time: string;
+  date: string;
+  icon: any;
+  color: string;
+  bg: string;
+  unread: boolean;
+  action_url?: string | null;
+}
+
 const EVENT_NAME = 'quizzapp_notifications_updated';
 
-// Helper to serialize icon to string
-const serializeNotifications = (notifs: NotificationItem[]) => {
-  return notifs.map(n => {
-    // Find the icon name by matching the component
-    let iconName = 'Bell';
-    if (n.icon === LucideIcons.AlertCircle) iconName = 'AlertCircle';
-    if (n.icon === LucideIcons.CheckCircle2) iconName = 'CheckCircle2';
-    if (n.icon === LucideIcons.MessageSquare) iconName = 'MessageSquare';
-    if (n.icon === (LucideIcons as any).Megaphone) iconName = 'Megaphone';
-    if (n.icon === (LucideIcons as any).Info) iconName = 'Info';
-    
-    // Fallback if we added custom string to object
-    if ((n as any).iconName) iconName = (n as any).iconName;
+const mapBackendNotification = (item: NotificationResponse): NotificationItem => {
+  // 1. Map Icon, colors, bg
+  let IconComponent = Bell;
+  let color = 'text-primary';
+  let bg = 'bg-primary/10';
 
-    return { ...n, icon: undefined, iconName };
-  });
-};
+  const typeUpper = item.type?.toUpperCase();
 
-// Helper to deserialize icon from string
-const deserializeNotifications = (items: any[]): NotificationItem[] => {
-  return items.map(n => {
-    const IconComponent = (LucideIcons as any)[n.iconName || 'Bell'] || LucideIcons.Bell;
-    return { ...n, icon: IconComponent };
-  });
+  if (typeUpper === 'SYSTEM' || typeUpper === 'WARNING') {
+    IconComponent = AlertCircle;
+    color = 'text-error';
+    bg = 'bg-error-container';
+  } else if (typeUpper === 'SUCCESS' || typeUpper === 'COMPLETED') {
+    IconComponent = CheckCircle2;
+    color = 'text-green-600';
+    bg = 'bg-green-100';
+  } else if (typeUpper === 'MESSAGE' || typeUpper === 'FEEDBACK') {
+    IconComponent = MessageSquare;
+    color = 'text-primary';
+    bg = 'bg-primary/10';
+  } else if (typeUpper === 'INFO') {
+    IconComponent = Info;
+    color = 'text-blue-600';
+    bg = 'bg-blue-100';
+  } else if (typeUpper === 'BROADCAST') {
+    IconComponent = Megaphone;
+    color = 'text-orange-600';
+    bg = 'bg-orange-100';
+  }
+
+  // 2. Map Time & Date from created_at
+  const createdDate = new Date(item.created_at);
+  const now = new Date();
+  const diffMs = now.getTime() - createdDate.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  let time = 'Just now';
+  if (diffMins > 0 && diffMins < 60) {
+    time = `${diffMins}m ago`;
+  } else if (diffHours > 0 && diffHours < 24) {
+    time = `${diffHours}h ago`;
+  } else if (diffDays > 0) {
+    time = `${diffDays}d ago`;
+  }
+
+  // Map date label
+  let dateStr = createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const isToday = createdDate.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = createdDate.toDateString() === yesterday.toDateString();
+
+  if (isToday) {
+    dateStr = 'Today';
+  } else if (isYesterday) {
+    dateStr = 'Yesterday';
+  }
+
+  return {
+    id: item.id,
+    title: item.title,
+    desc: item.content,
+    time: time,
+    date: dateStr,
+    icon: IconComponent,
+    color: color,
+    bg: bg,
+    unread: !item.is_read,
+    action_url: item.action_url
+  };
 };
 
 export const useNotifications = () => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  const loadNotifications = useCallback(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setNotifications(deserializeNotifications(parsed));
-      } catch (e) {
-        setNotifications(DUMMY_NOTIFICATIONS);
-      }
-    } else {
-      setNotifications(DUMMY_NOTIFICATIONS);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeNotifications(DUMMY_NOTIFICATIONS)));
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const response = await notificationService.getNotifications(0, 30);
+      const mapped = response.data.map(mapBackendNotification);
+      setNotifications(mapped);
+      setUnreadCount(response.unread_count);
+    } catch (err) {
+      console.error('Failed to load notifications from API:', err);
     }
   }, []);
 
   useEffect(() => {
-    loadNotifications();
+    // Initial fetch
+    fetchNotifications();
 
-    const handleStorageEvent = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) loadNotifications();
-    };
-    const handleCustomEvent = () => loadNotifications();
+    // Poll every 30 seconds to fetch new notifications dynamically
+    const interval = setInterval(fetchNotifications, 30000);
 
-    window.addEventListener('storage', handleStorageEvent);
+    const handleCustomEvent = () => fetchNotifications();
     window.addEventListener(EVENT_NAME, handleCustomEvent);
 
     return () => {
-      window.removeEventListener('storage', handleStorageEvent);
+      clearInterval(interval);
       window.removeEventListener(EVENT_NAME, handleCustomEvent);
     };
-  }, [loadNotifications]);
+  }, [fetchNotifications]);
 
-  const addNotification = (notif: Omit<NotificationItem, 'id' | 'icon'> & { iconName: string }) => {
-    const current = localStorage.getItem(STORAGE_KEY);
-    let items = [];
-    if (current) {
-      items = JSON.parse(current);
-    } else {
-      items = serializeNotifications(DUMMY_NOTIFICATIONS);
+  const markAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead();
+      // Instantly update local states
+      setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+      setUnreadCount(0);
+      window.dispatchEvent(new Event(EVENT_NAME));
+    } catch (err) {
+      console.error('Failed to mark all notifications as read:', err);
     }
-
-    const newNotif = {
-      ...notif,
-      id: Date.now(),
-    };
-
-    const newItems = [newNotif, ...items];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newItems));
-    window.dispatchEvent(new Event(EVENT_NAME)); // Notify other tabs/components
   };
 
-  const markAllAsRead = () => {
-    const current = localStorage.getItem(STORAGE_KEY);
-    if (current) {
-      const items = JSON.parse(current);
-      const updated = items.map((n: any) => ({ ...n, unread: false }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  const markAsRead = async (notificationId: number) => {
+    try {
+      await notificationService.markAsRead(notificationId);
+      // Instantly update local state
+      setNotifications(prev => 
+        prev.map(n => n.id === notificationId ? { ...n, unread: false } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
       window.dispatchEvent(new Event(EVENT_NAME));
+    } catch (err) {
+      console.error(`Failed to mark notification ${notificationId} as read:`, err);
     }
   };
 
   return {
     notifications,
-    addNotification,
+    unreadCount,
+    fetchNotifications,
     markAllAsRead,
-    unreadCount: notifications.filter(n => n.unread).length
+    markAsRead
   };
 };

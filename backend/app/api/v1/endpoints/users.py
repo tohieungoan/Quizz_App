@@ -25,7 +25,9 @@ from app.schemas.user import (
 )
 from app.core.email import send_notification_email_verification
 from app.core.config import settings
-from app.core.security import create_notification_email_verification_token
+import secrets
+import json
+from app.core.redis import set_token
 from app.db.session import SessionLocal
 from app.models.notification import Notification
 import uuid
@@ -337,7 +339,7 @@ def update_user_settings(
 
 
 @router.post("/me/notification-email/request", summary="Request verification email for a new notification email")
-def request_notification_email_verification(
+async def request_notification_email_verification(
     body: NotificationEmailRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -358,10 +360,10 @@ def request_notification_email_verification(
             detail="This email address is already in use by another account for notifications."
         )
 
-    token = create_notification_email_verification_token(
-        user_id=current_user.id,
-        new_email=body.email
-    )
+    token = secrets.token_urlsafe(32)
+    payload = json.dumps({"user_id": current_user.id, "new_email": body.email})
+    await set_token(f"verify_notification_email:{token}", payload, expire_seconds=7200)
+
     verify_url = f"{settings.FRONTEND_URL}/verify-notification-email?token={token}"
     background_tasks.add_task(
         send_notification_email_verification,

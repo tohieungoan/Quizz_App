@@ -104,6 +104,17 @@ export const apiClient = {
       body: params.toString(),
     }).then(handleResponse<T>),
 
+  put: <T = unknown>(
+    endpoint: string,
+    body: unknown,
+    extraHeaders?: Record<string, string>
+  ): Promise<T> =>
+    fetchWithAuth(`${BASE_URL}${endpoint}`, {
+      method: 'PUT',
+      headers: extraHeaders,
+      body: JSON.stringify(body),
+    }).then(handleResponse<T>),
+
   patch: <T = unknown>(endpoint: string, body: unknown): Promise<T> =>
     fetchWithAuth(`${BASE_URL}${endpoint}`, {
       method: 'PATCH',

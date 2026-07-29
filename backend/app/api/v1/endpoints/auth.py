@@ -7,6 +7,9 @@ from app.api.deps import get_db, get_current_user, get_current_active_user
 from app.core.config import settings
 from app.core import security
 from app.core.email import send_reset_password_email, send_verification_email
+import secrets
+import json
+from app.core.redis import set_token, get_token, delete_token
 from app.crud.crud_user import crud_user
 from app.models.user import User, UserSetting
 from app.schemas.token import Token, TokenRefreshRequest, SocialLoginIn
@@ -110,7 +113,7 @@ def logout(
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Register user account")
-def register_user(
+async def register_user(
     user_in: UserCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -145,7 +148,8 @@ def register_user(
         db.refresh(user)
         
         # Generate email verification token and send email in background
-        verify_token = security.create_email_verification_token(email=user.email)
+        verify_token = secrets.token_urlsafe(32)
+        await set_token(f"verify_email:{verify_token}", user.email, expire_seconds=86400)
         verify_url = f"{settings.FRONTEND_URL}/verify-email?token={verify_token}"
         background_tasks.add_task(send_verification_email, email_to=user.email, verify_url=verify_url)
 
@@ -153,14 +157,14 @@ def register_user(
 
 
 @router.post("/verify-email", summary="Verify email address using verification token")
-def verify_email(
+async def verify_email(
     body: UserVerifyEmail,
     db: Session = Depends(get_db),
 ) -> Any:
     """
     Activate user account when the user clicks the verification link in their email.
     """
-    email = security.verify_email_verification_token(body.token)
+    email = await get_token(f"verify_email:{body.token}")
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -175,6 +179,7 @@ def verify_email(
         )
 
     if user.email_verified:
+        await delete_token(f"verify_email:{body.token}")
         return {"message": "Email is already verified. You can now log in."}
 
     user.email_verified = True
@@ -182,11 +187,12 @@ def verify_email(
     db.add(user)
     db.commit()
 
+    await delete_token(f"verify_email:{body.token}")
     return {"message": "Email address verified successfully! You can now log in."}
 
 
 @router.post("/verify-notification-email", summary="Verify and update user notification email using token")
-def verify_notification_email(
+async def verify_notification_email(
     body: UserVerifyEmail,
     db: Session = Depends(get_db),
 ) -> Any:
@@ -194,8 +200,16 @@ def verify_notification_email(
     Verify notification email address via verification token.
     Updates the notification email in user_settings table.
     """
-    token_data = security.verify_notification_email_verification_token(body.token)
-    if not token_data:
+    token_data_str = await get_token(f"verify_notification_email:{body.token}")
+    if not token_data_str:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired notification email verification token.",
+        )
+
+    try:
+        token_data = json.loads(token_data_str)
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired notification email verification token.",
@@ -231,12 +245,13 @@ def verify_notification_email(
         db.add(settings_obj)
     
     db.commit()
+    await delete_token(f"verify_notification_email:{body.token}")
     return {"message": "Notification email verified and updated successfully!"}
 
 
 
 @router.post("/resend-verification", summary="Resend account verification email")
-def resend_verification(
+async def resend_verification(
     body: UserResendVerification,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -257,7 +272,8 @@ def resend_verification(
             detail="This email address is already verified.",
         )
 
-    verify_token = security.create_email_verification_token(email=user.email)
+    verify_token = secrets.token_urlsafe(32)
+    await set_token(f"verify_email:{verify_token}", user.email, expire_seconds=86400)
     verify_url = f"{settings.FRONTEND_URL}/verify-email?token={verify_token}"
     background_tasks.add_task(send_verification_email, email_to=user.email, verify_url=verify_url)
 
@@ -265,7 +281,7 @@ def resend_verification(
 
 
 @router.post("/forgot-password", summary="Request password reset (Generate Token & Send Email)")
-def forgot_password(
+async def forgot_password(
     body: UserForgotPassword,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -274,11 +290,9 @@ def forgot_password(
     Request password reset link.
     Verifies if email exists in database:
     - If not found: Returns 404 error.
-    - If the previous link is still valid (within 15 minutes): Reuses the previous link.
-    - If the previous link has expired: Generates a new link.
+    - If found, generates a new reset token and saves it in Redis (TTL = 15 minutes).
     Sends the reset link email via SMTP using a BackgroundTask.
     """
-    from datetime import datetime, timedelta
     user = crud_user.get_by_email(db, email=body.email)
     if not user:
         raise HTTPException(
@@ -286,18 +300,8 @@ def forgot_password(
             detail="This email address is not registered in our system.",
         )
 
-    now = datetime.utcnow()
-    if not user.updated_at or (now - user.updated_at) >= timedelta(minutes=15):
-        user.updated_at = now
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-    reset_token = security.create_password_reset_token(
-        email=user.email,
-        password_hash=user.password or "",
-        updated_at=user.updated_at,
-    )
+    reset_token = secrets.token_urlsafe(32)
+    await set_token(f"reset_password:{reset_token}", user.email, expire_seconds=900)
     reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
 
     background_tasks.add_task(send_reset_password_email, email_to=user.email, reset_url=reset_url)
@@ -308,7 +312,7 @@ def forgot_password(
 
 
 @router.post("/reset-password", summary="Reset password using recovery token")
-def reset_password(
+async def reset_password(
     body: UserResetPassword,
     db: Session = Depends(get_db),
 ) -> Any:
@@ -316,15 +320,11 @@ def reset_password(
     Reset password using verification token from /forgot-password endpoint.
     Only the latest generated token is active and it can only be used once within 15 minutes.
     """
-    from jose import jwt as jose_jwt
-
-    try:
-        unverified_payload = jose_jwt.get_unverified_claims(body.token)
-        email = unverified_payload.get("sub")
-    except Exception:
+    email = await get_token(f"reset_password:{body.token}")
+    if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid password reset token.",
+            detail="This password reset link is invalid, expired, or has been superseded by a newer request.",
         )
 
     user = crud_user.get_by_email(db, email=email)
@@ -334,19 +334,9 @@ def reset_password(
             detail="User not found.",
         )
 
-    verified_email = security.verify_password_reset_token(
-        body.token,
-        password_hash=user.password or "",
-        updated_at=user.updated_at,
-    )
-    if not verified_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This password reset link is invalid, expired, or has been superseded by a newer request.",
-        )
-
     crud_user.update(db, db_obj=user, obj_in={"password": body.new_password})
     crud_user.delete_all_user_refresh_tokens(db, user_id=user.id)
+    await delete_token(f"reset_password:{body.token}")
 
     return {"message": "Password reset successfully. Please log in again with your new password."}
 
@@ -360,6 +350,12 @@ def change_password(
     """
     Change password for the currently logged-in account.
     """
+    if not current_user.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account does not have a local password set.",
+        )
+
     if not security.verify_password(body.old_password, current_user.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -406,34 +402,13 @@ def get_google_user_info(access_token: str) -> dict:
         raise ValueError(f"Google token validation failed: {str(e)}")
 
 
-def get_microsoft_user_info(access_token: str) -> dict:
-    url = "https://graph.microsoft.com/v1.0/me"
-    try:
-        req = urllib.request.Request(url)
-        req.add_header("Authorization", f"Bearer {access_token}")
-        with urllib.request.urlopen(req) as response:
-            data = json.loads(response.read().decode())
-            email = data.get("mail") or data.get("userPrincipalName")
-            name = data.get("displayName") or "Microsoft User"
-            if not email:
-                raise ValueError("Email not found in Microsoft profile.")
-            return {
-                "email": email,
-                "name": name,
-                "provider_id": data["id"],
-                "avatar": None
-            }
-    except Exception as e:
-        raise ValueError(f"Microsoft token validation failed: {str(e)}")
-
-
-@router.post("/social", response_model=Token, summary="Login / Register using Google or Microsoft token")
+@router.post("/social", response_model=Token, summary="Login / Register using Google token")
 def social_login(
     body: SocialLoginIn,
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Login or auto-register using social provider token (Google ID Token or Microsoft Access Token).
+    Login or auto-register using social provider token (Google ID Token).
     """
     provider = body.provider.lower()
     token = body.token
@@ -446,12 +421,6 @@ def social_login(
     try:
         if provider == "google":
             info = get_google_user_info(token)
-            email = info["email"]
-            name = info["name"]
-            provider_id = info["provider_id"]
-            avatar = info["avatar"]
-        elif provider == "microsoft":
-            info = get_microsoft_user_info(token)
             email = info["email"]
             name = info["name"]
             provider_id = info["provider_id"]

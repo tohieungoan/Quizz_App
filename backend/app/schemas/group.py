@@ -28,6 +28,9 @@ class GroupMemberResponse(BaseModel):
     role_in_group: str
     status: str
     joined_at: Optional[datetime] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+    avatar: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,6 +82,7 @@ class RosterMemberResponse(BaseModel):
     examsCompleted: int
     totalExamsAssigned: int
     averageScore: str
+    avatar: Optional[str] = None
     examScores: List[ExamScoreDetail] = []
 
 

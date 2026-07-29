@@ -30,7 +30,7 @@ class GroupMember(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     group_id: Mapped[int] = mapped_column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    role_in_group: Mapped[str] = mapped_column(String, default="STUDENT")
+    role_in_group: Mapped[str] = mapped_column(String, default="MEMBER")
     status: Mapped[str] = mapped_column(String, default="APPROVED")
     invited_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

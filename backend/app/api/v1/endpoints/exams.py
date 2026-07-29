@@ -14,7 +14,7 @@ from app.schemas.exam import (
     ExamUpdateRequest,
     ExamAssignDetailResponse,
     ExamResponse,
-    StudentExamResponse,
+    UserExamResponse,
     ExamAnswerRequest,
     ExamTakeResponse,
 )
@@ -215,13 +215,13 @@ def read_assigned_exams(
     return result
 
 
-@router.get("/my-exams", response_model=List[StudentExamResponse], summary="Retrieve exams assigned to the current student")
+@router.get("/my-exams", response_model=List[UserExamResponse], summary="Retrieve exams assigned to the current user")
 def read_my_exams(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
-    Get a list of exams assigned to the logged-in student.
+    Get a list of exams assigned to the logged-in user.
     """
     assignees = db.query(ExamAssignee).filter(ExamAssignee.user_id == current_user.id).all()
     
@@ -340,6 +340,17 @@ def delete_exam(
     Delete an assigned exam.
     Only the host (owner) or SUPER_ADMIN can delete it.
     """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Exam not found.",
+        )
+    if exam.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete this exam.",
+        )
     db.delete(exam)
     db.commit()
     return {"message": "Exam assignment deleted successfully.", "exam_id": exam_id}
@@ -368,16 +379,16 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
 
     correct_count = 0
     for q in questions:
-        student_ans = answers_dict.get(q.id)
-        if not student_ans:
+        user_ans = answers_dict.get(q.id)
+        if not user_ans:
             continue
             
         if q.type == "WRITTEN":
             pass
         else:
-            if student_ans.selected_option_id:
+            if user_ans.selected_option_id:
                 correct_option = db.query(QuestionOption).filter(
-                    QuestionOption.id == student_ans.selected_option_id,
+                    QuestionOption.id == user_ans.selected_option_id,
                     QuestionOption.question_id == q.id,
                     QuestionOption.is_correct == True
                 ).first()
@@ -404,7 +415,7 @@ def start_exam(
 ) -> Any:
     """
     Start the assigned exam. Change status to IN_PROGRESS and log start time.
-    Strictly: each student can only start once.
+    Strictly: each user can only start once.
     """
     assignee = db.query(ExamAssignee).filter(
         ExamAssignee.exam_id == exam_id,
@@ -552,7 +563,7 @@ def take_exam(
     }
 
 
-@router.post("/{exam_id}/answer", summary="Save student answer for a question")
+@router.post("/{exam_id}/answer", summary="Save user answer for a question")
 def submit_answer(
     exam_id: int,
     body: ExamAnswerRequest,

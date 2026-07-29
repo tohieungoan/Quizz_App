@@ -129,7 +129,7 @@ class CRUDReport:
         # Generate participants CSV
         participants_output = io.StringIO()
         p_writer = csv.writer(participants_output)
-        p_writer.writerow(["Student Name", "Score", "Time Taken (mins)", "Status"])
+        p_writer.writerow(["Participant Name", "Score", "Time Taken (mins)", "Status"])
 
         # Generate questions CSV
         questions_output = io.StringIO()

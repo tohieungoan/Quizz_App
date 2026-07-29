@@ -22,27 +22,27 @@ def run_test():
         role="USER",
         status="ACTIVE"
     )
-    student_a = User(
-        email="test_student_a@example.com",
+    member_a = User(
+        email="test_member_a@example.com",
         password=get_password_hash("testpassword"),
-        fullname="Test Student A",
+        fullname="Test Member A",
         role="USER",
         status="ACTIVE"
     )
-    student_b = User(
-        email="test_student_b@example.com",
+    member_b = User(
+        email="test_member_b@example.com",
         password=get_password_hash("testpassword"),
-        fullname="Test Student B",
+        fullname="Test Member B",
         role="USER",
         status="ACTIVE"
     )
-    db.add_all([host, student_a, student_b])
+    db.add_all([host, member_a, member_b])
     db.commit()
     db.refresh(host)
-    db.refresh(student_a)
-    db.refresh(student_b)
+    db.refresh(member_a)
+    db.refresh(member_b)
 
-    print(f"Created test users: Host({host.id}), Student A({student_a.id}), Student B({student_b.id})")
+    print(f"Created test users: Host({host.id}), Member A({member_a.id}), Member B({member_b.id})")
 
     try:
         # Create Quiz owned by Host
@@ -71,32 +71,32 @@ def run_test():
         db.commit()
         db.refresh(group)
 
-        # Add Student A as APPROVED member
-        member_a = GroupMember(
+        # Add Member A as APPROVED member
+        g_member_a = GroupMember(
             group_id=group.id,
-            user_id=student_a.id,
-            role_in_group="STUDENT",
+            user_id=member_a.id,
+            role_in_group="MEMBER",
             status="APPROVED",
             joined_at=datetime.utcnow()
         )
-        db.add(member_a)
+        db.add(g_member_a)
         db.commit()
 
-        # Add Student B as PENDING member
-        member_b = GroupMember(
+        # Add Member B as PENDING member
+        g_member_b = GroupMember(
             group_id=group.id,
-            user_id=student_b.id,
-            role_in_group="STUDENT",
+            user_id=member_b.id,
+            role_in_group="MEMBER",
             status="PENDING",
             requested_at=datetime.utcnow()
         )
-        db.add(member_b)
+        db.add(g_member_b)
         db.commit()
-        print("Setup completed. Student A is APPROVED, Student B is PENDING.")
+        print("Setup completed. Member A is APPROVED, Member B is PENDING.")
 
         # Generate tokens
         host_token = create_access_token(subject=host.id)
-        student_b_token = create_access_token(subject=student_b.id)
+        member_b_token = create_access_token(subject=member_b.id)
 
         base_url = "http://127.0.0.1:8000/api/v1"
 
@@ -127,11 +127,11 @@ def run_test():
             res_body = json.loads(response.read().decode("utf-8"))
             exam_id = res_body["exam"]["id"]
             print(f"Exam created with ID: {exam_id}. Assigned count: {res_body['assignees_count']}")
-            assert res_body["assignees_count"] == 1  # Only Student A is assigned at this point
+            assert res_body["assignees_count"] == 1  # Only Member A is assigned at this point
 
-        # TEST 2: Approve Student B to join group
-        print("TEST 2: Approving Student B to join group...")
-        url = f"{base_url}/groups/{group.id}/requests/{student_b.id}/approve"
+        # TEST 2: Approve Member B to join group
+        print("TEST 2: Approving Member B to join group...")
+        url = f"{base_url}/groups/{group.id}/requests/{member_b.id}/approve"
         req = urllib.request.Request(
             url,
             headers={"Authorization": f"Bearer {host_token}"},
@@ -141,39 +141,39 @@ def run_test():
             res_body = json.loads(response.read().decode("utf-8"))
             print("Response:", res_body)
 
-        # Check DB to verify Student B is now APPROVED
+        # Check DB to verify Member B is now APPROVED
         db.expire_all()
-        mb = db.query(GroupMember).filter(GroupMember.group_id == group.id, GroupMember.user_id == student_b.id).first()
+        mb = db.query(GroupMember).filter(GroupMember.group_id == group.id, GroupMember.user_id == member_b.id).first()
         assert mb.status == "APPROVED"
-        print("Student B group membership is now APPROVED.")
+        print("Member B group membership is now APPROVED.")
 
-        # Check if Student B has been automatically assigned the exam
-        assignee_b = db.query(ExamAssignee).filter(ExamAssignee.exam_id == exam_id, ExamAssignee.user_id == student_b.id).first()
+        # Check if Member B has been automatically assigned the exam
+        assignee_b = db.query(ExamAssignee).filter(ExamAssignee.exam_id == exam_id, ExamAssignee.user_id == member_b.id).first()
         assert assignee_b is not None
         assert assignee_b.status == "PENDING"
-        print("TEST 2 PASSED: Student B was automatically assigned the ongoing exam!")
+        print("TEST 2 PASSED: Member B was automatically assigned the ongoing exam!")
 
-        # Verify Student B received Notification for the exam
+        # Verify Member B received Notification for the exam
         notif = db.query(Notification).filter(
-            Notification.user_id == student_b.id,
+            Notification.user_id == member_b.id,
             Notification.type == "EXAM_ASSIGNED"
         ).first()
         assert notif is not None
         assert "Geometry Midterm" in notif.content
-        print("TEST 3 PASSED: Student B received exam assignment notification.")
+        print("TEST 3 PASSED: Member B received exam assignment notification.")
 
         print("\nALL AUTO ASSIGN NEW MEMBER TESTS PASSED SUCCESSFULLY!")
 
     finally:
         # Cleanup
         print("Cleaning up database...")
-        db.query(Notification).filter(Notification.user_id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
-        db.query(ExamAssignee).filter(ExamAssignee.user_id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
+        db.query(Notification).filter(Notification.user_id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
+        db.query(ExamAssignee).filter(ExamAssignee.user_id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
         db.query(Exam).filter(Exam.host_id == host.id).delete(synchronize_session=False)
-        db.query(GroupMember).filter(GroupMember.user_id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
+        db.query(GroupMember).filter(GroupMember.user_id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
         db.query(Group).filter(Group.owner_id == host.id).delete(synchronize_session=False)
         db.query(Quiz).filter(Quiz.user_id == host.id).delete(synchronize_session=False)
-        db.query(User).filter(User.id.in_([host.id, student_a.id, student_b.id])).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_([host.id, member_a.id, member_b.id])).delete(synchronize_session=False)
         db.commit()
         db.close()
         print("Cleanup done.")

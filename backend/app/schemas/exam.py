@@ -54,7 +54,7 @@ class ExamAssignDetailResponse(BaseModel):
     assignees_count: int
     assignees: List[ExamAssigneeResponse]
 
-class StudentExamResponse(BaseModel):
+class UserExamResponse(BaseModel):
     id: int  # ExamAssignee ID
     exam_id: int
     status: Optional[str]

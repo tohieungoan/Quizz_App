@@ -27,3 +27,18 @@ class Notification(Base):
     sender = relationship("User", foreign_keys=[sender_id])
     recipient = relationship("User", foreign_keys=[user_id])
     target_group = relationship("Group", foreign_keys=[target_group_id])
+
+
+class NotificationRead(Base):
+    __tablename__ = "notification_reads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    notification_id: Mapped[int] = mapped_column(Integer, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    notification = relationship("Notification", foreign_keys=[notification_id])

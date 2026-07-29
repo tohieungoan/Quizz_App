@@ -20,3 +20,17 @@ export interface StoredUser {
   avatar: string | null
   role: string
 }
+
+export interface UserSetting {
+  id: number
+  user_id: number
+  notification_email: string | null
+  email_notifications_enabled: boolean
+  in_app_notifications_enabled: boolean
+  notify_system: boolean
+  notify_quiz_assigned: boolean
+  notify_exam_reminder: boolean
+  notify_results_published: boolean
+  notify_room_invite: boolean
+}
+

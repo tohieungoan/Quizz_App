@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { uploadService } from '@/services';
 
-const CLOUDINARY_URL = import.meta.env.VITE_CLOUDINARY_URL;
+const CLOUDINARY_URL = import.meta.env.VITE_CLOUDINARY_URL || 'https://api.cloudinary.com/v1_1';
 
 export const useCloudinaryUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
