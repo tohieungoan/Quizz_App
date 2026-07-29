@@ -23,29 +23,29 @@ def extract_public_id(url: str) -> Optional[str]:
         return None
         
     try:
-        # Extract the part after /upload/
+        # Split to get the path after /upload/
         parts = url.split("/upload/")
         if len(parts) < 2:
             return None
             
         path_after_upload = parts[1]
         
-        # By default, all our files are located in the 'quizz_app' folder.
-        # The safest way is to find the position of 'quizz_app' and get everything after it.
+        # By default, all our files are stored in the 'quizz_app' directory.
+        # The safest approach is to locate the 'quizz_app' prefix and extract everything after it.
         root_folder = "quizz_app"
         
         if root_folder in path_after_upload:
-            # Get everything starting from 'quizz_app/...'
+            # Extract starting from 'quizz_app/...'
             public_id_with_ext = path_after_upload[path_after_upload.find(root_folder):]
         else:
-            # Fallback in case there is no quizz_app folder
+            # Fallback in case quizz_app folder is not in the path
             path_parts = path_after_upload.split("/")
-            # Skip transformation (usually contains comma) or version (e.g. v1234)
+            # Skip transformation properties (often contains comma) or version (e.g. v1234)
             while path_parts and ("," in path_parts[0] or (path_parts[0].startswith("v") and path_parts[0][1:].isdigit())):
                 path_parts.pop(0)
             public_id_with_ext = "/".join(path_parts)
         
-        # Remove the file extension (.jpg, .mp3, etc.)
+        # Strip file extension (.jpg, .mp3, etc.)
         public_id = public_id_with_ext.rsplit(".", 1)[0]
         return public_id
     except Exception as e:

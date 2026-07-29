@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     groups,
     questions,
     quizzes,
+    rooms,
     upload,
     users,
     rooms,
@@ -33,6 +34,7 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(quizzes.router, tags=["Quizzes"])
 api_router.include_router(questions.router, prefix="/quizzes", tags=["Questions"])
 api_router.include_router(exams.router, prefix="/exams", tags=["Exams"])
+api_router.include_router(rooms.router, prefix="/rooms", tags=["Rooms"])
 
 # Admin Endpoints
 api_router.include_router(dashboard.router, prefix="/admin/dashboard", tags=["Dashboard"])

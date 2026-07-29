@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Header } from './layouts/Header';
 import { Footer } from './layouts/Footer';
 import { LandingPage } from './pages/User/LandingPage/LandingPage';
@@ -7,6 +7,7 @@ import { AboutUs } from './pages/User/AboutUs/AboutUs';
 import { Feedback } from './pages/User/Feedback/Feedback';
 import { AuthPage } from './pages/User/AuthPage/AuthPage';
 import { ResetPasswordPage } from './pages/User/ResetPasswordPage/ResetPasswordPage';
+import { VerifyEmailPage } from './pages/User/VerifyEmailPage/VerifyEmailPage';
 import { Dashboard } from './pages/User/Dashboard/Dashboard';
 import { NotFoundPage } from './pages/User/NotFoundPage/NotFoundPage';
 import { LobbyWaiting } from './pages/User/LobbyWaiting/LobbyWaiting';
@@ -27,39 +28,88 @@ import { Settings } from './pages/Admin/Settings/Settings';
 import { Achievements } from './pages/Admin/Achievements/Achievements';
 import { Broadcast } from './pages/Admin/Broadcast/Broadcast';
 import { Profile } from './pages/User/Profile/Profile';
+import { useAuth } from './hooks/useAuth';
+import { GraduationCap } from 'lucide-react';
+
+/**
+ * Route classification:
+ * - PUBLIC_ONLY:  Accessible only when NOT logged in (logged in -> redirect to /dashboard)
+ * - PROTECTED:    Authentication required (unauthenticated -> redirect to /login)
+ * - PUBLIC_OPEN:  Open to everyone: /, /about, /feedback, /register
+ */
+const PUBLIC_ONLY_ROUTES = ['/login', '/register'];
+
+const PROTECTED_ROUTES = [
+  '/dashboard', '/lobby', '/exam', '/play', '/leaderboard',
+  '/powerups', '/create-quiz', '/host-panel', '/admin',
+];
+
+// Routes without Header/Footer (except public pages with header)
+const NO_LAYOUT_ROUTES = [
+  '/login', '/register', '/reset-password', '/verify-email',
+  ...PROTECTED_ROUTES,
+];
+
+const matchesRoute = (pathname: string, routes: string[]) =>
+  routes.some((r) => pathname === r || pathname.startsWith(r + '/'));
 
 const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { status } = useAuth();
 
-  const isAuthRoute =
-    location.pathname === '/login' ||
-    location.pathname === '/register' ||
-    location.pathname === '/reset-password' ||
-    location.pathname === '/verify-email' ||
-    location.pathname.startsWith('/dashboard') ||
-    location.pathname === '/lobby' ||
-    location.pathname === '/exam' ||
-    location.pathname === '/play' ||
-    location.pathname === '/leaderboard' ||
-    location.pathname === '/powerups' ||
-    location.pathname === '/create-quiz' ||
-    location.pathname === '/host-panel' ||
-    location.pathname.startsWith('/admin');
+  const isNoLayout = matchesRoute(location.pathname, NO_LAYOUT_ROUTES);
+  const isProtected = matchesRoute(location.pathname, PROTECTED_ROUTES);
+  const isPublicOnly = matchesRoute(location.pathname, PUBLIC_ONLY_ROUTES);
 
-  const handleGetStarted = () => {
-    navigate('/register');
-  };
+  // ── Splash loading — verifying session ──────────────────────────────
+  if (status === 'loading') {
+    return (
+      <div className="w-full h-screen flex flex-col items-center justify-center bg-[#f9f9ff]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-3xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20 animate-pulse">
+            <GraduationCap className="w-10 h-10 text-on-primary" />
+          </div>
+          <h2 className="text-xl font-black text-slate-800 tracking-tight">QuizzApp</h2>
+          <div className="flex items-center gap-1.5 mt-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" />
+          </div>
+          <span className="text-xs text-outline font-bold mt-2">Restoring session...</span>
+        </div>
+      </div>
+    );
+  }
 
-  // Auth/Game/Admin routes render without Header & Footer
-  if (isAuthRoute) {
+  // ── Guard: logged in visiting public-only (/login) -> Dashboard ──────
+  if (status === 'authenticated' && isPublicOnly) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // ── Guard: logged in visiting public pages (/, /about...) -> Dashboard ─────
+  if (status === 'authenticated' && !isNoLayout) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // ── Guard: unauthenticated visiting protected route -> /login ──────────────────
+  if (status === 'unauthenticated' && isProtected) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const handleGetStarted = () => navigate('/register');
+
+  // ── Routes without Header/Footer (auth / game / admin) ─────────────────
+  if (isNoLayout) {
     return (
       <Routes>
+        {/* Auth — public */}
         <Route path="/login" element={<AuthPage />} />
         <Route path="/register" element={<AuthPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/verify-email" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
 
+        {/* Protected — authentication required */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route
           path="/create-quiz"
@@ -98,6 +148,7 @@ const App: React.FC = () => {
     );
   }
 
+  // ── Public routes — with Header & Footer (/, /about, /feedback, /register) ─
   return (
     <div className="bg-background text-on-background font-body-md antialiased min-h-screen flex flex-col">
       <Header onGetStartedClick={handleGetStarted} />

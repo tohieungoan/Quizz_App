@@ -1,15 +1,7 @@
 import { useState } from 'react';
+import { uploadService } from '@/services';
 
-const API_URL = import.meta.env.VITE_API_URL;
 const CLOUDINARY_URL = import.meta.env.VITE_CLOUDINARY_URL;
-
-interface UploadSignatureResponse {
-  signature: string;
-  timestamp: number;
-  api_key: string;
-  cloud_name: string;
-  folder: string;
-}
 
 export const useCloudinaryUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
@@ -24,33 +16,12 @@ export const useCloudinaryUpload = () => {
     setUploadedUrl(null);
 
     try {
-      // 1. Request Signature from our Backend
-      // NOTE: In a real app, you MUST include the Admin Authorization token in headers.
-      // We assume the user has a valid token stored in localStorage for this demo.
-      const token = localStorage.getItem('token'); 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const sigResponse = await fetch(`${API_URL}/upload/request-signature`, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-        }),
+      // 1. Request Signature from our Backend using uploadService
+      const sigData = await uploadService.requestSignature({
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
       });
-
-      if (!sigResponse.ok) {
-        const errData = await sigResponse.json();
-        throw new Error(errData.detail || 'Failed to get upload signature');
-      }
-
-      const sigData: UploadSignatureResponse = await sigResponse.json();
 
       // 2. Upload to Cloudinary
       const formData = new FormData();
@@ -62,10 +33,10 @@ export const useCloudinaryUpload = () => {
 
       const cloudinaryUrl = `${CLOUDINARY_URL}/${sigData.cloud_name}/auto/upload`;
 
-      // Use native XMLHttpRequest for upload progress without needing axios dependency
-      return new Promise((resolve, reject) => {
+      // Use native XMLHttpRequest for upload progress tracking
+      return new Promise((resolve) => {
         const xhr = new XMLHttpRequest();
-        
+
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
             const percentCompleted = Math.round((event.loaded * 100) / event.total);
@@ -76,7 +47,7 @@ export const useCloudinaryUpload = () => {
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const response = JSON.parse(xhr.responseText);//Loggg
+              const response = JSON.parse(xhr.responseText);
               setUploadedUrl(response.secure_url);
               setIsUploading(false);
               resolve(response.secure_url);
@@ -104,7 +75,7 @@ export const useCloudinaryUpload = () => {
 
     } catch (err: any) {
       console.error("Upload error:", err);
-      setError(err.message || 'An error occurred during upload');
+      setError(err?.response?.data?.detail || err.message || 'An error occurred during upload');
       setIsUploading(false);
       return null;
     }
@@ -112,17 +83,7 @@ export const useCloudinaryUpload = () => {
 
   const deleteFile = async (url: string) => {
     try {
-      const token = localStorage.getItem('token'); 
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      await fetch(`${API_URL}/upload/delete-asset?url=${encodeURIComponent(url)}`, {
-        method: 'DELETE',
-        headers: headers,
-      });
-      // We don't necessarily need to handle the response since it's fire-and-forget for drafts
+      await uploadService.deleteAsset(url);
     } catch (err) {
       console.error("Failed to delete orphaned asset:", err);
     }

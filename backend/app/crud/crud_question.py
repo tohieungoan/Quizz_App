@@ -58,7 +58,7 @@ class CRUDQuestion:
         q_to_ultimate_id = {q: (q.parent_question_id or q.id) for q in original_qs}
         all_ultimate_ids = list(q_to_ultimate_id.values())
 
-        # 3. BATCH DUPLICATE CHECK: Scan the target quiz once to find any already-imported parent IDs
+        # 3. BATCH DUPLICATE CHECK: Scan target quiz once to check if any original ID was already imported
         from sqlalchemy import or_
         existing_overlapping_qs = db.query(Question).filter(
             Question.quiz_id == target_quiz_id,
@@ -77,7 +77,7 @@ class CRUDQuestion:
         for original_q in original_qs:
             ultimate_parent_id = q_to_ultimate_id[original_q]
             
-            # Skip if already exists in the quiz (or was imported earlier in this same batch)
+            # Skip if already exists in target Quiz (or was imported earlier in this same batch)
             if ultimate_parent_id in existing_ultimate_ids:
                 continue
                 
@@ -99,7 +99,7 @@ class CRUDQuestion:
                 is_original=False
             )
             db.add(new_q)
-            db.flush() # Get the newly generated ID to assign to Options
+            db.flush() # Flush to get newly generated ID to assign to Options
             
             # 5. Clone Options
             for opt in original_q.options:
@@ -253,4 +253,3 @@ class CRUDQuestion:
         return False
 
 crud_question = CRUDQuestion()
-

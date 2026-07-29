@@ -7,12 +7,12 @@ from app.core.config import settings
 from app.api.v1.api import api_router
 from app.db.session import engine
 from app.db.base import Base
-import app.models  # Import toàn bộ models để SQLAlchemy nhận diện các bảng
+import app.models  # Import all models for SQLAlchemy table detection
 
-# Khởi tạo tự động các bảng trong Database PostgreSQL nếu chưa tồn tại
+# Automatically create tables in PostgreSQL if they do not exist
 Base.metadata.create_all(bind=engine)
 
-# Tự động đồng bộ các cột CSDL PostgreSQL
+# Automatically synchronize PostgreSQL database columns
 try:
     from sqlalchemy import text
     with engine.connect() as conn:
@@ -21,6 +21,10 @@ try:
         conn.execute(text("ALTER TABLE question_options DROP COLUMN IF EXISTS media_type, ADD COLUMN IF NOT EXISTS audio_url VARCHAR;"))
         conn.execute(text("ALTER TABLE groups ADD COLUMN IF NOT EXISTS icon VARCHAR DEFAULT 'GraduationCap';"))
         conn.execute(text("ALTER TABLE exams ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL;"))
+        conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL;"))
+        conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS progression_mode VARCHAR DEFAULT 'manual';"))
+        conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS current_question_index INTEGER DEFAULT 0;"))
+        conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS current_question_started_at TIMESTAMP;"))
         conn.commit()
 except Exception:
     pass
@@ -46,10 +50,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.BACKEND_CORS_ORIGINS,  # Allow only configured origins from .env
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
