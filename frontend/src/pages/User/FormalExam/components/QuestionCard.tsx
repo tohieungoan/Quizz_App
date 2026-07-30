@@ -13,6 +13,7 @@ interface QuestionCardProps {
   handleTextChange: (qId: number, val: string) => void;
   onPrev: () => void;
   onNext: () => void;
+  navigationRule?: string;
 }
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({
@@ -26,6 +27,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   handleTextChange,
   onPrev,
   onNext,
+  navigationRule,
 }) => {
   const isFlagged = flaggedQuestions.has(activeQuestion.id);
 
@@ -36,21 +38,23 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="bg-primary text-on-primary px-4 py-1.5 rounded-lg font-label-bold text-xs font-bold">
-              Question {activeQuestion.id}
+              Question {currentQuestionIndex + 1}
             </span>
             <span className="text-on-surface-variant text-xs font-semibold">
               {activeQuestion.points} Point{activeQuestion.points > 1 ? 's' : ''}
             </span>
           </div>
-          <button
-            onClick={() => toggleFlag(activeQuestion.id)}
-            className={`flex items-center gap-2 text-xs font-bold transition-colors group ${
-              isFlagged ? 'text-tertiary' : 'text-outline hover:text-tertiary'
-            }`}
-          >
-            <Flag className={`w-4 h-4 ${isFlagged ? 'fill-current' : ''}`} />
-            <span>Mark for Review</span>
-          </button>
+          {navigationRule !== 'FIXED_NAV' && (
+            <button
+              onClick={() => toggleFlag(activeQuestion.id)}
+              className={`flex items-center gap-2 text-xs font-bold transition-colors group ${
+                isFlagged ? 'text-tertiary' : 'text-outline hover:text-tertiary'
+              }`}
+            >
+              <Flag className={`w-4 h-4 ${isFlagged ? 'fill-current' : ''}`} />
+              <span>Mark for Review</span>
+            </button>
+          )}
         </div>
 
         {/* Question Card */}
@@ -85,9 +89,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                     />
                     <div className="flex flex-col text-left">
                       <span className={`font-bold text-sm ${isSelected ? 'text-primary' : 'text-on-surface'}`}>
-                        {opt.key}. {opt.label}
+                        {opt.desc || opt.key}. {opt.label}
                       </span>
-                      {opt.desc && <span className="text-xs text-on-surface-variant mt-0.5">{opt.desc}</span>}
                     </div>
                   </label>
                 );
@@ -114,15 +117,17 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-between pt-4">
-        <button
-          disabled={currentQuestionIndex === 0}
-          onClick={onPrev}
-          className="flex items-center gap-2 px-6 py-3 border-2 border-outline text-on-surface-variant font-button text-xs font-bold rounded-lg hover:bg-surface-variant transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Previous
-        </button>
+      <div className={`flex items-center pt-4 ${navigationRule === 'FIXED_NAV' ? 'justify-end' : 'justify-between'}`}>
+        {navigationRule !== 'FIXED_NAV' && (
+          <button
+            disabled={currentQuestionIndex === 0}
+            onClick={onPrev}
+            className="flex items-center gap-2 px-6 py-3 border-2 border-outline text-on-surface-variant font-button text-xs font-bold rounded-lg hover:bg-surface-variant transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Previous
+          </button>
+        )}
         <button
           disabled={currentQuestionIndex === totalQuestions - 1}
           onClick={onNext}

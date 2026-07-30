@@ -49,6 +49,14 @@ class ExamAssignee(Base):
     user = relationship("User", foreign_keys=[user_id])
     answers = relationship("ExamAnswer", back_populates="exam_assignee", cascade="all, delete-orphan")
 
+    @property
+    def user_fullname(self) -> Optional[str]:
+        return self.user.fullname if self.user else None
+
+    @property
+    def user_email(self) -> Optional[str]:
+        return self.user.email if self.user else None
+
 
 class ExamAnswer(Base):
     __tablename__ = "exam_answers"
