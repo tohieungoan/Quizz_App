@@ -81,6 +81,14 @@ export interface HostAssignedExam {
   }[];
 }
 
+export interface HostQuiz {
+  id: string;
+  title: string;
+  questions: number;
+  level: string;
+  category: string;
+}
+
 export interface QuestionAnalytics {
   id: number;
   question: string;
