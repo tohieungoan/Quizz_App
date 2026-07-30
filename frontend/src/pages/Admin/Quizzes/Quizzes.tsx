@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Copy, Trash2, Search, CheckCircle2, FileEdit, Library } from 'lucide-react';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Pagination } from '@/components/ui/Pagination';
 import { DUMMY_QUIZZES, Quiz } from '@/data/mockDb';
+import { quizService } from '@/services/quizService';
 
 interface QuizzesProps {
   onCreateQuiz: () => void;
@@ -11,7 +12,8 @@ interface QuizzesProps {
 }
 
 export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) => {
-  const [quizzes, setQuizzes] = useState<Quiz[]>(DUMMY_QUIZZES);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [difficultyFilter, setDifficultyFilter] = useState('All Difficulty');
   const [subjectFilter, setSubjectFilter] = useState('All Subjects');
@@ -23,6 +25,36 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
   // Delete Confirmation State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [quizToDelete, setQuizToDelete] = useState<string | null>(null);
+
+  const fetchQuizzes = async () => {
+    try {
+      setIsLoading(true);
+      const res = await quizService.getQuizzes({ pageSize: 100 });
+      if (res && res.data) {
+        const mappedQuizzes: Quiz[] = res.data.map((q: any) => ({
+          id: `QZ-${q.id}`,
+          title: q.title,
+          status: q.status || 'Draft',
+          subject: q.subject || 'General',
+          q: q.question_count || 0,
+          diff: q.difficulty || 'Medium',
+          author: 'Admin',
+          date: new Date(q.created_at).toLocaleDateString(),
+          time: new Date(q.created_at).toLocaleTimeString()
+        }));
+        setQuizzes(mappedQuizzes);
+      }
+    } catch (error) {
+      console.error("Failed to fetch quizzes", error);
+      setQuizzes(DUMMY_QUIZZES); // Fallback if API fails for some reason
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQuizzes();
+  }, []);
 
   // Filtered Quizzes Logic
   const filteredQuizzes = quizzes.filter((quiz) => {
@@ -42,32 +74,16 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
   const currentQuizzes = filteredQuizzes.slice(startIndex, startIndex + itemsPerPage);
 
   // Actions
-  const handleDuplicate = (quiz: Quiz) => {
-    const baseTitle = quiz.title.replace(/\s*\(Copy( \d+)?\)$/, '');
-    
-    let maxCopyNum = 0;
-    quizzes.forEach(q => {
-      if (q.title.startsWith(baseTitle)) {
-        if (q.title === `${baseTitle} (Copy)`) {
-          maxCopyNum = Math.max(maxCopyNum, 1);
-        } else {
-          const match = q.title.match(new RegExp(`${baseTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\(Copy (\\d+)\\)$`));
-          if (match) {
-            maxCopyNum = Math.max(maxCopyNum, parseInt(match[1], 10));
-          }
-        }
-      }
-    });
-
-    const newCopyNum = maxCopyNum + 1;
-    
-    const newQuiz: Quiz = {
-      ...quiz,
-      id: `QZ-${Math.floor(Math.random() * 900) + 100}`,
-      title: `${baseTitle} (Copy ${newCopyNum})`,
-      date: 'Just now',
-    };
-    setQuizzes([newQuiz, ...quizzes]);
+  const handleDuplicate = async (quiz: Quiz) => {
+    try {
+      const rawId = quiz.id.replace('QZ-', '');
+      await quizService.duplicateQuiz(rawId);
+      // Refetch quizzes to get the new duplicate
+      fetchQuizzes();
+    } catch (error) {
+      console.error("Failed to duplicate quiz:", error);
+      alert("Failed to duplicate quiz.");
+    }
   };
 
   const handleDeleteClick = (id: string) => {
@@ -75,10 +91,25 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
     setDeleteConfirmOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (quizToDelete) {
-      setQuizzes(quizzes.filter((q) => q.id !== quizToDelete));
-      setQuizToDelete(null);
+      try {
+        const rawId = quizToDelete.replace('QZ-', '');
+        const targetQuiz = quizzes.find(q => q.id === quizToDelete);
+        
+        // If the quiz is Published, we must change it to Draft first to satisfy backend constraints
+        if (targetQuiz && targetQuiz.status === 'Published') {
+          await quizService.updateQuiz(rawId, { status: 'Draft' });
+        }
+
+        await quizService.deleteQuiz(rawId);
+        setQuizzes(quizzes.filter((q) => q.id !== quizToDelete));
+      } catch (error: any) {
+        console.error("Failed to delete quiz:", error);
+        alert(error.message || "Failed to delete quiz.");
+      } finally {
+        setQuizToDelete(null);
+      }
     }
   };
 
@@ -179,7 +210,13 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
               </tr>
             </thead>
             <tbody className="text-body-md text-sm text-on-surface divide-y divide-outline-variant/20">
-              {currentQuizzes.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-on-surface-variant">
+                    Loading quizzes...
+                  </td>
+                </tr>
+              ) : currentQuizzes.length > 0 ? (
                 currentQuizzes.map((quiz) => (
                   <tr key={quiz.id} className="hover:bg-surface-bright transition-colors">
                     <td className="px-4 md:px-6 py-4 font-medium text-primary whitespace-nowrap">{quiz.id}</td>

@@ -24,6 +24,10 @@ class Quiz(Base):
     questions = relationship("Question", back_populates="quiz", cascade="all, delete-orphan")
     upload_files = relationship("UploadFile", back_populates="quiz")
 
+    @property
+    def question_count(self) -> int:
+        return len(self.questions)
+
 
 class Question(Base):
     __tablename__ = "questions"

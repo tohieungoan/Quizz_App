@@ -1,11 +1,14 @@
 import { ArrowLeft, Wrench, X, List, CheckSquare, AlignLeft, Sparkles, ArrowRight, Check, Plus, Trash2, Edit2, Image as ImageIcon, Mic, UploadCloud, GripVertical, CopyPlus } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { QuestionBankModal } from '@/components/ui/QuestionBankModal';
 import { CloudUpload, CloudUploadRef } from '@/components/ui/CloudUpload';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
 import { DUMMY_QUIZZES } from '@/data/mockDb';
+import { quizService } from '@/services/quizService';
+import { questionService } from '@/services/questionService';
 
 export type QuestionType = 'multiple' | 'truefalse' | 'short';
 
@@ -38,8 +41,10 @@ export interface ShortAnswerQuestion extends BaseQuestion {
 export type Question = MultipleChoiceQuestion | TrueFalseQuestion | ShortAnswerQuestion;
 
 export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, initialData?: any }) {
+  const { id } = useParams<{ id: string }>();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [editingType, setEditingType] = useState<QuestionType | null>(null);
+  const [mobileTab, setMobileTab] = useState<'build' | 'settings'>('build');
   
   // Builder State
   const [qText, setQText] = useState('');
@@ -53,6 +58,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [audioUrl, setAudioUrl] = useState<string | undefined>();
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [showUploadType, setShowUploadType] = useState<'image' | 'audio' | null>(null);
 
   const imageUploadRef = useRef<CloudUploadRef>(null);
   const audioUploadRef = useRef<CloudUploadRef>(null);
@@ -70,16 +76,98 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [quizDescription, setQuizDescription] = useState(initialData?.description || '');
   const [quizSubject, setQuizSubject] = useState(initialData?.subject || 'Science');
   const [quizDifficulty, setQuizDifficulty] = useState(initialData?.diff || 'Medium');
+  const [isPublic, setIsPublic] = useState(true);
+  const [shuffleOptions, setShuffleOptions] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Modal State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [bankModalOpen, setBankModalOpen] = useState(false);
   const [alertState, setAlertState] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
   const [formResetKey, setFormResetKey] = useState(0);
+
+  // Load existing questions and quiz info if editing
+  useEffect(() => {
+    const loadExistingData = async () => {
+      const quizId = id || initialData?.id;
+      if (quizId && quizId.startsWith('QZ-')) {
+        const rawId = quizId.replace('QZ-', '');
+        if (!isNaN(Number(rawId))) {
+          try {
+            // 1. Fetch Quiz Info
+            try {
+              const fetchedQuiz = await quizService.getQuiz(rawId);
+              if (fetchedQuiz) {
+                setQuizTitle(fetchedQuiz.title || '');
+                setQuizDescription(fetchedQuiz.description || '');
+                setQuizSubject(fetchedQuiz.subject || '');
+                setQuizDifficulty(fetchedQuiz.difficulty || 'Medium');
+                setIsPublic(fetchedQuiz.is_public ?? true);
+              }
+            } catch (err) {
+              console.error("Failed to load quiz details", err);
+            }
+
+            // 2. Fetch Questions
+            const fetchedQuestions = await questionService.getQuestions(rawId);
+            const mapped: Question[] = fetchedQuestions.map((q: any) => {
+              const typeStr = (q.type || '').toLowerCase();
+              let qType: QuestionType = 'multiple';
+              
+              if (typeStr.includes('true') || typeStr.includes('false')) qType = 'truefalse';
+              else if (typeStr.includes('short') || typeStr.includes('fill')) qType = 'short';
+              
+              const base: BaseQuestion = {
+                id: q.id.toString(),
+                type: qType,
+                text: q.content,
+                difficulty: (q.difficulty || 'MEDIUM').toUpperCase() as 'EASY'|'MEDIUM'|'HARD',
+                timeLimit: q.time_limit || 60,
+                mediaUrl: q.media_url,
+                audioUrl: q.audio_url,
+              };
+
+              if (qType === 'multiple') {
+                const options = (q.options || []).map((o: any) => o.content);
+                const correctIndex = (q.options || []).findIndex((o: any) => o.is_correct);
+                return {
+                  ...base,
+                  type: 'multiple',
+                  options: options.length > 0 ? options : ['Option 1'],
+                  correctAnswer: correctIndex >= 0 ? correctIndex : 0,
+                } as MultipleChoiceQuestion;
+              } else if (qType === 'truefalse') {
+                const correctOption = (q.options || []).find((o: any) => o.is_correct);
+                const isTrue = correctOption ? correctOption.content.toLowerCase() === 'true' : true;
+                return {
+                  ...base,
+                  type: 'truefalse',
+                  correctAnswer: isTrue,
+                } as TrueFalseQuestion;
+              } else {
+                const correctOption = (q.options || []).find((o: any) => o.is_correct);
+                return {
+                  ...base,
+                  type: 'short',
+                  correctAnswer: correctOption ? correctOption.content : '',
+                } as ShortAnswerQuestion;
+              }
+            });
+            setQuestions(mapped);
+          } catch (err) {
+            console.error("Failed to load existing questions", err);
+          }
+        }
+      }
+    };
+    loadExistingData();
+  }, [id, initialData]);
 
   const handleStartBuild = (type: QuestionType) => {
     setEditingType(type);
@@ -94,6 +182,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setAudioUrl(undefined);
     setMediaFile(null);
     setAudioFile(null);
+    setShowUploadType(null);
     setEditingId(null);
     setFormResetKey(prev => prev + 1);
     
@@ -113,6 +202,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setAudioUrl(q.audioUrl);
     setMediaFile(null);
     setAudioFile(null);
+    setShowUploadType(null);
     setEditingId(q.id);
     setFormResetKey(prev => prev + 1);
     if (q.type === 'multiple') {
@@ -224,7 +314,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
     let newQ: Question;
     const baseQ = {
-      id: (editingId !== null && editingId !== undefined) ? String(editingId) : Date.now().toString(),
+      id: (editingId !== null && editingId !== undefined) ? String(editingId) : `q_${Date.now()}`,
       text: qText,
       difficulty: qDifficulty,
       timeLimit: qTimeLimit,
@@ -241,16 +331,14 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }
 
     if (editingId !== null && editingId !== undefined) {
-      const hasMatch = questions.some(q => String(q.id) === String(editingId));
-      if (!hasMatch) {
-        setAlertState({
-          isOpen: true,
-          title: "Lỗi đồng bộ",
-          message: `Không tìm thấy ID ${editingId} trong danh sách câu hỏi.`,
-          type: "error"
-        });
-      }
-      setQuestions(prev => prev.map(q => String(q.id) === String(editingId) ? newQ : q));
+      setQuestions(prev => {
+        const hasMatch = prev.some(q => String(q.id) === String(editingId));
+        if (!hasMatch) {
+           // We'll show an alert if it somehow couldn't find the match!
+           alert("DEBUG: Không tìm thấy ID " + editingId + " trong mảng questions có độ dài " + prev.length + ". Các ID hiện có: " + prev.map(q => q.id).join(", "));
+        }
+        return prev.map(q => String(q.id) === String(editingId) ? newQ : q);
+      });
     } else {
       setQuestions(prev => [...prev, newQ]);
     }
@@ -307,50 +395,152 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }
   };
 
+  const saveQuizAndQuestions = async (status: string) => {
+    if (questions.length === 0 && quizTitle.trim() === '') {
+      onCancel();
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      let targetQuizId = '';
+      const isEditMode = !!(id || initialData?.id);
+      const rawId = isEditMode ? (id || initialData?.id).replace('QZ-', '') : '';
+
+      // Helper to generate payload
+      const generateQuestionPayload = (q: Question) => {
+        let optionsPayload: any[] = [];
+        let typeStr = 'Multiple Choice';
+        
+        if (q.type === 'multiple') {
+          typeStr = 'Multiple Choice';
+          optionsPayload = q.options.map((optText, idx) => ({
+            content: optText,
+            is_correct: idx === q.correctAnswer
+          }));
+        } else if (q.type === 'truefalse') {
+          typeStr = 'True/False';
+          optionsPayload = [
+            { content: 'True', is_correct: q.correctAnswer === true },
+            { content: 'False', is_correct: q.correctAnswer === false }
+          ];
+        } else if (q.type === 'short') {
+          typeStr = 'Short Answer';
+          optionsPayload = [
+            { content: q.correctAnswer, is_correct: true }
+          ];
+        }
+        
+        return {
+          content: q.text || 'Untitled Question',
+          type: typeStr,
+          difficulty: q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1).toLowerCase(),
+          time_limit: q.timeLimit,
+          media_url: q.mediaUrl,
+          audio_url: q.audioUrl,
+          options: optionsPayload
+        };
+      };
+
+      if (isEditMode) {
+        targetQuizId = rawId;
+        // 1. Update Quiz Shell to Draft (so we can edit questions)
+        await quizService.updateQuiz(targetQuizId, {
+          title: quizTitle.trim() || 'Untitled Quiz',
+          description: quizDescription,
+          subject: quizSubject,
+          difficulty: quizDifficulty,
+          is_public: isPublic,
+          status: 'Draft'
+        });
+
+        // 2. Sync Questions
+        const existingQs = await questionService.getQuestions(targetQuizId);
+        const existingIdsInDb = existingQs.map(q => q.id.toString());
+        const currentIdsInState = questions.map(q => q.id).filter(qid => !qid.startsWith('q_'));
+        
+        // Delete removed questions
+        const idsToDelete = existingIdsInDb.filter(qid => !currentIdsInState.includes(qid));
+        if (idsToDelete.length > 0) {
+          await Promise.all(idsToDelete.map(qid => questionService.deleteQuestion(qid)));
+        }
+
+        // Update or Create
+        const upsertPromises = questions.map(q => {
+          const payload = generateQuestionPayload(q);
+          if (q.id.startsWith('q_')) {
+            return questionService.createQuestion(targetQuizId, payload);
+          } else {
+            return questionService.updateQuestion(q.id, payload);
+          }
+        });
+        await Promise.all(upsertPromises);
+
+      } else {
+        // 1. Create Quiz Shell as Draft
+        const quizRes = await quizService.createQuiz({
+          title: quizTitle.trim() || 'Untitled Quiz',
+          description: quizDescription,
+          subject: quizSubject,
+          difficulty: quizDifficulty,
+          is_public: isPublic,
+          status: 'Draft' // ALWAYS Draft initially
+        });
+        
+        targetQuizId = quizRes.id;
+        
+        // 2. Create Questions
+        const questionPromises = questions.map((q) => {
+          const payload = generateQuestionPayload(q);
+          return questionService.createQuestion(targetQuizId, payload);
+        });
+        
+        await Promise.all(questionPromises);
+      }
+
+      // 3. Update to Published if requested
+      if (status === 'Published') {
+        await quizService.updateQuiz(targetQuizId, { status: 'Published' });
+      }
+      
+      setAlertState({
+        isOpen: true,
+        title: status === 'Published' ? 'Quiz Published!' : 'Draft Saved',
+        message: status === 'Published' ? 'Your quiz has been successfully published and is now available.' : 'Your quiz has been safely auto-saved as a draft.',
+        type: 'success'
+      });
+      
+      setTimeout(() => {
+        onCancel();
+      }, 1500);
+      
+    } catch (error) {
+      console.error("Failed to save quiz", error);
+      setAlertState({
+        isOpen: true,
+        title: 'Error',
+        message: 'Failed to save quiz. Please try again.',
+        type: 'error'
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handlePublishClick = () => {
     setPublishConfirmOpen(true);
   };
 
   const confirmPublish = () => {
-    setAlertState({
-      isOpen: true,
-      title: 'Quiz Published!',
-      message: 'Your quiz has been successfully published and is now available.',
-      type: 'success'
-    });
-    // Wait for a bit before navigating away
-    setTimeout(() => {
-      onCancel(); // Use existing exit flow
-    }, 1500);
+    setPublishConfirmOpen(false);
+    saveQuizAndQuestions('Published');
   };
 
   const handleCancelClick = () => {
-    if (questions.length > 0 || quizTitle.trim() !== '') {
-      if (!initialData) {
-        const newQuiz = {
-          id: `QZ-${Math.floor(Math.random() * 900) + 100}`,
-          title: quizTitle.trim() || 'Untitled Quiz',
-          status: 'Draft',
-          subject: quizSubject || 'Uncategorized',
-          q: questions.length,
-          diff: quizDifficulty || 'Medium',
-          author: 'You',
-          date: 'Just now',
-          time: '-'
-        };
-        DUMMY_QUIZZES.unshift(newQuiz as any);
-      }
-      setAlertState({
-        isOpen: true,
-        title: 'Draft Saved',
-        message: 'Your quiz has been safely auto-saved as a draft.',
-        type: 'success'
-      });
-      setTimeout(() => {
-        onCancel();
-      }, 1500);
+    if (id || initialData?.id) {
+      setExitConfirmOpen(true);
     } else {
-      onCancel();
+      saveQuizAndQuestions('Draft');
     }
   };
 
@@ -386,8 +576,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   };
 
   return (
-    <div className="h-screen flex flex-col bg-surface-container-lowest text-on-surface">
-      <header className="h-14 md:h-16 shrink-0 flex items-center justify-between px-3 md:px-6 bg-surface-container-lowest border-b border-outline-variant/50">
+    <div className="h-[calc(100dvh-64px)] md:h-[calc(100dvh-80px)] w-full flex flex-col overflow-hidden bg-surface-container-lowest text-on-surface">
+      <header className="h-14 md:h-16 shrink-0 flex items-center justify-between px-3 md:px-6 bg-surface-container-lowest/80 backdrop-blur-md border-b border-outline-variant/50 sticky top-0 z-20">
         <div className="flex items-center gap-2 md:gap-4">
           <button onClick={handleCancelClick} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high text-on-surface transition-colors">
             <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
@@ -396,14 +586,32 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           <h1 className="font-headline-sm text-primary sm:hidden">Creator</h1>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
-          <button onClick={handleCancelClick} className="font-button text-xs md:text-button text-on-surface-variant hover:text-on-surface px-2 md:px-4 py-2 transition-colors hidden sm:block">Close</button>
-          <button onClick={handlePublishClick} className="font-button text-xs md:text-button bg-primary text-on-primary px-3 md:px-6 py-2 md:py-2.5 rounded-lg hover:opacity-90 transition-colors shadow-sm">Publish</button>
+          <button onClick={handleCancelClick} disabled={isSaving} className="font-button text-xs md:text-button text-on-surface-variant hover:text-on-surface px-2 md:px-4 py-2 transition-colors hidden sm:block">Close</button>
+          <button onClick={handlePublishClick} disabled={isSaving} className="font-button text-xs md:text-button bg-primary text-on-primary px-3 md:px-6 py-2 md:py-2.5 rounded-lg hover:opacity-90 transition-colors shadow-sm">{isSaving ? 'Saving...' : 'Publish'}</button>
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col md:flex-row overflow-auto">
-        {/* Left Sidebar */}
-        <aside className="w-full md:w-80 h-full overflow-y-auto border-b md:border-b-0 md:border-r border-outline-variant/50 p-4 md:p-6 flex flex-col gap-4 md:gap-6 bg-surface-container-low shrink-0">
+      {/* Mobile Tabs */}
+      <div className="flex md:hidden p-3 bg-surface-container-lowest border-b border-outline-variant/50 shrink-0 shadow-sm relative z-10 justify-center">
+        <div className="flex w-full max-w-sm bg-surface-container-low p-1 rounded-xl">
+          <button 
+            onClick={() => setMobileTab('build')}
+            className={`flex-1 py-2 text-[13px] font-bold text-center rounded-lg transition-all duration-300 ${mobileTab === 'build' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Build Questions
+          </button>
+          <button 
+            onClick={() => setMobileTab('settings')}
+            className={`flex-1 py-2 text-[13px] font-bold text-center rounded-lg transition-all duration-300 ${mobileTab === 'settings' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Quiz Settings
+          </button>
+        </div>
+      </div>
+
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        {/* Left Sidebar (Settings) */}
+        <aside className={`${mobileTab === 'settings' ? 'flex' : 'hidden'} md:flex w-full md:w-80 h-full overflow-y-auto border-r border-outline-variant/50 p-4 md:p-6 flex-col gap-4 md:gap-6 bg-surface-container-low shrink-0 animate-in slide-in-from-right-4 md:animate-none`}>
           <div className="bg-surface-container-lowest rounded-xl p-4 md:p-5 border border-outline-variant/50 shadow-sm flex flex-col gap-4 md:gap-5">
             <h2 className="font-headline-md text-lg">Core Information</h2>
             <div className="flex flex-col gap-1.5">
@@ -464,7 +672,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                 <span className="text-xs text-on-surface-variant">Allow anyone to take this quiz</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" defaultChecked />
+                <input type="checkbox" className="sr-only peer" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
                 <div className="w-11 h-6 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
@@ -475,205 +683,496 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                 <span className="text-xs text-on-surface-variant">Randomize answers order</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" defaultChecked />
+                <input type="checkbox" className="sr-only peer" checked={shuffleOptions} onChange={(e) => setShuffleOptions(e.target.checked)} />
                 <div className="w-11 h-6 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
           </div>
+
+
         </aside>
 
         {/* Main Builder Area */}
-        <section className="flex-1 min-h-0 overflow-y-auto overscroll-none bg-surface-container-lowest p-4 md:p-8 relative" id="main-builder-area">
+        {/* Right Content */}
+        <section className={`${mobileTab === 'build' ? 'block' : 'hidden'} md:block flex-1 min-h-0 overflow-y-auto overscroll-none bg-surface-container-lowest p-4 md:p-8 relative animate-in slide-in-from-left-4 md:animate-none`} id="main-builder-area">
+          
           {/* Empty State / Type Selection */}
           {!editingType && (
             <div className="max-w-5xl w-full mx-auto">
-              {/* AI Generator Section */}
-              <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-xl p-3 relative flex flex-col md:flex-row items-center gap-3 shadow-sm mb-8">
-                <div className="flex items-center gap-2 text-primary shrink-0 pl-1">
-                  <Sparkles className="w-5 h-5" />
-                  <h2 className="font-headline-md text-base whitespace-nowrap hidden sm:block">AI Magic Generate</h2>
-                </div>
-                
-                <div className="flex-1 w-full relative">
-                  <input 
-                    type="text"
-                    className="w-full bg-white border border-outline-variant/50 rounded-lg pl-3 pr-4 py-2.5 focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm text-on-surface shadow-sm"
-                    placeholder="Describe your topic to generate questions..."
-                  />
-                </div>
+              
+              {/* AI Generator Section (Premium Layout) */}
+              <div className="relative rounded-2xl p-[1px] bg-gradient-to-r from-primary via-[#8b5cf6] to-primary overflow-hidden shadow-md mb-10 hover:shadow-lg transition-shadow">
+                <div className="bg-white rounded-[15px] p-4 md:p-5 flex flex-col md:flex-row items-center gap-4 relative z-10">
+                  <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-[#8b5cf6]/20 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                    </div>
+                    <h2 className="font-headline-md text-base whitespace-nowrap font-extrabold bg-gradient-to-r from-primary to-[#8b5cf6] bg-clip-text text-transparent">AI Magic Generate</h2>
+                  </div>
+                  
+                  <div className="flex-1 w-full relative">
+                    <input 
+                      type="text"
+                      className="w-full bg-surface-container-lowest border border-outline-variant/50 rounded-xl pl-4 pr-4 py-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm text-on-surface shadow-sm font-medium placeholder:text-slate-400 transition-all"
+                      placeholder="E.g. Generate 5 multiple choice questions about Quantum Physics..."
+                    />
+                  </div>
 
-                <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
-                  <button className="flex-1 md:flex-none border border-outline-variant/60 rounded-lg text-sm font-medium text-on-surface-variant hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 bg-white px-4 py-2.5 shadow-sm" title="Upload Source Document (PDF, DOCX, TXT)">
-                    <UploadCloud className="w-4 h-4 text-primary/70" /> 
-                    <span>Upload File</span>
-                  </button>
+                  <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto mt-2 md:mt-0">
+                    <button className="flex-1 md:flex-none border border-outline-variant/60 rounded-xl text-sm font-bold text-slate-600 hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 bg-surface-container-lowest px-4 py-3 shadow-sm" title="Upload Source Document">
+                      <UploadCloud className="w-4 h-4 text-primary/80" /> 
+                      <span className="hidden sm:inline">Upload File</span>
+                    </button>
 
-                  <button className="flex-1 md:flex-none px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-bold hover:bg-primary/90 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
-                    <Sparkles className="w-4 h-4" /> Generate
-                  </button>
+                    <button className="flex-1 md:flex-none px-6 py-3 bg-gradient-to-r from-primary to-[#8b5cf6] text-white rounded-xl text-sm font-bold hover:shadow-lg hover:opacity-95 transition-all shadow-md flex items-center justify-center gap-2">
+                      <Sparkles className="w-4 h-4" /> Generate
+                    </button>
+                  </div>
                 </div>
               </div>
-
+              
               {/* Header */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold text-on-surface mb-2">Build Your Quiz</h2>
-                <p className="text-on-surface-variant">Generate a complete quiz using AI or add questions manually.</p>
+              <div className="mb-6">
+                <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Build Your Quiz</h2>
+                <p className="text-slate-500 font-medium text-sm mt-1">Add questions manually or import them from your question bank.</p>
               </div>
 
               {/* Manual Creation Section */}
               <div className="mb-10">
-                <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-4">Manual Creation</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <button onClick={() => handleStartBuild('multiple')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-primary hover:shadow-md transition-all group">
-                    <div className="w-12 h-12 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <button onClick={() => handleStartBuild('multiple')} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-primary/50 hover:shadow-[0_8px_24px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 text-primary flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                       <List className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-base text-on-surface group-hover:text-primary transition-colors">Multiple Choice</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Options with one correct answer.</p>
+                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-primary transition-colors tracking-tight">Multiple Choice</h4>
+                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">One correct answer.</p>
                     </div>
                   </button>
 
-                  <button onClick={() => handleStartBuild('truefalse')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-secondary hover:shadow-md transition-all group">
-                    <div className="w-12 h-12 shrink-0 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                  <button onClick={() => handleStartBuild('truefalse')} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-secondary/50 hover:shadow-[0_8px_24px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-secondary/10 to-secondary/5 text-secondary flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                       <CheckSquare className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-base text-on-surface group-hover:text-secondary transition-colors">True / False</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Quick binary choice assessments.</p>
+                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-secondary transition-colors tracking-tight">True / False</h4>
+                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">Binary choice.</p>
                     </div>
                   </button>
 
-                  <button onClick={() => handleStartBuild('short')} className="flex items-center text-left gap-4 p-4 bg-white border-2 border-outline-variant/50 rounded-xl hover:border-tertiary-fixed-dim hover:shadow-md transition-all group">
-                    <div className="w-12 h-12 shrink-0 rounded-xl bg-tertiary-fixed-dim/10 text-tertiary-fixed-dim flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm">
+                  <button onClick={() => handleStartBuild('short')} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-tertiary-fixed-dim/50 hover:shadow-[0_8px_24px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-tertiary-fixed-dim/10 to-tertiary-fixed-dim/5 text-tertiary-fixed-dim flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                       <AlignLeft className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-base text-on-surface group-hover:text-tertiary-fixed-dim transition-colors">Short Answer</h4>
-                      <p className="text-xs text-on-surface-variant mt-0.5 leading-tight">Require exact text match answers.</p>
+                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-tertiary-fixed-dim transition-colors tracking-tight">Short Answer</h4>
+                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">Exact text match.</p>
+                    </div>
+                  </button>
+
+                  <button onClick={() => setBankModalOpen(true)} className="flex items-center text-left gap-4 p-4 bg-white border border-outline-variant/40 rounded-2xl hover:border-emerald-500/50 hover:shadow-[0_8px_24px_rgba(16,185,129,0.12)] hover:-translate-y-1 transition-all duration-300 group">
+                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                      <CopyPlus className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-[15px] text-slate-800 group-hover:text-emerald-600 transition-colors tracking-tight">Question Bank</h4>
+                      <p className="text-[11px] font-medium text-slate-500 mt-0.5 leading-tight">Add from library.</p>
                     </div>
                   </button>
                 </div>
               </div>
+
+
+
+
             </div>
           )}
 
           {/* Form Builder */}
           {editingType && (
-            <div className="shrink-0 bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 shadow-sm flex flex-col gap-6 relative">
-              {/* Decorative Top Bar */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-tertiary-fixed-dim"></div>
+              <div className="shrink-0 bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 shadow-sm flex flex-col gap-6 relative overflow-hidden">
+                {/* Decorative Top Bar */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-tertiary-fixed-dim"></div>
 
-              <div className="flex flex-col gap-2.5">
-                <label className="font-headline-md text-base flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-surface-container flex items-center justify-center text-primary text-xs font-bold">1</span>
-                    Question Text <span className="text-error">*</span>
-                    
-                    <div className="ml-0 sm:ml-4 flex items-center gap-2 border-l border-outline-variant/30 pl-4">
-                      <span className="text-xs text-on-surface-variant font-medium">Type:</span>
-                      <select 
-                        value={editingType || 'multiple'} 
-                        onChange={(e) => setEditingType(e.target.value as QuestionType)}
-                        className="bg-surface-container-low border border-outline-variant/50 hover:border-outline-variant rounded-md px-3 py-1 text-sm font-medium text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 cursor-pointer shadow-sm transition-colors"
-                      >
-                        <option value="multiple">Multiple Choice</option>
-                        <option value="truefalse">True / False</option>
-                        <option value="short">Short Answer</option>
-                      </select>
+                <div className="flex flex-col gap-2.5">
+                  <label className="font-headline-md text-base flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-surface-container flex items-center justify-center text-primary text-xs font-bold">1</span>
+                      Question Text <span className="text-error">*</span>
+                      
+                      <div className="ml-0 sm:ml-4 flex items-center gap-2 border-l border-outline-variant/30 pl-4">
+                        <span className="text-xs text-on-surface-variant font-medium">Type:</span>
+                        <select 
+                          value={editingType || 'multiple'} 
+                          onChange={(e) => setEditingType(e.target.value as QuestionType)}
+                          className="bg-surface-container-low border border-outline-variant/50 hover:border-outline-variant rounded-md px-3 py-1 text-sm font-medium text-on-surface focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 cursor-pointer shadow-sm transition-colors"
+                        >
+                          <option value="multiple">Multiple Choice</option>
+                          <option value="truefalse">True / False</option>
+                          <option value="short">Short Answer</option>
+                        </select>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); imageUploadRef.current?.openDialog(); }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all shadow-sm ${mediaUrl || mediaFile ? 'bg-primary/10 border-primary/50 text-primary' : 'border-outline-variant/50 text-on-surface hover:text-primary hover:bg-primary/5'}`}
-                    >
-                      <ImageIcon className="w-3.5 h-3.5" /> Image
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); audioUploadRef.current?.openDialog(); }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all shadow-sm ${audioUrl || audioFile ? 'bg-secondary/10 border-secondary/50 text-secondary' : 'border-outline-variant/50 text-on-surface hover:text-secondary hover:bg-secondary/5'}`}
-                    >
-                      <Mic className="w-3.5 h-3.5" /> Audio
-                    </button>
-                  </div>
-                </label>
-                
-                {/* UPLOAD SECTIONS */}
-                <div className="flex flex-col gap-2">
-                  <CloudUpload 
-                    key={`img-${formResetKey}`}
-                    ref={imageUploadRef}
-                    hideDropzone={true}
-                    acceptedTypes="image/*,video/*"
-                    label={(mediaUrl || mediaFile) ? "Change Image or Video" : "Upload Image or Video for this question"}
-                    initialPreviewUrl={mediaUrl}
-                    file={mediaFile}
-                    onFileSelect={(file) => {
-                      if (file) setMediaFile(file);
-                      else { 
-                        setMediaUrl(undefined); 
-                        setMediaFile(null); 
-                      }
-                    }}
-                  />
+                    <div className="flex items-center gap-2">
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); imageUploadRef.current?.openDialog(); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all shadow-sm ${mediaUrl || mediaFile ? 'bg-primary/10 border-primary/50 text-primary' : 'border-outline-variant/50 text-on-surface hover:text-primary hover:bg-primary/5'}`}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" /> Image
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); audioUploadRef.current?.openDialog(); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all shadow-sm ${audioUrl || audioFile ? 'bg-secondary/10 border-secondary/50 text-secondary' : 'border-outline-variant/50 text-on-surface hover:text-secondary hover:bg-secondary/5'}`}
+                      >
+                        <Mic className="w-3.5 h-3.5" /> Audio
+                      </button>
+                    </div>
+                  </label>
+                  
+                  {/* UPLOAD SECTIONS */}
+                  <div className="flex flex-col gap-2">
+                    <CloudUpload 
+                      key={`img-${formResetKey}`}
+                      ref={imageUploadRef}
+                      hideDropzone={true}
+                      acceptedTypes="image/*,video/*"
+                      label={(mediaUrl || mediaFile) ? "Change Image or Video" : "Upload Image or Video for this question"}
+                      initialPreviewUrl={mediaUrl}
+                      file={mediaFile}
+                      onFileSelect={(file) => {
+                        if (file) setMediaFile(file);
+                        else { 
+                          setMediaUrl(undefined); 
+                          setMediaFile(null); 
+                        }
+                      }}
+                    />
 
-                  <CloudUpload 
-                    key={`aud-${formResetKey}`}
-                    ref={audioUploadRef}
-                    hideDropzone={true}
-                    acceptedTypes="audio/*"
-                    label={(audioUrl || audioFile) ? "Change Audio" : "Upload Audio for this question"}
-                    initialPreviewUrl={audioUrl}
-                    file={audioFile}
-                    onFileSelect={(file) => {
-                      if (file) setAudioFile(file);
-                      else { 
-                        setAudioUrl(undefined); 
-                        setAudioFile(null); 
-                      }
-                    }}
-                  />
+                    <CloudUpload 
+                      key={`aud-${formResetKey}`}
+                      ref={audioUploadRef}
+                      hideDropzone={true}
+                      acceptedTypes="audio/*"
+                      label={(audioUrl || audioFile) ? "Change Audio" : "Upload Audio for this question"}
+                      initialPreviewUrl={audioUrl}
+                      file={audioFile}
+                      onFileSelect={(file) => {
+                        if (file) setAudioFile(file);
+                        else { 
+                          setAudioUrl(undefined); 
+                          setAudioFile(null); 
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <textarea 
+                    value={qText}
+                    onChange={e => setQText(e.target.value)}
+                    className="w-full border-2 border-outline-variant/50 rounded-xl px-4 py-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none shadow-sm text-sm mt-2" 
+                    placeholder="Type your question here..." 
+                    rows={3}
+                  ></textarea>
                 </div>
 
-                <textarea 
-                  value={qText}
-                  onChange={e => setQText(e.target.value)}
-                  className="w-full border-2 border-outline-variant/50 rounded-xl px-4 py-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none shadow-sm text-sm mt-2" 
-                  placeholder="Type your question here..." 
-                  rows={3}
-                ></textarea>
+                <div className="flex flex-col gap-3">
+                  <label className="font-headline-md text-base flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-surface-container flex items-center justify-center text-primary text-xs font-bold">2</span>
+                    Answers Configuration
+                  </label>
+                  
+                  {/* MULTIPLE CHOICE UI */}
+                  {editingType === 'multiple' && (
+                    <div className="flex flex-col gap-2">
+                      {mcOptions.map((opt, idx) => (
+                        <div key={idx} className={`flex items-center gap-3 bg-surface-container-lowest p-1.5 pr-3 rounded-lg border-2 transition-all ${mcCorrect === idx ? 'border-primary shadow-sm bg-primary/5' : 'border-outline-variant/30 hover:border-outline-variant'}`}>
+                          <div 
+                            onClick={() => setMcCorrect(idx)}
+                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ml-2 cursor-pointer transition-colors shrink-0 ${mcCorrect === idx ? 'bg-primary border-primary text-white' : 'border-outline-variant/50 hover:border-outline-variant'}`}
+                          >
+                            {mcCorrect === idx && <Check className="w-3.5 h-3.5" />}
+                          </div>
+                          <input 
+                            type="text" 
+                            value={opt}
+                            onChange={e => updateMcOption(idx, e.target.value)}
+                            placeholder={`Option ${idx + 1}`}
+                            className={`flex-1 bg-transparent border-none p-0 focus:ring-0 text-sm outline-none ${mcCorrect === idx ? 'font-medium text-primary' : ''}`} 
+                          />
+                          <button 
+                            onClick={() => removeMcOption(idx)}
+                            disabled={mcOptions.length <= 2}
+                            className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/50 rounded-md disabled:opacity-30 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      {mcOptions.length < 8 && (
+                        <button onClick={addMcOption} className="mt-1 py-2 border-2 border-dashed border-outline-variant rounded-lg text-sm text-on-surface-variant hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-colors font-button flex items-center justify-center gap-2">
+                          <Plus className="w-4 h-4" /> Add Option
+                        </button>
+                      )}
+                      {mcOptions.length >= 8 && (
+                        <div className="mt-1 text-center text-[11px] text-error font-medium">
+                          Maximum limit of 8 options reached.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TRUE / FALSE UI */}
+                  {editingType === 'truefalse' && (
+                    <div className="grid grid-cols-2 gap-4 mt-1">
+                      <button 
+                        onClick={() => setTfCorrect(true)}
+                        className={`flex flex-col items-center justify-center p-5 rounded-xl border-2 transition-all ${tfCorrect === true ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-sm' : 'border-outline-variant/30 hover:border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low'}`}
+                      >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 ${tfCorrect === true ? 'bg-primary text-white' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                          <Check className="w-5 h-5" />
+                        </div>
+                        <span className={`text-lg font-headline-md ${tfCorrect === true ? 'text-primary' : 'text-on-surface-variant'}`}>True</span>
+                        {tfCorrect === true && <span className="text-[10px] text-primary font-bold uppercase tracking-wider mt-1.5 bg-white px-2 py-0.5 rounded-full border border-primary/20">Correct</span>}
+                      </button>
+
+                      <button 
+                        onClick={() => setTfCorrect(false)}
+                        className={`flex flex-col items-center justify-center p-5 rounded-xl border-2 transition-all ${tfCorrect === false ? 'border-error bg-error-container/20 ring-2 ring-error/20 shadow-sm' : 'border-outline-variant/30 hover:border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low'}`}
+                      >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 ${tfCorrect === false ? 'bg-error text-white' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                          <X className="w-5 h-5" />
+                        </div>
+                        <span className={`text-lg font-headline-md ${tfCorrect === false ? 'text-error' : 'text-on-surface-variant'}`}>False</span>
+                        {tfCorrect === false && <span className="text-[10px] text-error font-bold uppercase tracking-wider mt-1.5 bg-white px-2 py-0.5 rounded-full border border-error/20">Correct</span>}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* SHORT ANSWER UI */}
+                  {editingType === 'short' && (
+                    <div className="flex flex-col gap-2 mt-1">
+                      <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/50">
+                        <label className="block font-label-bold text-sm text-on-surface-variant mb-1.5">Accepted Answer Keyword(s)</label>
+                        <input 
+                          type="text"
+                          value={shortCorrect}
+                          onChange={e => setShortCorrect(e.target.value)}
+                          className="w-full bg-white border-2 border-outline-variant/50 rounded-lg px-3 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                          placeholder="e.g. Mitochondria"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <label className="font-headline-md text-base flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-surface-container flex items-center justify-center text-primary text-xs font-bold">3</span>
+                    Question Settings
+                  </label>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-bold text-on-surface-variant">Difficulty <span className="text-error">*</span></label>
+                      <select 
+                        value={qDifficulty}
+                        onChange={e => setQDifficulty(e.target.value as any)}
+                        className="w-full bg-white border border-outline-variant/50 rounded-lg px-3 py-2.5 focus:border-primary outline-none text-sm cursor-pointer shadow-sm"
+                      >
+                        <option value="EASY">Easy</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HARD">Hard</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-bold text-on-surface-variant">Time Limit (seconds) <span className="text-error">*</span></label>
+                      <input 
+                        type="number" 
+                        value={qTimeLimit}
+                        onChange={e => setQTimeLimit(Number(e.target.value))}
+                        className="w-full bg-white border border-outline-variant/50 rounded-lg px-3 py-2.5 focus:border-primary outline-none text-sm shadow-sm" 
+                        placeholder="e.g. 60" 
+                        min={10}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end items-center mt-6 pt-5 border-t border-outline-variant/50">
+                  <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto">
+                    <button 
+                      type="button"
+                      onPointerDown={(e) => { e.preventDefault(); setEditingType(null); setEditingId(null); }}
+                      onClick={(e) => { e.preventDefault(); setEditingType(null); setEditingId(null); }}
+                      className="font-bold text-sm bg-surface-container-high border border-transparent text-on-surface-variant px-5 py-2.5 rounded-lg flex items-center justify-center gap-1.5 hover:bg-outline-variant/30 hover:text-on-surface transition-colors shadow-sm"
+                    >
+                      <X className="w-4 h-4" /> Close
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={(e) => { 
+                        e.preventDefault(); 
+                        if (editingType) handleSaveQuestion(null);
+                      }}
+                      disabled={!qText.trim() || (editingType === 'short' && !shortCorrect.trim()) || isUploadingMedia || isUploadingAudio}
+                      className="font-bold text-sm bg-white border-2 border-primary text-primary px-5 py-2.5 rounded-lg flex items-center justify-center gap-1.5 active:bg-primary/10 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isUploadingMedia || isUploadingAudio ? (
+                        <>Uploading...</>
+                      ) : (
+                        <><Check className="w-4 h-4" /> Save</>
+                      )}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={(e) => { 
+                        e.preventDefault(); 
+                        if (editingType) handleSaveQuestion(editingType);
+                      }}
+                      disabled={!qText.trim() || (editingType === 'short' && !shortCorrect.trim()) || isUploadingMedia || isUploadingAudio}
+                      className="font-bold text-sm bg-primary text-on-primary px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 active:bg-primary/80 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isUploadingMedia || isUploadingAudio ? (
+                        <>Uploading...</>
+                      ) : (
+                        <><Plus className="w-4 h-4" /> Save & Next</>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
           )}
+
+          {/* Questions List Section (Always Visible) */}
+          <div className="shrink-0 max-w-5xl mx-auto flex flex-col w-full mt-10">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider">Question List ({questions.length})</h3>
+            </div>
+            {questions.length === 0 ? (
+              <div className="text-center py-12 bg-surface-container-lowest border border-dashed border-outline-variant/50 rounded-2xl text-on-surface-variant text-sm shadow-sm">
+                No questions yet. Start building your quiz manually or use AI to generate them!
+              </div>
+            ) : (
+              <div className="bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col mb-10">
+                <div className="overflow-x-auto overflow-y-auto max-h-[400px] relative">
+                  <table className="w-full text-left border-collapse min-w-[600px]">
+                    <thead className="sticky top-0 z-10 bg-surface-container-lowest shadow-sm">
+                      <tr className="border-b border-outline-variant/50">
+                        <th className="w-10 px-4 py-4"></th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider w-16 text-center">#</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider w-36">Type</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Question Text</th>
+                        <th className="px-6 py-4 text-xs font-bold text-on-surface-variant uppercase tracking-wider">Answer Details</th>
+                        <th className="px-6 py-4 w-28 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/20">
+                      {questions.map((q, idx) => (
+                        <tr key={q.id} className="hover:bg-surface-bright transition-colors group">
+                          <td className="px-4 py-4 text-on-surface-variant cursor-grab active:cursor-grabbing hover:text-on-surface opacity-30 group-hover:opacity-100 transition-opacity text-center">
+                            <GripVertical className="w-4 h-4 mx-auto" />
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-on-surface text-center">Q{idx + 1}</td>
+                          <td className="px-6 py-4">
+                            <span className="text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-2.5 py-1 rounded-full whitespace-nowrap">{getTypeName(q.type)}</span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-on-surface font-medium">
+                            <p className="line-clamp-2 max-w-md group-hover:line-clamp-none transition-all">{q.text || 'Untitled Question'}</p>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-on-surface-variant font-medium">
+                            {q.type === 'multiple' && (
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary/50"></span>
+                                {q.options.length} Options
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-2"></span>
+                                Ans: {String.fromCharCode(65 + q.correctAnswer)}
+                              </div>
+                            )}
+                            {q.type === 'truefalse' && (
+                              <div className="flex items-center gap-2">
+                                 <span className={`w-1.5 h-1.5 rounded-full ${q.correctAnswer ? 'bg-green-500' : 'bg-error'}`}></span>
+                                 Answer: <span className="font-bold text-on-surface">{q.correctAnswer ? 'True' : 'False'}</span>
+                              </div>
+                            )}
+                            {q.type === 'short' && (
+                              <div className="flex items-center gap-2">
+                                 <span className="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span>
+                                 Keyword: <span className="text-on-surface font-bold truncate max-w-[150px]">{q.correctAnswer || 'None'}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={() => handleEditQuestion(q)} className="p-1.5 text-on-surface-variant hover:text-primary rounded-md transition-colors hover:bg-surface-container" title="Edit"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => handleDuplicateQuestion(q)} className="p-1.5 text-on-surface-variant hover:text-primary rounded-md transition-colors hover:bg-surface-container" title="Duplicate"><CopyPlus className="w-4 h-4" /></button>
+                              <button onClick={() => handleDeleteClick(q.id)} className="p-1.5 text-on-surface-variant hover:text-error rounded-md transition-colors hover:bg-error-container" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+
         </section>
       </main>
 
-      {/* Modals */}
-      <ConfirmModal
-        isOpen={deleteConfirmOpen}
-        title="Delete Question"
-        message="Are you sure you want to delete this question? This action cannot be undone."
-        onConfirm={confirmDeleteQuestion}
-        onClose={() => setDeleteConfirmOpen(false)}
+      <ConfirmModal 
+        isOpen={deleteConfirmOpen} 
+        onClose={() => setDeleteConfirmOpen(false)} 
+        onConfirm={confirmDeleteQuestion} 
+        title="Delete Question" 
+        message="Are you sure you want to delete this question? This action cannot be undone." 
       />
 
-      <ConfirmModal
-        isOpen={publishConfirmOpen}
-        title="Publish Quiz"
-        message="Are you ready to publish this quiz? It will become available to all assigned members."
-        onConfirm={confirmPublish}
-        onClose={() => setPublishConfirmOpen(false)}
+      <ConfirmModal 
+        isOpen={exitConfirmOpen} 
+        onClose={() => setExitConfirmOpen(false)} 
+        onConfirm={() => onCancel()} 
+        title="Exit Without Saving" 
+        message="You are editing an existing quiz. Any unsaved changes will be lost. Are you sure you want to exit?" 
+        confirmText="Exit"
+        variant="danger"
       />
 
-      <AlertModal
+      <ConfirmModal 
+        isOpen={publishConfirmOpen} 
+        onClose={() => setPublishConfirmOpen(false)} 
+        onConfirm={confirmPublish} 
+        title="Publish Quiz" 
+        message="Are you ready to publish this quiz? It will become visible to assigned users immediately." 
+        confirmText="Publish"
+        variant="primary"
+      />
+
+      <AlertModal 
         isOpen={alertState.isOpen}
+        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
         title={alertState.title}
         message={alertState.message}
         type={alertState.type}
-        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <QuestionBankModal
+        isOpen={bankModalOpen}
+        onClose={() => setBankModalOpen(false)}
+        existingQuestionIds={questions.map(q => q.id)}
+        onAddQuestions={(newQuestions) => {
+          setQuestions([...questions, ...newQuestions]);
+          setAlertState({
+            isOpen: true,
+            title: 'Questions Added',
+            message: `Successfully added ${newQuestions.length} question(s) from the bank.`,
+            type: 'success'
+          });
+        }}
       />
     </div>
   );

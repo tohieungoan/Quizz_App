@@ -9,6 +9,10 @@ interface CoreInfoSidebarProps {
   setQuizSubject: (val: string) => void;
   quizDifficulty: string;
   setQuizDifficulty: (val: string) => void;
+  isPublic: boolean;
+  setIsPublic: (val: boolean) => void;
+  shuffleOptions: boolean;
+  setShuffleOptions: (val: boolean) => void;
 }
 
 export const CoreInfoSidebar: React.FC<CoreInfoSidebarProps> = ({
@@ -20,6 +24,10 @@ export const CoreInfoSidebar: React.FC<CoreInfoSidebarProps> = ({
   setQuizSubject,
   quizDifficulty,
   setQuizDifficulty,
+  isPublic,
+  setIsPublic,
+  shuffleOptions,
+  setShuffleOptions,
 }) => {
   return (
     <aside className="w-full md:w-80 h-auto md:h-full max-h-[35vh] md:max-h-none overflow-y-auto border-b md:border-b-0 md:border-r border-outline-variant/50 p-4 md:p-6 flex flex-col gap-4 md:gap-6 bg-surface-container-low shrink-0">
@@ -89,7 +97,7 @@ export const CoreInfoSidebar: React.FC<CoreInfoSidebarProps> = ({
             <span className="text-xs text-on-surface-variant">Allow anyone to take this quiz</span>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" className="sr-only peer" defaultChecked />
+            <input type="checkbox" className="sr-only peer" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
             <div className="w-11 h-6 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
           </label>
         </div>
@@ -100,7 +108,7 @@ export const CoreInfoSidebar: React.FC<CoreInfoSidebarProps> = ({
             <span className="text-xs text-on-surface-variant">Randomize answers order</span>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" className="sr-only peer" defaultChecked />
+            <input type="checkbox" className="sr-only peer" checked={shuffleOptions} onChange={(e) => setShuffleOptions(e.target.checked)} />
             <div className="w-11 h-6 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
           </label>
         </div>
