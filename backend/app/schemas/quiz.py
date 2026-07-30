@@ -35,6 +35,7 @@ class QuizResponse(QuizBase):
     user_id: int
     created_at: datetime
     updated_at: datetime
+    question_count: int = 0
 
     class Config:
         from_attributes = True

@@ -111,10 +111,31 @@ class CRUDQuiz:
         if not original_quiz:
             return None
             
+        import re
+        
+        # Determine base title and find existing copies
+        base_title = re.sub(r'\s*\(Copy( \d+)?\)$', '', original_quiz.title)
+        
+        existing_copies = db.query(Quiz.title).filter(
+            Quiz.user_id == user_id,
+            Quiz.title.like(f"{base_title}%")
+        ).all()
+        
+        max_copy = 0
+        for (t,) in existing_copies:
+            if t == f"{base_title} (Copy)":
+                max_copy = max(max_copy, 1)
+            else:
+                match = re.match(r'^.*\(Copy (\d+)\)$', t)
+                if match:
+                    max_copy = max(max_copy, int(match.group(1)))
+                    
+        new_title = f"{base_title} (Copy {max_copy + 1})" if max_copy > 0 else f"{base_title} (Copy)"
+        
         # 1. Clone Quiz
         new_quiz = Quiz(
             user_id=user_id,
-            title=f"{original_quiz.title} (Copy)",
+            title=new_title,
             subject=original_quiz.subject,
             description=original_quiz.description,
             difficulty=original_quiz.difficulty,

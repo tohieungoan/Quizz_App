@@ -2,64 +2,7 @@ import React, { useState } from 'react';
 import { X, Search, CheckCircle2, List, CheckSquare, AlignLeft, Check, ChevronDown } from 'lucide-react';
 import { Question } from '@/pages/Admin/QuizCreator/QuizCreator';
 
-// Dummy data for Question Bank
-type BankQuestion = Question & { sourceQuizId: string; sourceQuizTitle: string };
 
-const DUMMY_QUESTION_BANK: BankQuestion[] = [
-  {
-    id: 'qb-1',
-    type: 'multiple',
-    text: 'What is the powerhouse of the cell?',
-    difficulty: 'EASY',
-    timeLimit: 30,
-    options: ['Nucleus', 'Mitochondria', 'Ribosome', 'Endoplasmic Reticulum'],
-    correctAnswer: 1,
-    sourceQuizId: 'q-1',
-    sourceQuizTitle: 'Biology Midterm'
-  },
-  {
-    id: 'qb-2',
-    type: 'truefalse',
-    text: 'The Earth is flat.',
-    difficulty: 'EASY',
-    timeLimit: 15,
-    correctAnswer: false,
-    sourceQuizId: 'q-2',
-    sourceQuizTitle: 'General Science'
-  },
-  {
-    id: 'qb-3',
-    type: 'short',
-    text: 'What is the chemical symbol for Gold?',
-    difficulty: 'MEDIUM',
-    timeLimit: 45,
-    correctAnswer: 'Au',
-    sourceQuizId: 'q-3',
-    sourceQuizTitle: 'Chemistry Basics'
-  },
-  {
-    id: 'qb-4',
-    type: 'multiple',
-    text: 'Which planet is known as the Red Planet?',
-    difficulty: 'EASY',
-    timeLimit: 30,
-    options: ['Venus', 'Mars', 'Jupiter', 'Saturn'],
-    correctAnswer: 1,
-    sourceQuizId: 'q-2',
-    sourceQuizTitle: 'General Science'
-  },
-  {
-    id: 'qb-5',
-    type: 'multiple',
-    text: 'What is the largest ocean on Earth?',
-    difficulty: 'MEDIUM',
-    timeLimit: 30,
-    options: ['Atlantic', 'Indian', 'Arctic', 'Pacific'],
-    correctAnswer: 3,
-    sourceQuizId: 'q-4',
-    sourceQuizTitle: 'Geography Quiz'
-  }
-];
 
 interface QuestionBankModalProps {
   isOpen: boolean;
@@ -68,25 +11,101 @@ interface QuestionBankModalProps {
   existingQuestionIds: string[];
 }
 
+type BankQuestion = Question & { sourceQuizId: string; sourceQuizTitle: string };
+
 export function QuestionBankModal({ isOpen, onClose, onAddQuestions, existingQuestionIds }: QuestionBankModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedQuizFilter, setSelectedQuizFilter] = useState('ALL');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bankQuestions, setBankQuestions] = useState<BankQuestion[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [quizzesMap, setQuizzesMap] = useState<Record<string, string>>({});
   
   // Custom dropdown state
   const [quizDropdownOpen, setQuizDropdownOpen] = useState(false);
   const [quizSearchTerm, setQuizSearchTerm] = useState('');
 
+  // Fetch real question bank data from API
+  React.useEffect(() => {
+    if (isOpen) {
+      const fetchData = async () => {
+        setIsLoading(true);
+        try {
+          // Fetch quizzes first to map quiz_id to title
+          const { quizService } = await import('@/services/quizService');
+          const quizzesRes = await quizService.getQuizzes({ pageSize: 500 });
+          const qMap: Record<string, string> = {};
+          if (quizzesRes && quizzesRes.data) {
+            quizzesRes.data.forEach((q: any) => {
+              qMap[q.id.toString()] = q.title;
+            });
+            setQuizzesMap(qMap);
+          }
+
+          // Fetch questions
+          const { questionService } = await import('@/services/questionService');
+          const res = await questionService.getQuestionBank({ pageSize: 500 });
+          if (res && res.data) {
+            const mapped: BankQuestion[] = res.data.map((q: any) => {
+              const typeStr = (q.type || '').toLowerCase();
+              let qType: any = 'multiple';
+              if (typeStr.includes('true') || typeStr.includes('false')) qType = 'truefalse';
+              else if (typeStr.includes('short') || typeStr.includes('fill')) qType = 'short';
+
+              // Map options and correct answer
+              let options: string[] = [];
+              let correctAnswer: any = null;
+
+              if (q.options && q.options.length > 0) {
+                if (qType === 'multiple') {
+                  options = q.options.map((o: any) => o.content || '');
+                  const correctIdx = q.options.findIndex((o: any) => o.is_correct);
+                  correctAnswer = correctIdx !== -1 ? correctIdx : 0;
+                } else if (qType === 'truefalse') {
+                  const correctOpt = q.options.find((o: any) => o.is_correct);
+                  correctAnswer = correctOpt ? (correctOpt.content.toLowerCase() === 'true') : false;
+                } else if (qType === 'short') {
+                  const correctOpt = q.options.find((o: any) => o.is_correct);
+                  correctAnswer = correctOpt ? correctOpt.content : '';
+                }
+              }
+
+              return {
+                id: q.id.toString(),
+                type: qType,
+                text: q.content,
+                difficulty: (q.difficulty || 'MEDIUM').toUpperCase() as any,
+                timeLimit: q.time_limit || 60,
+                mediaUrl: q.media_url,
+                audioUrl: q.audio_url,
+                options,
+                correctAnswer,
+                sourceQuizId: q.quiz_id?.toString() || 'unknown',
+                sourceQuizTitle: qMap[q.quiz_id?.toString()] || `Quiz #${q.quiz_id}`
+              };
+            });
+            setBankQuestions(mapped);
+          }
+        } catch (error) {
+          console.error("Failed to fetch question bank", error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchData();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const uniqueQuizzes = Array.from(new Set(DUMMY_QUESTION_BANK.map(q => q.sourceQuizId))).map(id => {
+  const uniqueQuizzes = Array.from(new Set(bankQuestions.map(q => q.sourceQuizId))).map(id => {
     return {
       id,
-      title: DUMMY_QUESTION_BANK.find(q => q.sourceQuizId === id)?.sourceQuizTitle || 'Unknown'
+      title: quizzesMap[id] || `Quiz #${id}`
     };
   });
 
-  const filteredQuestions = DUMMY_QUESTION_BANK.filter(q => {
+  const filteredQuestions = bankQuestions.filter(q => {
     const matchesSearch = q.text.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesQuiz = selectedQuizFilter === 'ALL' || q.sourceQuizId === selectedQuizFilter;
     return matchesSearch && matchesQuiz;
@@ -101,8 +120,15 @@ export function QuestionBankModal({ isOpen, onClose, onAddQuestions, existingQue
   };
 
   const handleAdd = () => {
-    const selectedQuestions = DUMMY_QUESTION_BANK.filter(q => selectedIds.includes(q.id));
-    onAddQuestions(selectedQuestions);
+    const selectedQuestions = bankQuestions.filter(q => selectedIds.includes(q.id));
+    
+    // Transform ID to ensure QuizCreator treats them as NEW questions to be created in the target quiz
+    const questionsToImport = selectedQuestions.map((q, idx) => ({
+      ...q,
+      id: `q_${Date.now()}_${idx}`
+    }));
+    
+    onAddQuestions(questionsToImport);
     setSelectedIds([]);
     setSearchTerm('');
     onClose();
