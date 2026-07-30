@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, LogOut, LayoutDashboard, DoorOpen, ClipboardList, History, Trophy, SlidersHorizontal, Settings } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard, DoorOpen, ClipboardList, History, Trophy, SlidersHorizontal, Settings, Search } from 'lucide-react';
 import { DashboardHeader } from './components/DashboardHeader';
 import { DashboardSidebar } from './components/DashboardSidebar';
 import { OverviewTab } from './components/OverviewTab';
@@ -12,6 +12,7 @@ import { SettingsTab } from './components/SettingsTab';
 import { HostRoomModal } from './components/HostRoomModal';
 import { USER_ASSIGNED_EXAMS } from '@/data/userData';
 import { useLogout } from '@/hooks/useLogout';
+import { examService } from '@/services';
 
 type TabType = 'overview' | 'join_room' | 'assigned_exams' | 'history' | 'achievements' | 'host_studio' | 'settings';
 
@@ -34,6 +35,20 @@ export const Dashboard: React.FC = () => {
     }
   }, [locationState?.activeTab]);
 
+  useEffect(() => {
+    const handleSwitchTab = (e: Event) => {
+      const customEvt = e as CustomEvent<{ tab: TabType }>;
+      if (customEvt.detail?.tab) {
+        setActiveTabState(customEvt.detail.tab);
+        sessionStorage.setItem('dashboard_active_tab', customEvt.detail.tab);
+      }
+    };
+    window.addEventListener('quizzapp_switch_dashboard_tab', handleSwitchTab);
+    return () => {
+      window.removeEventListener('quizzapp_switch_dashboard_tab', handleSwitchTab);
+    };
+  }, []);
+
   const setActiveTab = (tab: TabType) => {
     setActiveTabState(tab);
     sessionStorage.setItem('dashboard_active_tab', tab);
@@ -43,6 +58,73 @@ export const Dashboard: React.FC = () => {
 
   const [hostRoomModalOpen, setHostRoomModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const [studentExams, setStudentExams] = useState<any[]>([]);
+  const [isLoadingExams, setIsLoadingExams] = useState(true);
+  const [examsError, setExamsError] = useState<string | null>(null);
+
+  // Filters for Assigned Exams tab
+  const [examSearch, setExamSearch] = useState('');
+  const [examSubjectFilter, setExamSubjectFilter] = useState('All Subjects');
+  const [examStatusFilter, setExamStatusFilter] = useState('All Status');
+
+  const loadStudentExams = async () => {
+    try {
+      setIsLoadingExams(true);
+      setExamsError(null);
+      const res = await examService.getMyExams();
+      if (res) {
+        const mapped = res.map((e: any) => ({
+          id: e.exam_id,
+          assigneeId: e.id,
+          title: e.exam_title || 'Untitled Exam',
+          due: e.end_time || 'No Deadline',
+          subject: e.quiz_subject || 'General',
+          duration: e.timer,
+          status: e.status === 'COMPLETED' ? 'Submitted' : e.status === 'IN_PROGRESS' ? 'In Progress' : 'Not Started',
+          score: e.score,
+          rule: 'Free Navigation',
+        }));
+        setStudentExams(mapped);
+      }
+    } catch (err) {
+      console.error("Failed to load student exams:", err);
+      setExamsError("Failed to load assigned exams.");
+    } finally {
+      setIsLoadingExams(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStudentExams();
+  }, []);
+
+  const STUDENT_EXAMS_PER_PAGE = 6;
+  const [studentExamPage, setStudentExamPage] = useState(1);
+
+  useEffect(() => { setStudentExamPage(1); }, [examSearch, examStatusFilter, examSubjectFilter]);
+
+  const filteredStudentExams = studentExams.filter((ex) => {
+    const matchesSearch =
+      ex.title.toLowerCase().includes(examSearch.toLowerCase()) ||
+      ex.subject.toLowerCase().includes(examSearch.toLowerCase());
+
+    const matchesStatus =
+      examStatusFilter === 'All Status' || ex.status === examStatusFilter;
+
+    const matchesSubject =
+      examSubjectFilter === 'All Subjects' || ex.subject === examSubjectFilter;
+
+    return matchesSearch && matchesStatus && matchesSubject;
+  });
+
+  const totalStudentExamPages = Math.ceil(filteredStudentExams.length / STUDENT_EXAMS_PER_PAGE) || 1;
+  const paginatedStudentExams = filteredStudentExams.slice(
+    (studentExamPage - 1) * STUDENT_EXAMS_PER_PAGE,
+    studentExamPage * STUDENT_EXAMS_PER_PAGE
+  );
+
+  const studentExamSubjects = ['All Subjects', ...Array.from(new Set(studentExams.map(e => e.subject).filter(Boolean)))];
 
   const handleStartExam = (exam: any) => {
     sessionStorage.setItem('dashboard_active_tab', activeTab);
@@ -169,6 +251,8 @@ export const Dashboard: React.FC = () => {
             <OverviewTab
               onStartExam={handleStartExam}
               onJoinRoom={() => setActiveTab('join_room')}
+              assignedExams={studentExams}
+              isLoadingExams={isLoadingExams}
             />
           )}
 
@@ -176,32 +260,138 @@ export const Dashboard: React.FC = () => {
 
           {activeTab === 'assigned_exams' && (
             <div className="space-y-6 text-left">
-              <h2 className="text-2xl font-bold text-on-surface">Assigned Exams</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {USER_ASSIGNED_EXAMS.map((exam) => (
-                  <div
-                    key={exam.id}
-                    className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-4 flex flex-col justify-between"
-                  >
-                    <div>
-                      <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                        {exam.subject}
-                      </span>
-                      <h3 className="text-lg font-bold text-on-surface mt-1">{exam.title}</h3>
-                      <p className="text-xs text-on-surface-variant mt-2">
-                        Due Date: <span className="font-semibold text-error">{exam.due}</span>
-                      </p>
-                      <p className="text-xs text-on-surface-variant">Rule: {exam.rule}</p>
-                    </div>
-                    <button
-                      onClick={() => handleStartExam(exam)}
-                      className="w-full py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all shadow-sm"
-                    >
-                      Start Exam Now
-                    </button>
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-on-surface">Assigned Exams</h2>
+                  <p className="text-xs text-on-surface-variant mt-1">Exams assigned to you by your teachers</p>
+                </div>
+                
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-3 flex-1 max-w-2xl justify-end">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-outline" />
+                    <input
+                      type="text"
+                      placeholder="Search exams..."
+                      value={examSearch}
+                      onChange={(e) => setExamSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 border border-outline-variant/30 rounded-xl bg-white text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 text-on-surface"
+                    />
                   </div>
-                ))}
+                  <select
+                    value={examStatusFilter}
+                    onChange={(e) => setExamStatusFilter(e.target.value)}
+                    className="px-3.5 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none cursor-pointer min-w-[130px]"
+                  >
+                    <option>All Status</option>
+                    <option>Not Started</option>
+                    <option>In Progress</option>
+                    <option>Submitted</option>
+                  </select>
+                  <select
+                    value={examSubjectFilter}
+                    onChange={(e) => setExamSubjectFilter(e.target.value)}
+                    className="px-3.5 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none cursor-pointer min-w-[130px]"
+                  >
+                    {studentExamSubjects.map(sub => (
+                      <option key={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
+              {isLoadingExams ? (
+                <div className="py-20 flex justify-center items-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : filteredStudentExams.length === 0 ? (
+                <div className="py-20 text-center text-on-surface-variant text-sm bg-white rounded-3xl border border-outline-variant/20">
+                  No assigned exams found matching your criteria.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {paginatedStudentExams.map((exam) => (
+                      <div
+                        key={exam.id}
+                        className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/40 hover:shadow-md transition-all text-left"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                              {exam.subject}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                              exam.status === 'Submitted' ? 'bg-emerald-100 text-emerald-800' :
+                              exam.status === 'In Progress' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {exam.status}
+                            </span>
+                          </div>
+                          <h3 className="text-lg font-bold text-on-surface mt-1">{exam.title}</h3>
+                          <p className="text-xs text-on-surface-variant mt-2">
+                            Due Date: <span className="font-semibold text-error">{exam.due !== 'No Deadline' ? new Date(exam.due).toLocaleString('vi-VN') : 'No Deadline'}</span>
+                          </p>
+                          <p className="text-xs text-on-surface-variant">Duration: {exam.duration} minutes</p>
+                          {exam.status === 'Submitted' && exam.score !== undefined && (
+                            <p className="text-sm font-extrabold text-emerald-600 mt-2">
+                              Score: {exam.score}%
+                            </p>
+                          )}
+                        </div>
+                        {exam.status !== 'Submitted' && (
+                          <button
+                            onClick={() => handleStartExam(exam)}
+                            className="w-full py-2.5 bg-primary text-white rounded-xl font-bold text-sm hover:bg-primary/90 transition-all shadow-sm"
+                          >
+                            {exam.status === 'In Progress' ? 'Continue Exam' : 'Start Exam Now'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Student Exams Pagination */}
+                  {totalStudentExamPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-outline-variant/20 mt-6 text-xs text-on-surface-variant font-medium">
+                      <div>
+                        Showing <span className="font-bold text-on-surface">{(studentExamPage - 1) * STUDENT_EXAMS_PER_PAGE + 1}</span> to{' '}
+                        <span className="font-bold text-on-surface">{Math.min(studentExamPage * STUDENT_EXAMS_PER_PAGE, filteredStudentExams.length)}</span> of{' '}
+                        <span className="font-bold text-on-surface">{filteredStudentExams.length}</span> exams
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => setStudentExamPage(p => Math.max(1, p - 1))}
+                          disabled={studentExamPage === 1}
+                          className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                        >
+                          Previous
+                        </button>
+                        {Array.from({ length: totalStudentExamPages }, (_, i) => i + 1).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setStudentExamPage(p)}
+                            className={`w-8 h-8 rounded-lg font-bold text-xs transition-all ${
+                              studentExamPage === p
+                                ? 'bg-primary text-white shadow-xs'
+                                : 'bg-white border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setStudentExamPage(p => Math.min(totalStudentExamPages, p + 1))}
+                          disabled={studentExamPage === totalStudentExamPages}
+                          className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -215,7 +405,7 @@ export const Dashboard: React.FC = () => {
             <HostStudioTab
               onOpenHostRoomModal={() => setHostRoomModalOpen(true)}
               onCreateQuiz={handleCreateQuiz}
-              onEditQuiz={() => navigate('/create-quiz')}
+              onEditQuiz={(quizId) => navigate(`/create-quiz/${quizId}`)}
             />
           )}
 

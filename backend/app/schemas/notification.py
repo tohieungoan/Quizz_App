@@ -8,6 +8,7 @@ class NotificationResponse(BaseModel):
     content: str
     type: Optional[str] = None
     action_url: Optional[str] = None
+    target_group_id: Optional[int] = None
     is_read: bool
     created_at: datetime
 

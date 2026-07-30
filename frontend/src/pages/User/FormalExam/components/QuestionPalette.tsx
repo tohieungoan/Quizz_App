@@ -13,6 +13,7 @@ interface QuestionPaletteProps {
   remainingCount: number;
   progressPercent: number;
   onSubmitClick: () => void;
+  navigationRule?: string;
 }
 
 export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
@@ -26,6 +27,7 @@ export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
   remainingCount,
   progressPercent,
   onSubmitClick,
+  navigationRule,
 }) => {
   return (
     <aside className="lg:col-span-4 space-y-6">
@@ -41,6 +43,7 @@ export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
             const isCurrent = idx === currentQuestionIndex;
             const isFlagged = flaggedQuestions.has(q.id);
             const isAnswered = answers[q.id] && answers[q.id] !== '';
+            const isClickable = navigationRule !== 'FIXED_NAV' || isCurrent;
 
             let btnClass = 'bg-outline-variant/20 text-on-surface-variant hover:bg-outline-variant/40';
             if (isCurrent) {
@@ -54,10 +57,11 @@ export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
             return (
               <button
                 key={q.id}
-                onClick={() => setCurrentQuestionIndex(idx)}
-                className={`w-full aspect-square flex items-center justify-center rounded-lg text-xs font-bold transition-all ${btnClass}`}
+                disabled={!isClickable}
+                onClick={() => isClickable && setCurrentQuestionIndex(idx)}
+                className={`w-full aspect-square flex items-center justify-center rounded-lg text-xs font-bold transition-all ${btnClass} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                {q.id}
+                {idx + 1}
               </button>
             );
           })}
@@ -71,12 +75,14 @@ export const QuestionPalette: React.FC<QuestionPaletteProps> = ({
               {answeredCount} Answered
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-tertiary" />
-            <span className="text-[11px] font-label-bold text-on-surface-variant font-semibold">
-              {flaggedCount} Flagged
-            </span>
-          </div>
+          {navigationRule !== 'FIXED_NAV' && (
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-tertiary" />
+              <span className="text-[11px] font-label-bold text-on-surface-variant font-semibold">
+                {flaggedCount} Flagged
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-outline-variant" />
             <span className="text-[11px] font-label-bold text-on-surface-variant font-semibold">

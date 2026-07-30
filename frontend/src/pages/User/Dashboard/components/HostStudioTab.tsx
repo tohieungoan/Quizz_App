@@ -37,10 +37,11 @@ import {
   Calculator,
   Laptop,
   Compass,
-  GraduationCap
+  GraduationCap,
+  Eye
 } from 'lucide-react';
-import { HOST_QUIZZES_LIST, HOST_GROUPS_LIST, HostGroup, GroupMember, USER_ASSIGNED_EXAMS, AssignedExam } from '@/data/userData';
-import { groupService } from '@/services';
+import { HOST_GROUPS_LIST, HostGroup, GroupMember, USER_ASSIGNED_EXAMS, AssignedExam } from '@/data/userData';
+import { groupService, quizService, examService } from '@/services';
 import { useEffect } from 'react';
 
 const GROUP_ICONS = {
@@ -119,6 +120,79 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const [quizzes, setQuizzes] = useState<HostQuiz[]>([]);
+  const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true);
+  const [quizzesError, setQuizzesError] = useState<string | null>(null);
+
+  const [isLoadingExams, setIsLoadingExams] = useState(true);
+  const [examsError, setExamsError] = useState<string | null>(null);
+
+  const loadExams = async () => {
+    try {
+      setIsLoadingExams(true);
+      setExamsError(null);
+      const res = await examService.getAssignedExams();
+      if (res) {
+        const mappedExams = res.map((ex: any): HostAssignedExam => {
+          let uStatus: 'Pending' | 'Active' | 'Closed' = 'Active';
+          const backStatus = (ex.status || '').toLowerCase();
+          if (backStatus.includes('pending')) uStatus = 'Pending';
+          else if (backStatus.includes('close')) uStatus = 'Closed';
+
+          return {
+            id: ex.id,
+            title: ex.title || ex.quiz_title || 'Untitled Exam',
+            due: ex.end_time ? ex.end_time.substring(0, 16) : '',
+            subject: ex.quiz_subject || 'General',
+            quizId: `QZ-${ex.quiz_id}`,
+            duration: ex.timer || 60,
+            groupId: String(ex.group_id),
+            groupName: ex.group_name || 'Individual',
+            totalMembers: ex.total_assignees || 0,
+            submittedCount: ex.submitted_count || 0,
+            status: uStatus,
+            navigationRule: ex.navigation_rule || 'FREE_NAV',
+            resultsPublished: ex.results_published || false,
+            submissions: []
+          };
+        });
+        setExams(mappedExams);
+      }
+    } catch (err: any) {
+      console.error("Failed to load assigned exams:", err);
+      setExamsError("Failed to load exams from server.");
+    } finally {
+      setIsLoadingExams(false);
+    }
+  };
+
+  const [quizSearchTerm, setQuizSearchTerm] = useState('');
+  const [quizDifficultyFilter, setQuizDifficultyFilter] = useState('All Difficulty');
+  const [quizQuestionFilter, setQuizQuestionFilter] = useState('All Questions');
+
+  const loadQuizzes = async () => {
+    try {
+      setIsLoadingQuizzes(true);
+      setQuizzesError(null);
+      const res = await quizService.getQuizzes({ pageSize: 100 });
+      if (res && res.data) {
+        const mappedQuizzes = res.data.map((q: any): HostQuiz => ({
+          id: `QZ-${q.id}`,
+          title: q.title,
+          questions: q.question_count || 0,
+          level: q.difficulty || 'Medium',
+          category: q.subject || 'General'
+        }));
+        setQuizzes(mappedQuizzes);
+      }
+    } catch (err: any) {
+      console.error("Failed to load quizzes:", err);
+      setQuizzesError("Failed to load quizzes from server.");
+    } finally {
+      setIsLoadingQuizzes(false);
+    }
+  };
+
   const loadGroups = async () => {
     try {
       setIsLoadingGroups(true);
@@ -172,6 +246,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
   useEffect(() => {
     loadGroups();
+    loadQuizzes();
+    loadExams();
   }, []);
 
   // Copy Feedback State
@@ -193,46 +269,19 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const [newMemberEmail, setNewMemberEmail] = useState('');
 
   // Exams State
-  const [exams, setExams] = useState<HostAssignedExam[]>([
-    {
-      id: 1,
-      title: 'Midterm Biology 101',
-      due: '2026-07-25T23:59',
-      subject: 'Biology',
-      quizId: 'QZ-101',
-      duration: 60,
-      groupId: 'GRP-01',
-      groupName: 'Alpha Team - Advanced Physics',
-
-
-      totalMembers: 3,
-      submittedCount: 2,
-      status: 'Active',
-      submissions: [
-        { memberId: 'M-1', memberName: 'Alex Johnson', memberEmail: 'alex.j@example.com', status: 'Submitted', score: '85%', submittedAt: '2026-07-20 09:30' },
-        { memberId: 'M-2', memberName: 'Sarah Smith', memberEmail: 'sarah.s@example.com', status: 'Submitted', score: '92%', submittedAt: '2026-07-20 10:15' },
-        { memberId: 'M-3', memberName: 'Michael Brown', memberEmail: 'michael.b@example.com', status: 'In Progress' }
-      ]
-    },
-    {
-      id: 2,
-      title: 'Calculus III Vector Calculus',
-      due: '2026-07-30T18:00',
-      subject: 'Mathematics',
-      quizId: 'QZ-103',
-      duration: 90,
-      groupId: 'GRP-02',
-      groupName: 'English Intensive Group B',
-      totalMembers: 2,
-      submittedCount: 0,
-      status: 'Active',
-      submissions: [
-        { memberId: 'M-4', memberName: 'Emily Davis', memberEmail: 'emily.d@example.com', status: 'Not Started' },
-      ]
-    }
-  ]);
+  const [exams, setExams] = useState<HostAssignedExam[]>([]);
 
   const [examSearchTerm, setExamSearchTerm] = useState('');
+
+  // Group Filters
+  const [groupSizeFilter, setGroupSizeFilter] = useState('All Sizes');
+  const [groupStatusFilter, setGroupStatusFilter] = useState('All Status');
+
+  // Exam Filters
+  const [examStatusFilter, setExamStatusFilter] = useState('All Status');
+  const [examSubjectFilter, setExamSubjectFilter] = useState('All Subjects');
+
+  const examSubjects = ['All Subjects', ...Array.from(new Set(exams.map(e => e.subject).filter(Boolean)))];
 
   // Exam Modal State
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
@@ -250,10 +299,84 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const [submissionsModalExam, setSubmissionsModalExam] = useState<HostAssignedExam | null>(null);
   const [submissionsViewTab, setSubmissionsViewTab] = useState<'roster' | 'analytics'>('roster');
   const [editingSubmissionMemberId, setEditingSubmissionMemberId] = useState<string | null>(null);
+  const [missedQuestions, setMissedQuestions] = useState<any[]>([]);
+  const [isLoadingMissed, setIsLoadingMissed] = useState(false);
   const [tempScore, setTempScore] = useState('');
 
-  // Export Excel Helpers (.xls HTML Table Spreadsheet)
-  const handleExportGroupExcel = (group: HostGroup) => {
+  // Student Submission Details Modal State
+  const [isSubDetailsModalOpen, setIsSubDetailsModalOpen] = useState(false);
+  const [selectedSubMemberId, setSelectedSubMemberId] = useState<string | null>(null);
+  const [subDetails, setSubDetails] = useState<any | null>(null);
+  const [isLoadingSubDetails, setIsLoadingSubDetails] = useState(false);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [customScore, setCustomScore] = useState<number | string>('');
+  // Track per-question partial score inputs: { [questionId]: string }
+  const [questionScoreInputs, setQuestionScoreInputs] = useState<Record<number, string>>({});
+
+  // Export Excel Helpers (.xls HTML Table Spreadsheet with UTF-8 BOM for Vietnamese support)
+  const handleExportGroupExcel = async (group: HostGroup) => {
+    let membersToExport: GroupMember[] = group.members || [];
+
+    // If members not loaded yet in state, fetch roster on-the-fly from backend
+    if (membersToExport.length === 0) {
+      try {
+        const roster = await groupService.getGroupRoster(group.id);
+        membersToExport = roster.map((m) => ({
+          id: String(m.id),
+          name: m.name || 'Unknown Member',
+          email: m.email || 'Unknown Email',
+          joinedDate: m.joined_at ? m.joined_at.split('T')[0] : '',
+          avatar: m.avatar || undefined,
+          examsCompleted: m.examsCompleted ?? 0,
+          totalExamsAssigned: m.totalExamsAssigned ?? 0,
+          averageScore: m.averageScore || 'N/A',
+          examScores: (m.examScores || []).map((es) => ({
+            examId: es.examTitle,
+            examTitle: es.examTitle,
+            score: es.score,
+            date: '',
+            status: es.status as any,
+          })),
+        }));
+      } catch (err) {
+        console.error("Failed to fetch group roster for Excel export:", err);
+      }
+    }
+
+    // Collect all unique exam titles for this group (both from assigned exams state and member records)
+    const uniqueExams: string[] = [];
+
+    // 1. Add all exams assigned to this group in the system
+    exams
+      .filter((e) => String(e.groupId) === String(group.id))
+      .forEach((e) => {
+        if (e.title && !uniqueExams.includes(e.title)) {
+          uniqueExams.push(e.title);
+        }
+      });
+
+    // 2. Add any additional exams present in members' score records
+    membersToExport.forEach((m) => {
+      (m.examScores || []).forEach((es) => {
+        if (es.examTitle && !uniqueExams.includes(es.examTitle)) {
+          uniqueExams.push(es.examTitle);
+        }
+      });
+    });
+
+    const fixedColCount = 5; // No., Full Name, Member Email, Exams Completed, Average Score
+    const totalCols = fixedColCount + Math.max(uniqueExams.length, 1);
+
+    const exportTimestamp = new Date().toLocaleString('vi-VN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
     const htmlTemplate = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -272,65 +395,84 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         <![endif]-->
         <style>
           th { background-color: #059669; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #d1d5db; padding: 8px; }
-          td { border: 1px solid #e5e7eb; padding: 6px; }
+          td { border: 1px solid #e5e7eb; padding: 6px; vertical-align: middle; }
           .title { font-size: 16pt; font-weight: bold; color: #047857; text-align: center; }
           .header-bg { background-color: #ecfdf5; font-weight: bold; }
         </style>
       </head>
       <body>
         <table>
-          <tr><td colspan="5" class="title">ROSTER LIST</td></tr>
-          <tr><td colspan="5" style="text-align: center; font-style: italic; color: #6b7280;">Exported at: ${new Date().toLocaleString('en-US')}</td></tr>
+          <tr><td colspan="${totalCols}" class="title">STUDY GROUP ROSTER REPORT</td></tr>
+          <tr><td colspan="${totalCols}" style="text-align: center; font-style: italic; color: #6b7280;">Study Group Grade Summary Report - Export Time: ${exportTimestamp}</td></tr>
           <tr></tr>
           <tr class="header-bg">
             <td>Group Name:</td>
             <td colspan="2"><b>${group.name}</b></td>
-            <td>Join Code:</td>
-            <td><b>${group.joinCode || group.id}</b></td>
+            <td>Export Time:</td>
+            <td colspan="${Math.max(totalCols - 4, 1)}"><b>${exportTimestamp}</b></td>
           </tr>
-          <tr>
-            <td>Description:</td>
-            <td colspan="2">${group.description || 'No description provided'}</td>
+          <tr class="header-bg">
+            <td>Join Code:</td>
+            <td colspan="2"><b>${group.joinCode || group.id}</b></td>
             <td>Total Members:</td>
-            <td>${group.members?.length || 0} Members</td>
+            <td colspan="${Math.max(totalCols - 4, 1)}"><b>${membersToExport.length} Members</b></td>
+          </tr>
+          <tr class="header-bg">
+            <td>Description:</td>
+            <td colspan="${totalCols - 1}">${group.description || 'No description provided'}</td>
           </tr>
           <tr></tr>
           <thead>
             <tr>
-              <th style="width: 40px;">No.</th>
-              <th style="width: 100px;">Member ID</th>
+              <th style="width: 45px;">No.</th>
               <th style="width: 180px;">Full Name</th>
               <th style="width: 220px;">Member Email</th>
-              <th style="width: 110px;">Exams Completed</th>
+              <th style="width: 130px;">Exams Completed</th>
               <th style="width: 110px;">Average Score</th>
-              <th style="width: 320px;">Detailed Exam Scores</th>
+              ${uniqueExams.length > 0
+                ? uniqueExams.map((title) => `<th style="min-width: 140px;">${title}</th>`).join('')
+                : '<th style="width: 180px;">Detailed Scores</th>'}
             </tr>
           </thead>
           <tbody>
-            ${(group.members || []).map((m, idx) => {
-      const scoresText = (m.examScores || [])
-        .map((s) => `${s.examTitle}: ${s.score}`)
-        .join(' | ');
+            ${membersToExport.length > 0 ? membersToExport.map((m, idx) => {
+              // Build lookup dictionary of examTitle -> score
+              const scoreMap: Record<string, string> = {};
+              (m.examScores || []).forEach((es) => {
+                if (es.examTitle) scoreMap[es.examTitle] = es.score;
+              });
 
-      return `
+              const examCells = uniqueExams.length > 0
+                ? uniqueExams.map((title) => {
+                    const val = scoreMap[title];
+                    const isPassed = val && val !== 'N/A' && val !== 'Pending' && !val.includes('Missed');
+                    return `<td style="text-align: center; font-weight: bold; ${isPassed ? 'color: #047857;' : 'color: #6b7280;'}">${val || '—'}</td>`;
+                  }).join('')
+                : '<td style="text-align: center; color: #9ca3af;">No exams taken</td>';
+
+              return `
                 <tr>
                   <td style="text-align: center;">${idx + 1}</td>
-                  <td style="text-align: center;">${m.id}</td>
                   <td><b>${m.name}</b></td>
                   <td>${m.email}</td>
-                  <td style="text-align: center; font-weight: bold;">${m.examsCompleted ?? 0} / ${m.totalExamsAssigned ?? 0}</td>
+                  <td style="text-align: center; font-weight: bold;">${m.examsCompleted ?? 0} / ${uniqueExams.length || m.totalExamsAssigned || 0}</td>
                   <td style="text-align: center; font-weight: bold; color: #047857;">${m.averageScore || 'N/A'}</td>
-                  <td style="font-size: 10pt;">${scoresText || 'No exams taken'}</td>
+                  ${examCells}
                 </tr>
               `;
-    }).join('')}
+            }).join('') : `
+              <tr>
+                <td colspan="${totalCols}" style="text-align: center; font-style: italic; color: #9ca3af; padding: 12px;">No members in this group yet.</td>
+              </tr>
+            `}
           </tbody>
         </table>
       </body>
       </html>
     `;
 
-    const blob = new Blob([htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    // Prepend UTF-8 BOM so Excel opens Vietnamese characters correctly without encoding issues
+    const blob = new Blob(['\uFEFF' + htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
@@ -340,11 +482,50 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     document.body.removeChild(link);
   };
 
-  const handleExportExamExcel = (exam: HostAssignedExam) => {
-    const analytics = MOCK_QUESTION_ANALYTICS[exam.id] || [
-      { id: 1, question: "Biochemical reactions concepts in cells?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Protein breakdown reaction", correctAnswer: "C. ATP synthesis reaction" },
-      { id: 2, question: "How many membrane layers does a mitochondrion have?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 single membrane", correctAnswer: "B. 2 double membranes" }
-    ];
+  const handleExportExamExcel = async (exam: HostAssignedExam) => {
+    let submissions = exam.submissions || [];
+    let analyticsData: any[] = [];
+
+    try {
+      const [detail, missed] = await Promise.all([
+        submissions.length === 0 ? examService.getExamDetails(exam.id) : Promise.resolve(null),
+        examService.getMissedQuestions(exam.id).catch(() => [])
+      ]);
+
+      if (detail && detail.assignees) {
+        submissions = detail.assignees.map((a: any) => {
+          let mStatus: 'Not Started' | 'In Progress' | 'Submitted' = 'Not Started';
+          const backStatus = (a.status || '').toLowerCase();
+          if (backStatus.includes('submit') || backStatus.includes('complete')) mStatus = 'Submitted';
+          else if (backStatus.includes('progress') || backStatus.includes('start')) mStatus = 'In Progress';
+
+          return {
+            memberId: String(a.user_id),
+            memberName: a.user_fullname || `User ${a.user_id}`,
+            memberEmail: a.user_email || `user_${a.user_id}@example.com`,
+            status: mStatus,
+            score: a.score !== null && a.score !== undefined ? `${a.score}%` : 'N/A',
+            submittedAt: a.submitted_at ? new Date(a.submitted_at).toLocaleString() : '-'
+          };
+        });
+      }
+
+      if (Array.isArray(missed)) {
+        analyticsData = missed;
+      }
+    } catch (err) {
+      console.warn("Failed to fetch live exam details for export:", err);
+    }
+
+    const exportTimestamp = new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
 
     const htmlTemplate = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -364,95 +545,102 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         <![endif]-->
         <style>
           th { background-color: #059669; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #d1d5db; padding: 8px; }
-          td { border: 1px solid #e5e7eb; padding: 6px; }
+          td { border: 1px solid #e5e7eb; padding: 6px; vertical-align: middle; }
           .title { font-size: 16pt; font-weight: bold; color: #047857; text-align: center; }
           .header-bg { background-color: #ecfdf5; font-weight: bold; }
-          .section-title { font-size: 13pt; font-weight: bold; color: #065f46; }
+          .section-title { font-size: 13pt; font-weight: bold; color: #065f46; background-color: #f0fdf4; padding: 8px; }
         </style>
       </head>
       <body>
         <table>
-          <tr><td colspan="7" class="title">EXAM STATISTICAL REPORT AND GRADEBOOK</td></tr>
-          <tr><td colspan="7" style="text-align: center; font-style: italic; color: #6b7280;">Exported at: ${new Date().toLocaleString('en-US')}</td></tr>
+          <tr><td colspan="6" class="title">EXAM STATISTICAL REPORT AND GRADEBOOK</td></tr>
+          <tr><td colspan="6" style="text-align: center; font-style: italic; color: #6b7280;">Exported at: ${exportTimestamp}</td></tr>
           <tr></tr>
           <tr class="header-bg">
             <td colspan="2">Exam Title:</td>
-            <td colspan="5"><b>${exam.title}</b></td>
+            <td colspan="4"><b>${exam.title}</b></td>
           </tr>
           <tr>
             <td colspan="2">Subject:</td>
             <td colspan="2">${exam.subject}</td>
-            <td colspan="2">Duration:</td>
+            <td>Duration:</td>
             <td>${exam.duration} mins</td>
           </tr>
           <tr>
             <td colspan="2">Group:</td>
             <td colspan="2">${exam.groupName}</td>
-            <td colspan="2">Status:</td>
+            <td>Status:</td>
             <td>${exam.status}</td>
           </tr>
           <tr>
             <td colspan="2">Due Date:</td>
-            <td colspan="2">${exam.due}</td>
-            <td colspan="2">Submission Rate:</td>
+            <td colspan="2">${exam.due || 'No Deadline'}</td>
+            <td>Submission Rate:</td>
             <td>${exam.submittedCount} / ${exam.totalMembers} Members</td>
           </tr>
           <tr></tr>
-          <tr><td colspan="7" class="section-title">I. DETAILED MEMBER GRADEBOOK</td></tr>
+          <tr><td colspan="6" class="section-title">I. DETAILED MEMBER GRADEBOOK</td></tr>
           <thead>
             <tr>
               <th style="width: 50px;">No.</th>
-              <th style="width: 100px;">Member ID</th>
-              <th style="width: 180px;">Full Name</th>
-              <th style="width: 220px;">Member Email</th>
+              <th style="width: 200px;">Full Name</th>
+              <th style="width: 240px;">Member Email</th>
               <th style="width: 120px;">Status</th>
               <th style="width: 100px;">Score</th>
-              <th style="width: 150px;">Submission Time</th>
+              <th style="width: 180px;">Submission Time</th>
             </tr>
           </thead>
           <tbody>
-            ${(exam.submissions || []).map((sub, idx) => `
+            ${submissions.length > 0 ? submissions.map((sub, idx) => `
               <tr>
                 <td style="text-align: center;">${idx + 1}</td>
-                <td style="text-align: center;">${sub.memberId}</td>
                 <td><b>${sub.memberName}</b></td>
                 <td>${sub.memberEmail}</td>
                 <td style="text-align: center;">${sub.status}</td>
                 <td style="text-align: center; font-weight: bold; color: #047857;">${sub.score || 'N/A'}</td>
                 <td style="text-align: center;">${sub.submittedAt || '-'}</td>
               </tr>
-            `).join('')}
+            `).join('') : `
+              <tr>
+                <td colspan="6" style="text-align: center; font-style: italic; color: #9ca3af; padding: 12px;">No student submissions found.</td>
+              </tr>
+            `}
           </tbody>
           <tr></tr>
-          <tr><td colspan="7" class="section-title">II. MOST MISSED QUESTIONS STATISTICS</td></tr>
+          <tr><td colspan="6" class="section-title">II. MOST MISSED QUESTIONS STATISTICS</td></tr>
           <thead>
             <tr>
-              <th>No.</th>
-              <th colspan="2">Question Text</th>
-              <th>Incorrect Count</th>
-              <th>Error Rate</th>
-              <th>Common Misconception</th>
-              <th>Correct Answer</th>
+              <th style="width: 50px;">No.</th>
+              <th style="width: 280px;">Question Text</th>
+              <th style="width: 120px;">Incorrect Count</th>
+              <th style="width: 100px;">Error Rate</th>
+              <th style="width: 220px;">Common Misconception</th>
+              <th style="width: 220px;">Correct Answer</th>
             </tr>
           </thead>
           <tbody>
-            ${analytics.map((q, idx) => `
+            ${analyticsData.length > 0 ? analyticsData.map((q, idx) => `
               <tr>
                 <td style="text-align: center;">${idx + 1}</td>
-                <td colspan="2"><b>${q.question}</b></td>
+                <td><b>${q.question || 'Untitled Question'}</b></td>
                 <td style="text-align: center;">${q.wrongCount} / ${q.totalCount}</td>
                 <td style="text-align: center; font-weight: bold; color: #dc2626;">${q.wrongPercentage}%</td>
-                <td style="color: #991b1b;">${q.commonWrongAnswer}</td>
-                <td style="color: #065f46; font-weight: bold;">${q.correctAnswer}</td>
+                <td style="color: #991b1b;">${q.commonWrongAnswer || 'N/A'}</td>
+                <td style="color: #065f46; font-weight: bold;">${q.correctAnswer || 'N/A'}</td>
               </tr>
-            `).join('')}
+            `).join('') : `
+              <tr>
+                <td colspan="6" style="text-align: center; font-style: italic; color: #9ca3af; padding: 12px;">No missed question data available.</td>
+              </tr>
+            `}
           </tbody>
         </table>
       </body>
       </html>
     `;
 
-    const blob = new Blob([htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    // Prepend UTF-8 BOM so Excel opens Vietnamese characters in titles/names without encoding issues
+    const blob = new Blob(['\uFEFF' + htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
@@ -698,7 +886,6 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     try {
       await groupService.inviteMember(rosterGroup.id, newMemberEmail.trim());
       alert(`Invitation sent successfully to ${newMemberEmail}! The member will be added once they accept the invitation.`);
-      setNewMemberName('');
       setNewMemberEmail('');
     } catch (err: any) {
       console.error("Failed to invite member:", err);
@@ -776,18 +963,58 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     }
   };
 
-  const filteredGroups = groups.filter(
-    (g) =>
+  const filteredGroups = groups.filter((g) => {
+    const matchesSearch =
       g.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       g.joinCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (g.description && g.description.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+      (g.description && g.description.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const count = g.membersCount ?? g.members?.length ?? 0;
+    let matchesSize = true;
+    if (groupSizeFilter === 'Small (< 5 members)') {
+      matchesSize = count < 5;
+    } else if (groupSizeFilter === 'Medium (5 - 20 members)') {
+      matchesSize = count >= 5 && count <= 20;
+    } else if (groupSizeFilter === 'Large (> 20 members)') {
+      matchesSize = count > 20;
+    }
+
+    let matchesStatus = true;
+    if (groupStatusFilter === 'Open') {
+      matchesStatus = !g.isLocked;
+    } else if (groupStatusFilter === 'Closed') {
+      matchesStatus = !!g.isLocked;
+    }
+
+    return matchesSearch && matchesSize && matchesStatus;
+  });
+
+  const filteredQuizzes = quizzes.filter((quiz) => {
+    const matchesSearch =
+      quiz.title.toLowerCase().includes(quizSearchTerm.toLowerCase()) ||
+      quiz.category.toLowerCase().includes(quizSearchTerm.toLowerCase());
+      
+    const matchesDifficulty =
+      quizDifficultyFilter === 'All Difficulty' ||
+      quiz.level.toLowerCase() === quizDifficultyFilter.toLowerCase();
+
+    let matchesQuestions = true;
+    if (quizQuestionFilter === '< 10 Questions') {
+      matchesQuestions = quiz.questions < 10;
+    } else if (quizQuestionFilter === '10 - 25 Questions') {
+      matchesQuestions = quiz.questions >= 10 && quiz.questions <= 25;
+    } else if (quizQuestionFilter === '> 25 Questions') {
+      matchesQuestions = quiz.questions > 25;
+    }
+
+    return matchesSearch && matchesDifficulty && matchesQuestions;
+  });
 
   // Exam Handlers
   const handleOpenAssignExamModal = () => {
     setEditingExam(null);
     setExamTitle('');
-    setSelectedQuizId(HOST_QUIZZES_LIST[0]?.id || '');
+    setSelectedQuizId(quizzes[0]?.id || '');
     setSelectedGroupId(groups[0]?.id || '');
     setExamDue('');
     setExamDuration(60);
@@ -810,90 +1037,149 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setIsExamModalOpen(true);
   };
 
-  const handleToggleExamStatus = (examId: number) => {
-    setExams((prev) =>
-      prev.map((ex) => {
-        if (ex.id !== examId) return ex;
-        const nextStatus: 'Pending' | 'Active' | 'Closed' =
-          ex.status === 'Pending' ? 'Active' : ex.status === 'Active' ? 'Closed' : 'Pending';
-        return { ...ex, status: nextStatus };
-      })
-    );
+  const handleToggleExamStatus = async (examId: number) => {
+    const exam = exams.find(e => e.id === examId);
+    if (!exam) return;
+    
+    const nextStatus: 'Pending' | 'Active' | 'Closed' =
+      exam.status === 'Pending' ? 'Active' : exam.status === 'Active' ? 'Closed' : 'Pending';
+      
+    const backendStatus = nextStatus === 'Active' ? 'ACTIVE' : nextStatus === 'Pending' ? 'PENDING' : 'CLOSED';
+
+    try {
+      await examService.updateExam(examId, { status: backendStatus });
+      await loadExams();
+    } catch (err) {
+      console.error("Failed to toggle exam status:", err);
+      alert("Failed to update status on server.");
+    }
   };
 
-  const handleSaveExam = (e: React.FormEvent) => {
+  const handleSaveExam = async (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedQuiz = HOST_QUIZZES_LIST.find((q) => q.id === selectedQuizId);
+    const selectedQuiz = quizzes.find((q) => q.id === selectedQuizId);
     const selectedGroup = groups.find((g) => g.id === selectedGroupId);
     if (!selectedGroup || !selectedQuiz) return;
 
     const finalTitle = examTitle.trim() || selectedQuiz.title;
+    const rawQuizId = Number(selectedQuiz.id.replace('QZ-', ''));
+    const rawGroupId = Number(selectedGroup.id);
 
-    if (editingExam) {
-      setExams((prev) =>
-        prev.map((ex) =>
-          ex.id === editingExam.id
-            ? {
-              ...ex,
-              title: finalTitle,
-              subject: selectedQuiz.category,
-              quizId: selectedQuiz.id,
-              due: examDue,
-              duration: examDuration,
-              status: examStatus,
-              navigationRule: navigationRule,
-              resultsPublished: resultsPublished,
-              groupId: selectedGroup.id,
-              groupName: selectedGroup.name,
-            }
-            : ex
-        )
-      );
-    } else {
-      const members = selectedGroup.members || [];
-      const newExam: HostAssignedExam = {
-        id: Date.now(),
-        title: finalTitle,
-        due: examDue,
-        subject: selectedQuiz.category,
-        quizId: selectedQuiz.id,
-        duration: examDuration,
-        status: examStatus,
-        navigationRule: navigationRule,
-        resultsPublished: resultsPublished,
-        groupId: selectedGroup.id,
-        groupName: selectedGroup.name,
-        totalMembers: members.length,
-        submittedCount: 0,
-        submissions: members.map((m) => ({
-          memberId: m.id,
-          memberName: m.name,
-          memberEmail: m.email,
-          status: 'Not Started' as const,
-        })),
-      };
-      setExams((prev) => [...prev, newExam]);
+    try {
+      if (editingExam) {
+        await examService.updateExam(editingExam.id, {
+          quiz_id: rawQuizId,
+          group_id: rawGroupId,
+          title: finalTitle,
+          timer: examDuration,
+          end_time: examDue ? new Date(examDue).toISOString() : undefined,
+          status: examStatus === 'Active' ? 'ACTIVE' : examStatus === 'Pending' ? 'PENDING' : 'CLOSED',
+          navigation_rule: navigationRule,
+          results_published: resultsPublished
+        });
+      } else {
+        await examService.assignExam({
+          quiz_id: rawQuizId,
+          group_id: rawGroupId,
+          title: finalTitle,
+          start_time: new Date().toISOString(),
+          end_time: examDue ? new Date(examDue).toISOString() : new Date().toISOString(),
+          timer: examDuration,
+          navigation_rule: navigationRule,
+          results_published: resultsPublished,
+          status: 'ACTIVE'
+        });
+      }
+      setIsExamModalOpen(false);
+      await loadExams();
+    } catch (err) {
+      console.error("Failed to save exam:", err);
+      alert("Failed to save exam to server.");
     }
-    setIsExamModalOpen(false);
   };
 
-  const handleDeleteExam = (examId: number) => {
+  const handleDeleteExam = async (examId: number) => {
     if (window.confirm('Are you sure you want to cancel this assigned exam?')) {
-      setExams((prev) => prev.filter((ex) => ex.id !== examId));
+      try {
+        await examService.deleteExam(examId);
+        await loadExams();
+      } catch (err) {
+        console.error("Failed to delete exam:", err);
+        alert("Failed to cancel assigned exam on server.");
+      }
     }
   };
 
-  const handleResetSubmission = (memberId: string) => {
+  const handleOpenSubmissionsModal = async (exam: HostAssignedExam) => {
+    try {
+      setSubmissionsModalExam(exam);
+      setSubmissionsViewTab('roster');
+      setMissedQuestions([]);
+      setIsLoadingMissed(true);
+      
+      const [detail, missed] = await Promise.all([
+        examService.getExamDetails(exam.id),
+        examService.getMissedQuestions(exam.id).catch(() => [])
+      ]);
+      
+      if (detail && detail.assignees) {
+        const mappedSubmissions = detail.assignees.map((a: any) => {
+          let mStatus: 'Not Started' | 'In Progress' | 'Submitted' = 'Not Started';
+          const backStatus = (a.status || '').toLowerCase();
+          if (backStatus.includes('submit') || backStatus.includes('complete')) mStatus = 'Submitted';
+          else if (backStatus.includes('progress') || backStatus.includes('start')) mStatus = 'In Progress';
+          
+          return {
+            memberId: String(a.user_id),
+            memberName: a.user_fullname || `User ${a.user_id}`,
+            memberEmail: a.user_email || `user_${a.user_id}@example.com`,
+            status: mStatus,
+            score: a.score !== null ? `${a.score}` : undefined,
+            submittedAt: a.submitted_at ? new Date(a.submitted_at).toLocaleString() : undefined
+          };
+        });
+        
+        const updatedExam = {
+          ...exam,
+          submissions: mappedSubmissions
+        };
+        setSubmissionsModalExam(updatedExam);
+        setExams((prev) => prev.map((ex) => (ex.id === exam.id ? updatedExam : ex)));
+      }
+      
+      if (missed) {
+        setMissedQuestions(missed);
+      }
+    } catch (err) {
+      console.error("Failed to load exam details for submissions:", err);
+    } finally {
+      setIsLoadingMissed(false);
+    }
+  };
+
+  const handleResetSubmission = async (memberId: string) => {
     if (!submissionsModalExam) return;
-    const updated = {
-      ...submissionsModalExam,
-      submissions: (submissionsModalExam.submissions || []).map((s) =>
-        s.memberId === memberId ? { ...s, status: 'Not Started' as const, score: undefined, submittedAt: undefined } : s
-      ),
-      submittedCount: Math.max(0, submissionsModalExam.submittedCount - 1),
-    };
-    setSubmissionsModalExam(updated);
-    setExams((prev) => prev.map((ex) => (ex.id === updated.id ? updated : ex)));
+    
+    if (window.confirm("Are you sure you want to reset this student's exam attempt? This will permanently delete all their submitted answers and allow them to take the exam again from scratch.")) {
+      try {
+        await examService.resetSubmission(submissionsModalExam.id, memberId);
+        
+        const updated = {
+          ...submissionsModalExam,
+          submissions: (submissionsModalExam.submissions || []).map((s) =>
+            s.memberId === memberId ? { ...s, status: 'Not Started' as const, score: undefined, submittedAt: undefined } : s
+          ),
+          submittedCount: Math.max(0, submissionsModalExam.submittedCount - 1),
+        };
+        
+        setSubmissionsModalExam(updated);
+        setExams((prev) => prev.map((ex) => (ex.id === updated.id ? updated : ex)));
+        alert("Exam attempt reset successfully.");
+      } catch (err) {
+        console.error("Failed to reset student exam attempt:", err);
+        alert("Failed to reset student exam attempt. Please try again.");
+      }
+    }
   };
 
   const handleSaveScore = (memberId: string) => {
@@ -910,12 +1196,164 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setTempScore('');
   };
 
-  const filteredExams = exams.filter(
-    (ex) =>
+  const handleOpenSubmissionDetails = async (memberId: string) => {
+    if (!submissionsModalExam) return;
+    try {
+      setIsLoadingSubDetails(true);
+      setSelectedSubMemberId(memberId);
+      setIsSubDetailsModalOpen(true);
+      setSubDetails(null);
+      
+      const res = await examService.getSubmissionDetails(submissionsModalExam.id, memberId);
+      if (res) {
+        setSubDetails(res);
+        setFeedbackComment(res.feedback_comment || '');
+        setCustomScore(res.score !== null ? res.score : '');
+        // Pre-fill per-question score inputs from existing answer scores
+        const initialScores: Record<number, string> = {};
+        res.questions.forEach((q: any) => {
+          if (q.user_answer?.answer_score !== undefined && q.user_answer?.answer_score !== null) {
+            initialScores[q.id] = String(q.user_answer.answer_score);
+          }
+        });
+        setQuestionScoreInputs(initialScores);
+      }
+    } catch (err) {
+      console.error("Failed to load submission details:", err);
+      alert("Failed to load student submission details from server.");
+      setIsSubDetailsModalOpen(false);
+    } finally {
+      setIsLoadingSubDetails(false);
+    }
+  };
+
+  const handleSaveFeedbackAndGrade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!submissionsModalExam || !selectedSubMemberId) return;
+    
+    try {
+      const parsedScore = customScore === '' ? null : Number(customScore);
+      const res = await examService.saveSubmissionFeedback(submissionsModalExam.id, selectedSubMemberId, {
+        feedback_comment: feedbackComment,
+        score: parsedScore
+      });
+      
+      if (res) {
+        const updatedSubmissions = (submissionsModalExam.submissions || []).map((s) =>
+          s.memberId === selectedSubMemberId ? { ...s, score: res.score !== null ? `${res.score}` : undefined } : s
+        );
+        const updatedExam = {
+          ...submissionsModalExam,
+          submissions: updatedSubmissions
+        };
+        
+        setSubmissionsModalExam(updatedExam);
+        setExams((prev) => prev.map((ex) => (ex.id === updatedExam.id ? updatedExam : ex)));
+        
+        if (subDetails) {
+          setSubDetails({
+            ...subDetails,
+            score: res.score,
+            feedback_comment: res.feedback_comment
+          });
+        }
+        
+        alert("Feedback and score saved successfully!");
+        setIsSubDetailsModalOpen(false);
+      }
+    } catch (err) {
+      console.error("Failed to save feedback and grade:", err);
+      alert("Failed to save feedback and grade to server.");
+    }
+  };
+
+  const handleGradeAnswer = async (questionId: number, isCorrect: boolean, partialScore?: number | null) => {
+    if (!submissionsModalExam || !selectedSubMemberId) return;
+    try {
+      const res = await examService.gradeAnswer(
+        submissionsModalExam.id,
+        selectedSubMemberId,
+        questionId,
+        { is_correct: isCorrect, score: partialScore ?? undefined }
+      );
+
+      if (res) {
+        // Update the question's user_answer in local state
+        if (subDetails) {
+          const updatedQuestions = subDetails.questions.map((q: any) => {
+            if (q.id === questionId) {
+              return {
+                ...q,
+                user_answer: q.user_answer
+                  ? { ...q.user_answer, is_correct: res.is_correct, answer_score: res.answer_score }
+                  : q.user_answer,
+              };
+            }
+            return q;
+          });
+          setSubDetails({
+            ...subDetails,
+            score: res.overall_score,
+            questions: updatedQuestions,
+          });
+        }
+
+        // Sync score in the roster list
+        if (res.overall_score !== null) {
+          const updatedSubmissions = (submissionsModalExam.submissions || []).map((s) =>
+            s.memberId === selectedSubMemberId
+              ? { ...s, score: `${res.overall_score}%` }
+              : s
+          );
+          setSubmissionsModalExam({ ...submissionsModalExam, submissions: updatedSubmissions });
+          setExams((prev) =>
+            prev.map((ex) =>
+              ex.id === submissionsModalExam.id
+                ? { ...ex, submissions: updatedSubmissions }
+                : ex
+            )
+          );
+          setCustomScore(res.overall_score);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to grade answer:", err);
+      alert("Failed to save answer grade. Please try again.");
+    }
+  };
+
+  const HOST_ITEMS_PER_PAGE = 6;
+  const [quizPage, setQuizPage] = useState(1);
+  const [groupPage, setGroupPage] = useState(1);
+  const [examPage, setExamPage] = useState(1);
+
+  useEffect(() => { setQuizPage(1); }, [quizSearchTerm, quizDifficultyFilter, quizQuestionFilter]);
+  useEffect(() => { setGroupPage(1); }, [searchTerm, groupSizeFilter, groupStatusFilter]);
+  useEffect(() => { setExamPage(1); }, [examSearchTerm, examSubjectFilter, examStatusFilter]);
+
+  const filteredExams = exams.filter((ex) => {
+    const matchesSearch =
       ex.title.toLowerCase().includes(examSearchTerm.toLowerCase()) ||
       ex.subject.toLowerCase().includes(examSearchTerm.toLowerCase()) ||
-      ex.groupName.toLowerCase().includes(examSearchTerm.toLowerCase())
-  );
+      ex.groupName.toLowerCase().includes(examSearchTerm.toLowerCase());
+
+    const matchesStatus =
+      examStatusFilter === 'All Status' || ex.status === examStatusFilter;
+
+    const matchesSubject =
+      examSubjectFilter === 'All Subjects' || ex.subject === examSubjectFilter;
+
+    return matchesSearch && matchesStatus && matchesSubject;
+  });
+
+  const totalQuizPages = Math.ceil(filteredQuizzes.length / HOST_ITEMS_PER_PAGE) || 1;
+  const paginatedQuizzes = filteredQuizzes.slice((quizPage - 1) * HOST_ITEMS_PER_PAGE, quizPage * HOST_ITEMS_PER_PAGE);
+
+  const totalGroupPages = Math.ceil(filteredGroups.length / HOST_ITEMS_PER_PAGE) || 1;
+  const paginatedGroups = filteredGroups.slice((groupPage - 1) * HOST_ITEMS_PER_PAGE, groupPage * HOST_ITEMS_PER_PAGE);
+
+  const totalExamPages = Math.ceil(filteredExams.length / HOST_ITEMS_PER_PAGE) || 1;
+  const paginatedExams = filteredExams.slice((examPage - 1) * HOST_ITEMS_PER_PAGE, examPage * HOST_ITEMS_PER_PAGE);
 
   return (
     <div className="space-y-8 text-left">
@@ -954,7 +1392,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'quizzes' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
             }`}
         >
-          My Quizzes ({HOST_QUIZZES_LIST.length})
+          My Quizzes ({isLoadingQuizzes ? '...' : quizzes.length})
           {subTab === 'quizzes' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
         </button>
 
@@ -992,44 +1430,143 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
       {/* Quizzes Tab Content */}
       {subTab === 'quizzes' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {HOST_QUIZZES_LIST.map((quiz) => (
-            <div
-              key={quiz.id}
-              className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-4 flex flex-col justify-between hover:border-secondary/50 transition-all"
-            >
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-secondary uppercase tracking-wider">{quiz.category}</span>
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant">
-                    {quiz.level}
-                  </span>
-                </div>
-                <h3 className="font-bold text-lg text-on-surface">{quiz.title}</h3>
-                <p className="text-xs text-on-surface-variant">{quiz.questions} Questions • Ready to host</p>
+        <div className="space-y-6">
+          {/* Controls */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 flex-1">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
+                <input
+                  type="text"
+                  placeholder="Search quizzes by title or subject..."
+                  value={quizSearchTerm}
+                  onChange={(e) => setQuizSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                />
               </div>
+              <select
+                value={quizDifficultyFilter}
+                onChange={(e) => setQuizDifficultyFilter(e.target.value)}
+                className="px-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20 min-w-[140px]"
+              >
+                <option value="All Difficulty">All Difficulty</option>
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
+              <select
+                value={quizQuestionFilter}
+                onChange={(e) => setQuizQuestionFilter(e.target.value)}
+                className="px-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20 min-w-[150px]"
+              >
+                <option value="All Questions">All Questions</option>
+                <option value="< 10 Questions">&lt; 10 Questions</option>
+                <option value="10 - 25 Questions">10 - 25 Questions</option>
+                <option value="> 25 Questions">&gt; 25 Questions</option>
+              </select>
+            </div>
+            <button
+              onClick={onCreateQuiz}
+              className="px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Create New Quiz
+            </button>
+          </div>
 
-              <div className="pt-3 border-t border-outline-variant/20 flex items-center justify-between">
-                <span className="text-xs text-outline font-medium">ID: {quiz.id}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => (onEditQuiz ? onEditQuiz(quiz.id) : onCreateQuiz())}
-                    className="p-2 text-on-surface-variant hover:text-secondary hover:bg-surface-container rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold"
-                    title="Edit Quiz"
-                  >
-                    <Edit2 className="w-4 h-4 text-secondary" />
-                    <span>Edit</span>
-                  </button>
-                  <button
-                    onClick={onOpenHostRoomModal}
-                    className="px-4 py-2 bg-secondary text-white rounded-xl text-xs font-bold hover:bg-secondary/90 transition-all flex items-center gap-1.5"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" /> Host This Quiz
-                  </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {isLoadingQuizzes ? (
+              <div className="col-span-full py-12 flex justify-center items-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-secondary"></div>
+              </div>
+            ) : quizzesError ? (
+              <div className="col-span-full py-8 text-center text-error text-xs font-semibold">
+                {quizzesError}
+              </div>
+            ) : filteredQuizzes.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-on-surface-variant text-sm">
+                {quizzes.length === 0 
+                  ? "No quizzes found. Create your first quiz using the Quiz Creator." 
+                  : "No quizzes match the current filters."}
+              </div>
+            ) : (
+              paginatedQuizzes.map((quiz) => (
+                <div
+                  key={quiz.id}
+                  className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-4 flex flex-col justify-between hover:border-secondary/50 transition-all"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-secondary uppercase tracking-wider">{quiz.category}</span>
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant">
+                        {quiz.level}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-lg text-on-surface">{quiz.title}</h3>
+                    <p className="text-xs text-on-surface-variant">{quiz.questions} Questions • Ready to host</p>
+                  </div>
+
+                  <div className="pt-3 border-t border-outline-variant/20 flex items-center justify-between">
+                    <span className="text-xs text-outline font-medium">ID: {quiz.id}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => (onEditQuiz ? onEditQuiz(quiz.id) : onCreateQuiz())}
+                        className="p-2 text-on-surface-variant hover:text-secondary hover:bg-surface-container rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold"
+                        title="Edit Quiz"
+                      >
+                        <Edit2 className="w-4 h-4 text-secondary" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={onOpenHostRoomModal}
+                        className="px-4 py-2 bg-secondary text-white rounded-xl text-xs font-bold hover:bg-secondary/90 transition-all flex items-center gap-1.5"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" /> Host This Quiz
+                      </button>
+                    </div>
+                  </div>
                 </div>
+              ))
+            )}
+          </div>
+
+          {/* Quizzes Pagination Controls */}
+          {totalQuizPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-outline-variant/20 mt-6 text-xs text-on-surface-variant font-medium">
+              <div>
+                Showing <span className="font-bold text-on-surface">{(quizPage - 1) * HOST_ITEMS_PER_PAGE + 1}</span> to{' '}
+                <span className="font-bold text-on-surface">{Math.min(quizPage * HOST_ITEMS_PER_PAGE, filteredQuizzes.length)}</span> of{' '}
+                <span className="font-bold text-on-surface">{filteredQuizzes.length}</span> quizzes
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setQuizPage(p => Math.max(1, p - 1))}
+                  disabled={quizPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: totalQuizPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setQuizPage(p)}
+                    className={`w-8 h-8 rounded-lg font-bold text-xs transition-all ${quizPage === p
+                      ? 'bg-secondary text-white shadow-xs'
+                      : 'bg-white border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container'
+                      }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setQuizPage(p => Math.min(totalQuizPages, p + 1))}
+                  disabled={quizPage === totalQuizPages}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                >
+                  Next
+                </button>
               </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -1037,16 +1574,37 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       {subTab === 'exams' && (
         <div className="space-y-6">
           {/* Controls */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
-              <input
-                type="text"
-                placeholder="Search by title, subject, or group..."
-                value={examSearchTerm}
-                onChange={(e) => setExamSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
-              />
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 flex-1 max-w-3xl">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
+                <input
+                  type="text"
+                  placeholder="Search by title, subject, or group..."
+                  value={examSearchTerm}
+                  onChange={(e) => setExamSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20 text-on-surface"
+                />
+              </div>
+              <select
+                value={examStatusFilter}
+                onChange={(e) => setExamStatusFilter(e.target.value)}
+                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
+              >
+                <option>All Status</option>
+                <option>Active</option>
+                <option>Pending</option>
+                <option>Closed</option>
+              </select>
+              <select
+                value={examSubjectFilter}
+                onChange={(e) => setExamSubjectFilter(e.target.value)}
+                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
+              >
+                {examSubjects.map(sub => (
+                  <option key={sub}>{sub}</option>
+                ))}
+              </select>
             </div>
             <button
               onClick={handleOpenAssignExamModal}
@@ -1058,10 +1616,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
           {/* Exam Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredExams.map((exam) => {
+            {paginatedExams.map((exam) => {
               const progressPct = exam.totalMembers > 0 ? Math.round((exam.submittedCount / exam.totalMembers) * 100) : 0;
               const inProgressCount = (exam.submissions || []).filter((s) => s.status === 'In Progress').length;
-              const notStartedCount = (exam.submissions || []).filter((s) => s.status === 'Not Started').length;
+              const notStartedCount = (exam.submissions || []).length > 0 
+                ? (exam.submissions || []).filter((s) => s.status === 'Not Started').length
+                : (exam.totalMembers - exam.submittedCount);
               const formattedDue = exam.due ? new Date(exam.due).toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }) : 'No deadline';
 
               return (
@@ -1167,10 +1727,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   {/* Footer CTA & Export */}
                   <div className="p-4 border-t border-outline-variant/20 grid grid-cols-5 gap-2">
                     <button
-                      onClick={() => {
-                        setSubmissionsModalExam(exam);
-                        setSubmissionsViewTab('roster');
-                      }}
+                      onClick={() => handleOpenSubmissionsModal(exam)}
                       className="col-span-4 py-2.5 bg-secondary/10 hover:bg-secondary/20 text-secondary text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2"
                     >
                       <ClipboardList className="w-4 h-4" /> Submissions & Analytics ({exam.totalMembers})
@@ -1203,6 +1760,45 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </div>
             )}
           </div>
+
+          {/* Exams Pagination Controls */}
+          {totalExamPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-outline-variant/20 mt-6 text-xs text-on-surface-variant font-medium">
+              <div>
+                Showing <span className="font-bold text-on-surface">{(examPage - 1) * HOST_ITEMS_PER_PAGE + 1}</span> to{' '}
+                <span className="font-bold text-on-surface">{Math.min(examPage * HOST_ITEMS_PER_PAGE, filteredExams.length)}</span> of{' '}
+                <span className="font-bold text-on-surface">{filteredExams.length}</span> exams
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setExamPage(p => Math.max(1, p - 1))}
+                  disabled={examPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: totalExamPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setExamPage(p)}
+                    className={`w-8 h-8 rounded-lg font-bold text-xs transition-all ${examPage === p
+                      ? 'bg-secondary text-white shadow-xs'
+                      : 'bg-white border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container'
+                      }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setExamPage(p => Math.min(totalExamPages, p + 1))}
+                  disabled={examPage === totalExamPages}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1237,7 +1833,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     className="w-full px-3 py-2 bg-surface-bright border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
                   >
                     <option value="">-- Quiz --</option>
-                    {HOST_QUIZZES_LIST.map((q) => (
+                    {quizzes.map((q) => (
                       <option key={q.id} value={q.id}>
                         {q.title}
                       </option>
@@ -1554,6 +2150,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         )
                       )}
 
+                      {/* View submission details and feedback */}
+                      {(sub.status === 'Submitted' || sub.status === 'In Progress') && (
+                        <button
+                          onClick={() => handleOpenSubmissionDetails(sub.memberId)}
+                          className="p-1.5 text-secondary hover:bg-secondary/15 rounded-lg transition-all"
+                          title="View Submission Details & Feedback"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
                       {/* Reset button */}
                       {(sub.status === 'Submitted' || sub.status === 'In Progress') && (
                         <button
@@ -1586,45 +2193,52 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   </button>
                 </div>
 
-                {((MOCK_QUESTION_ANALYTICS[submissionsModalExam.id] || [
-                  { id: 1, question: "Biochemical reactions concepts in cells?", wrongCount: 3, totalCount: 3, wrongPercentage: 100, commonWrongAnswer: "B. Protein breakdown reaction", correctAnswer: "C. ATP synthesis reaction" },
-                  { id: 2, question: "How many membrane layers does a mitochondrion have?", wrongCount: 2, totalCount: 3, wrongPercentage: 67, commonWrongAnswer: "A. 1 single membrane", correctAnswer: "B. 2 double membranes" }
-                ])).map((item, idx) => (
-                  <div key={item.id} className="bg-white p-4 rounded-2xl border border-outline-variant/30 space-y-3 text-xs shadow-xs">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2.5">
-                        <span className="w-6 h-6 rounded-lg bg-rose-100 text-rose-800 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                          #{idx + 1}
+                {isLoadingMissed ? (
+                  <div className="py-12 flex justify-center items-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-500"></div>
+                  </div>
+                ) : missedQuestions.length === 0 ? (
+                  <div className="py-12 text-center text-on-surface-variant text-sm">
+                    No missed questions data available for this exam. (Either all answers are correct or no submissions yet).
+                  </div>
+                ) : (
+                  missedQuestions.map((item, idx) => (
+                    <div key={item.id} className="bg-white p-4 rounded-2xl border border-outline-variant/30 space-y-3 text-xs shadow-xs">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5">
+                          <span className="w-6 h-6 rounded-lg bg-rose-100 text-rose-800 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                            #{idx + 1}
+                          </span>
+                          <div>
+                            <h5 className="font-bold text-on-surface text-sm">{item.question}</h5>
+                            <p className="text-on-surface-variant text-[11px] mt-0.5">
+                              <strong className="text-rose-600">{item.wrongCount} / {item.totalCount}</strong> members answered incorrectly ({item.wrongPercentage}% error rate)
+                            </p>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-extrabold rounded-lg shrink-0 text-xs">
+                          {item.wrongPercentage}% Wrong
                         </span>
-                        <div>
-                          <h5 className="font-bold text-on-surface text-sm">{item.question}</h5>
-                          <p className="text-on-surface-variant text-[11px] mt-0.5">
-                            <strong className="text-rose-600">{item.wrongCount} / {item.totalCount}</strong> members answered incorrectly ({item.wrongPercentage}% error rate)
-                          </p>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-rose-500 rounded-full" style={{ width: `${item.wrongPercentage}%` }} />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+                        <div className="bg-rose-50/60 p-2.5 rounded-xl border border-rose-100">
+                          <span className="font-bold text-rose-800 uppercase tracking-wider block text-[10px] mb-0.5">Common Wrong Answer:</span>
+                          <span className="text-rose-900 font-medium">{item.commonWrongAnswer}</span>
+                        </div>
+                        <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
+                          <span className="font-bold text-emerald-800 uppercase tracking-wider block text-[10px] mb-0.5">Correct Answer:</span>
+                          <span className="text-emerald-900 font-medium">{item.correctAnswer}</span>
                         </div>
                       </div>
-                      <span className="px-2.5 py-1 bg-rose-50 text-rose-700 font-extrabold rounded-lg shrink-0 text-xs">
-                        {item.wrongPercentage}% Wrong
-                      </span>
                     </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-rose-500 rounded-full" style={{ width: `${item.wrongPercentage}%` }} />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
-                      <div className="bg-rose-50/60 p-2.5 rounded-xl border border-rose-100">
-                        <span className="font-bold text-rose-800 uppercase tracking-wider block text-[10px] mb-0.5">Common Wrong Answer:</span>
-                        <span className="text-rose-900 font-medium">{item.commonWrongAnswer}</span>
-                      </div>
-                      <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
-                        <span className="font-bold text-emerald-800 uppercase tracking-wider block text-[10px] mb-0.5">Correct Answer:</span>
-                        <span className="text-emerald-900 font-medium">{item.correctAnswer}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             )}
 
@@ -1645,20 +2259,319 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         </div>
       )}
 
+      {/* Student Submission Details Modal */}
+      {isSubDetailsModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-xl flex flex-col max-h-[90vh] text-left animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-outline-variant/20 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-on-surface">
+                  Submission Details
+                </h3>
+                {subDetails && (
+                  <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">
+                    {subDetails.student.fullname} • {subDetails.student.email}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setIsSubDetailsModalOpen(false)}
+                className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {isLoadingSubDetails ? (
+                <div className="py-20 text-center space-y-2">
+                  <div className="w-8 h-8 border-4 border-secondary border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs text-on-surface-variant">Loading submission answers...</p>
+                </div>
+              ) : subDetails ? (
+                <>
+                  {/* Feedback and Grading Form */}
+                  <form onSubmit={handleSaveFeedbackAndGrade} className="bg-secondary/5 p-4 rounded-2xl border border-secondary/10 space-y-3.5">
+                    <h4 className="text-xs font-bold text-secondary uppercase tracking-wider">
+                      Grade & Feedback
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div className="sm:col-span-1">
+                        <label className="block text-[10px] font-bold text-on-surface uppercase tracking-wider mb-1">
+                          Score (%)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.01}
+                          required
+                          value={customScore}
+                          onChange={(e) => setCustomScore(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                        />
+                      </div>
+                      <div className="sm:col-span-3">
+                        <label className="block text-[10px] font-bold text-on-surface uppercase tracking-wider mb-1">
+                          Feedback & Notes
+                        </label>
+                        <textarea
+                          placeholder="Write feedback, recommendations, or grading comments for the student..."
+                          value={feedbackComment}
+                          onChange={(e) => setFeedbackComment(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20 h-16 resize-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all shadow-sm"
+                      >
+                        Save Evaluation
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Submission Info */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-surface-container-low/40 rounded-xl border border-outline-variant/20 text-xs">
+                    <div>
+                      <span className="text-on-surface-variant block mb-0.5">Status</span>
+                      <span className={`font-bold ${subDetails.status === 'COMPLETED' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {subDetails.status}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant block mb-0.5">Current Score</span>
+                      <span className={`font-bold ${subDetails.score !== null ? 'text-secondary' : 'text-on-surface'}`}>
+                        {subDetails.score !== null ? `${subDetails.score}%` : 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant block mb-0.5">Started At</span>
+                      <span className="font-medium text-on-surface">
+                        {subDetails.started_at ? new Date(subDetails.started_at).toLocaleString() : 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant block mb-0.5">Submitted At</span>
+                      <span className="font-medium text-on-surface">
+                        {subDetails.submitted_at ? new Date(subDetails.submitted_at).toLocaleString() : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Questions list */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                      Student Answers
+                    </h4>
+                    {subDetails.questions.map((q: any, qIdx: number) => {
+                      const hasAns = q.user_answer !== null && q.user_answer !== undefined;
+                      const qType = (q.type || '').trim().toLowerCase();
+                      const isMCQ = qType === 'multiple_choice' || qType === 'true_false' || qType === 'true/false';
+                      const isCorrect = q.user_answer?.is_correct;
+                      const partialScoreInput = questionScoreInputs[q.id] ?? '';
+
+                      return (
+                        <div key={q.id} className={`p-4 rounded-xl border space-y-3 transition-colors ${
+                          !hasAns ? 'border-outline-variant/20 bg-surface-container-low/30' :
+                          isCorrect ? 'border-emerald-300/50 bg-emerald-50/20' : 'border-rose-300/50 bg-rose-50/10'
+                        }`}>
+                          {/* Question header */}
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="w-6 h-6 rounded-full bg-secondary/15 text-secondary font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                              {qIdx + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <h5 className="font-bold text-on-surface text-sm">{q.content}</h5>
+                              <span className="text-[10px] text-on-surface-variant font-semibold mt-1 inline-block uppercase tracking-wider bg-surface-container px-2 py-0.5 rounded">
+                                {q.type}
+                              </span>
+                            </div>
+                            {/* Current correctness badge */}
+                            {hasAns ? (
+                              <span className={`shrink-0 px-2 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider ${
+                                isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                              }`}>
+                                {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                              </span>
+                            ) : (
+                              <span className="shrink-0 px-2 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider bg-slate-100 text-slate-500">
+                                No Answer
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Options (MCQ) */}
+                          {isMCQ && (
+                            <div className="pl-8 space-y-2">
+                              {q.options.map((opt: any) => {
+                                const isUserSelected = q.user_answer?.selected_option_id === opt.id;
+                                const isCorrectOpt = opt.is_correct;
+                                let optBg = 'bg-white border-outline-variant/30 text-on-surface';
+                                if (isCorrectOpt) optBg = 'bg-emerald-50 border-emerald-400/50 text-emerald-900';
+                                else if (isUserSelected && !isCorrectOpt) optBg = 'bg-rose-50 border-rose-400/50 text-rose-900';
+
+                                return (
+                                  <div key={opt.id} className={`px-3 py-2 rounded-lg border text-xs flex items-center justify-between ${optBg}`}>
+                                    <span className={isCorrectOpt ? 'font-bold' : ''}>{opt.content}</span>
+                                    {isUserSelected && (
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isCorrectOpt ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                        Student's Choice
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Written answer */}
+                          {!isMCQ && (
+                            <div className="pl-8 space-y-2 text-xs">
+                              <div className="p-3 bg-surface-container-low/60 rounded-lg border border-outline-variant/20">
+                                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Student's Answer:</span>
+                                <p className="font-medium whitespace-pre-wrap text-on-surface">
+                                  {q.user_answer?.answer_text || <span className="italic text-on-surface-variant/60">No response</span>}
+                                </p>
+                              </div>
+                              {q.options && q.options.length > 0 && (
+                                <div className="p-3 bg-emerald-50/30 rounded-lg border border-emerald-200/50">
+                                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">Expected Answer Template:</span>
+                                  <ul className="list-disc pl-4 space-y-1">
+                                    {q.options.map((opt: any) => (
+                                      <li key={opt.id} className="font-medium text-emerald-900">{opt.content}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* ── Per-question grading controls (only if student answered) ── */}
+                          {hasAns && (
+                            <div className="pl-8 pt-1 border-t border-outline-variant/15 mt-2">
+                              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Manual Grading</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {/* Toggle Correct / Incorrect */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleGradeAnswer(q.id, true, partialScoreInput !== '' ? Number(partialScoreInput) : null)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                    isCorrect
+                                      ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                                      : 'bg-white text-emerald-700 border-emerald-400 hover:bg-emerald-50'
+                                  }`}
+                                >
+                                  ✓ Mark Correct
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleGradeAnswer(q.id, false, 0)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                    hasAns && !isCorrect
+                                      ? 'bg-rose-500 text-white border-rose-500 shadow-sm'
+                                      : 'bg-white text-rose-600 border-rose-400 hover:bg-rose-50'
+                                  }`}
+                                >
+                                  ✗ Mark Incorrect
+                                </button>
+
+                                {/* Partial score input */}
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  <span className="text-[10px] text-on-surface-variant font-semibold">Points:</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    placeholder="0–1"
+                                    value={partialScoreInput}
+                                    onChange={(e) =>
+                                      setQuestionScoreInputs((prev) => ({ ...prev, [q.id]: e.target.value }))
+                                    }
+                                    className="w-16 px-2 py-1 border border-outline-variant/40 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-secondary/25 bg-white"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleGradeAnswer(
+                                        q.id,
+                                        partialScoreInput !== '' && Number(partialScoreInput) > 0,
+                                        partialScoreInput !== '' ? Number(partialScoreInput) : null
+                                      )
+                                    }
+                                    className="px-2.5 py-1 bg-secondary text-white rounded-lg text-xs font-bold hover:bg-secondary/85 transition-all"
+                                  >
+                                    Apply
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="py-20 text-center text-on-surface-variant">
+                  Failed to load submission details.
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-outline-variant/20 flex justify-end bg-surface-container/30">
+              <button
+                onClick={() => setIsSubDetailsModalOpen(false)}
+                className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all shadow-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Groups Tab Content */}
       {subTab === 'groups' && (
         <div className="space-y-6">
           {/* Groups Controls */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
-              <input
-                type="text"
-                placeholder="Search group name or join code..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
-              />
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 flex-1 max-w-3xl">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
+                <input
+                  type="text"
+                  placeholder="Search group name or join code..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20 text-on-surface"
+                />
+              </div>
+              <select
+                value={groupStatusFilter}
+                onChange={(e) => setGroupStatusFilter(e.target.value)}
+                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
+              >
+                <option>All Status</option>
+                <option>Open</option>
+                <option>Closed</option>
+              </select>
+              <select
+                value={groupSizeFilter}
+                onChange={(e) => setGroupSizeFilter(e.target.value)}
+                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[150px]"
+              >
+                <option>All Sizes</option>
+                <option>{"Small (< 5 members)"}</option>
+                <option>{"Medium (5 - 20 members)"}</option>
+                <option>{"Large (> 20 members)"}</option>
+              </select>
             </div>
             <button
               onClick={handleOpenCreateModal}
@@ -1670,7 +2583,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
           {/* Groups Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {filteredGroups.map((group) => {
+            {paginatedGroups.map((group) => {
               const count = group.membersCount ?? group.members?.length ?? 0;
               const pendingCount = group.pendingRequests?.length || 0;
 
@@ -1793,7 +2706,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               );
             })}
 
-            {filteredGroups.length === 0 && (
+            {paginatedGroups.length === 0 && (
               <div className="col-span-full py-12 text-center text-on-surface-variant space-y-3 bg-white rounded-2xl border border-dashed border-outline-variant/40">
                 <Users className="w-10 h-10 mx-auto text-outline/50" />
                 <p className="text-sm font-medium">No study groups found.</p>
@@ -1806,6 +2719,45 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </div>
             )}
           </div>
+
+          {/* Groups Pagination Controls */}
+          {totalGroupPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-outline-variant/20 mt-6 text-xs text-on-surface-variant font-medium">
+              <div>
+                Showing <span className="font-bold text-on-surface">{(groupPage - 1) * HOST_ITEMS_PER_PAGE + 1}</span> to{' '}
+                <span className="font-bold text-on-surface">{Math.min(groupPage * HOST_ITEMS_PER_PAGE, filteredGroups.length)}</span> of{' '}
+                <span className="font-bold text-on-surface">{filteredGroups.length}</span> groups
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setGroupPage(p => Math.max(1, p - 1))}
+                  disabled={groupPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: totalGroupPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setGroupPage(p)}
+                    className={`w-8 h-8 rounded-lg font-bold text-xs transition-all ${groupPage === p
+                      ? 'bg-secondary text-white shadow-xs'
+                      : 'bg-white border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container'
+                      }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setGroupPage(p => Math.min(totalGroupPages, p + 1))}
+                  disabled={groupPage === totalGroupPages}
+                  className="px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-white hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed font-bold text-on-surface transition-all"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1961,12 +2913,22 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <span>{rosterGroup.members?.length || 0} Enrolled Members</span>
                 </div>
               </div>
-              <button
-                onClick={() => setRosterGroup(null)}
-                className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportGroupExcel(rosterGroup)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-all border border-emerald-200"
+                  title="Export Group Roster (Excel .xls)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  Export Excel
+                </button>
+                <button
+                  onClick={() => setRosterGroup(null)}
+                  className="p-1.5 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Sub-Tabs (Enrolled vs Pending) */}
@@ -2005,20 +2967,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                     <input
-                      type="text"
-                      required
-                      placeholder="Member Full Name"
-                      value={newMemberName}
-                      onChange={(e) => setNewMemberName(e.target.value)}
-                      className="sm:col-span-2 px-3.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
-                    />
-                    <input
                       type="email"
                       required
                       placeholder="member@school.edu"
                       value={newMemberEmail}
                       onChange={(e) => setNewMemberEmail(e.target.value)}
-                      className="sm:col-span-2 px-3.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                      className="sm:col-span-4 px-3.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
                     />
                     <button
                       type="submit"
@@ -2072,14 +3026,21 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         </div>
                       </div>
 
-                      {/* Exam Scores Breakdown */}
+                      {/* Exam Scores Breakdown (Display 3 latest in UI, export Excel for all) */}
                       {(member.examScores || []).length > 0 && (
                         <div className="pt-2 border-t border-outline-variant/15 space-y-1.5">
-                          <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">
-                            Detailed Exam Scores:
-                          </span>
+                          <div className="flex items-center justify-between text-[10px] text-on-surface-variant">
+                            <span className="font-bold uppercase tracking-wider">
+                              Recent Exam Scores:
+                            </span>
+                            {(member.examScores?.length || 0) > 3 && (
+                              <span className="italic text-secondary font-medium">
+                                +{(member.examScores?.length || 0) - 3} more (Export Excel for full report)
+                              </span>
+                            )}
+                          </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            {member.examScores?.map((scoreItem, sIdx) => (
+                            {member.examScores?.slice(0, 3).map((scoreItem, sIdx) => (
                               <div
                                 key={sIdx}
                                 className={`px-2.5 py-1.5 rounded-xl border text-[11px] flex items-center justify-between ${scoreItem.status === 'Completed'

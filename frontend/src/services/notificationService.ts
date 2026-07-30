@@ -6,6 +6,7 @@ export interface NotificationResponse {
   content: string;
   type: string | null;
   action_url: string | null;
+  target_group_id?: number | null;
   is_read: boolean;
   created_at: string;
 }

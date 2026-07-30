@@ -124,6 +124,17 @@ const App: React.FC = () => {
             />
           }
         />
+        <Route
+          path="/create-quiz/:id"
+          element={
+            <QuizCreator
+              onCancel={() => {
+                const returnTab = sessionStorage.getItem('dashboard_active_tab') || 'host_studio';
+                navigate('/dashboard', { state: { activeTab: returnTab } });
+              }}
+            />
+          }
+        />
         <Route path="/lobby" element={<LobbyWaiting />} />
         <Route path="/exam" element={<FormalExam />} />
         <Route path="/play" element={<ParticipantAnswer />} />

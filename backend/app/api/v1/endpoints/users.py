@@ -56,6 +56,16 @@ def process_import_background(valid_users: List[dict], admin_id: int, job_id: st
         )
         db.add(notification)
         db.commit()
+
+        try:
+            from app.api.v1.endpoints.exams import _send_sync_ws_notification
+            _send_sync_ws_notification(
+                user_id=admin_id,
+                title="Import Users Complete",
+                content=f"Your background import job ({job_id}) has finished successfully. Imported {imported_count} users out of {len(valid_users)} valid records."
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Error in background import job {job_id}: {str(e)}")
         # Notify Admin about failure
@@ -67,6 +77,16 @@ def process_import_background(valid_users: List[dict], admin_id: int, job_id: st
         )
         db.add(notification)
         db.commit()
+
+        try:
+            from app.api.v1.endpoints.exams import _send_sync_ws_notification
+            _send_sync_ws_notification(
+                user_id=admin_id,
+                title="Import Users Failed",
+                content=f"Your background import job ({job_id}) failed due to an internal error: {str(e)}"
+            )
+        except Exception:
+            pass
     finally:
         db.close()
 

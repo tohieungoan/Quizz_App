@@ -7,6 +7,7 @@ interface SubmitExamModalProps {
   remainingCount: number;
   flaggedCount: number;
   subject: string;
+  score?: number | null;
   onConfirmSubmit: () => void;
   onCancelSubmit: () => void;
   onReturnDashboard: () => void;
@@ -18,6 +19,7 @@ export const SubmitExamModal: React.FC<SubmitExamModalProps> = ({
   remainingCount,
   flaggedCount,
   subject,
+  score = null,
   onConfirmSubmit,
   onCancelSubmit,
   onReturnDashboard,
@@ -58,7 +60,7 @@ export const SubmitExamModal: React.FC<SubmitExamModalProps> = ({
       {/* Success Feedback Overlay */}
       {successOverlayOpen && (
         <div className="fixed inset-0 z-[110] bg-surface flex items-center justify-center animate-in fade-in duration-300">
-          <div className="text-center max-w-lg p-8">
+          <div className="text-center max-w-lg p-8 animate-in zoom-in-95 duration-300">
             <div className="w-20 h-20 bg-secondary-container text-on-secondary-container rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner animate-bounce">
               <CheckCircle className="w-12 h-12 text-secondary" />
             </div>
@@ -66,8 +68,14 @@ export const SubmitExamModal: React.FC<SubmitExamModalProps> = ({
               Submission Successful
             </h1>
             <p className="text-sm text-on-surface-variant mb-8 leading-relaxed">
-              Your exam for <strong className="text-on-surface">{subject}</strong> has been received. Your grade will
-              be published after the review period.
+              Your exam for <strong className="text-on-surface">{subject}</strong> has been received.
+              {score !== null ? (
+                <span className="block mt-4">
+                  Your score: <span className="font-black text-2xl text-emerald-600">{score}%</span>
+                </span>
+              ) : (
+                " Your grade will be published after the review period."
+              )}
             </p>
             <div className="flex flex-col gap-3">
               <button

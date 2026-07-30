@@ -401,7 +401,33 @@ def request_to_join_group(
         requested_at=datetime.utcnow()
     )
     db.add(new_member)
+
+    # Create notification for Group Owner (Host)
+    notification = Notification(
+        user_id=group.owner_id,
+        sender_id=current_user.id,
+        target_type="PERSONAL",
+        target_group_id=group.id,
+        title="NEW JOIN REQUEST",
+        content=f"{current_user.fullname or current_user.email} submitted a request to join your group '{group.name}'.",
+        type="SYSTEM",
+        action_url=f"/groups/{group.id}",
+        is_read=False,
+        created_at=datetime.utcnow()
+    )
+    db.add(notification)
     db.commit()
+
+    try:
+        from app.api.v1.endpoints.exams import _send_sync_ws_notification
+        _send_sync_ws_notification(
+            user_id=group.owner_id,
+            title="NEW JOIN REQUEST",
+            content=f"{current_user.fullname or current_user.email} submitted a request to join your group '{group.name}'.",
+            action_url=f"/groups/{group.id}"
+        )
+    except Exception:
+        pass
 
     return {"message": "Join request submitted successfully. Waiting for group owner approval."}
 
@@ -592,7 +618,33 @@ def approve_join_request(
     member.joined_at = datetime.utcnow()
     db.add(member)
     assign_active_exams_to_new_member(db, group_id, member_id)
+
+    # Create notification for student that their request was approved
+    notification = Notification(
+        user_id=member_id,
+        sender_id=current_user.id,
+        target_type="PERSONAL",
+        target_group_id=group.id,
+        title="JOIN REQUEST APPROVED",
+        content=f"Your request to join study group '{group.name}' has been approved by the teacher.",
+        type="SYSTEM",
+        action_url=f"/groups/{group.id}",
+        is_read=False,
+        created_at=datetime.utcnow()
+    )
+    db.add(notification)
     db.commit()
+
+    try:
+        from app.api.v1.endpoints.exams import _send_sync_ws_notification
+        _send_sync_ws_notification(
+            user_id=member_id,
+            title="JOIN REQUEST APPROVED",
+            content=f"Your request to join study group '{group.name}' has been approved by the teacher.",
+            action_url=f"/groups/{group.id}"
+        )
+    except Exception:
+        pass
 
     return {"message": "User request approved and added to the study group."}
 
@@ -745,6 +797,18 @@ def invite_member_to_group(
     db.add(notification)
     db.commit()
 
+    # Push real-time notification to invited user via WebSocket
+    try:
+        from app.api.v1.endpoints.exams import _send_sync_ws_notification
+        _send_sync_ws_notification(
+            user_id=invited_user.id,
+            title="GROUP INVITATION",
+            content=f"You have been invited to join group '{group.name}' by {current_user.fullname or current_user.email}.",
+            action_url=f"/groups/{group.id}"
+        )
+    except Exception:
+        pass
+
     return {"message": "Invitation sent successfully to the user."}
 
 
@@ -886,9 +950,8 @@ def read_group_roster(
             avg_score_val = sum(completed_scores) / len(completed_scores)
             avg_score_str = f"{round(avg_score_val)}%"
 
-        last_3_exams = exams[:3]
         exam_scores = []
-        for ex in last_3_exams:
+        for ex in exams:
             score_item = assignees_dict.get(ex.id)
             if score_item:
                 score_str = f"{round(score_item.score)}%" if score_item.score is not None else "--"

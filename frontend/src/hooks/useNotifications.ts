@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertCircle, CheckCircle2, MessageSquare, Bell, Megaphone, Info } from 'lucide-react';
+import { AlertCircle, CheckCircle2, MessageSquare, Bell, Megaphone, Info, UserPlus } from 'lucide-react';
 import { notificationService, NotificationResponse } from '@/services/notificationService';
 
 export interface NotificationItem {
@@ -13,6 +13,8 @@ export interface NotificationItem {
   bg: string;
   unread: boolean;
   action_url?: string | null;
+  type?: string | null;
+  targetGroupId?: number | null;
 }
 
 const EVENT_NAME = 'quizzapp_notifications_updated';
@@ -45,10 +47,19 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     IconComponent = Megaphone;
     color = 'text-orange-600';
     bg = 'bg-orange-100';
+  } else if (typeUpper === 'GROUP_INVITE') {
+    IconComponent = UserPlus;
+    color = 'text-indigo-600';
+    bg = 'bg-indigo-100';
   }
 
-  // 2. Map Time & Date from created_at
-  const createdDate = new Date(item.created_at);
+  // 2. Map Time & Date from created_at (Ensure UTC 'Z' timezone indicator)
+  let rawDateStr = String(item.created_at || '');
+  const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(rawDateStr);
+  if (rawDateStr && !hasTimezone) {
+    rawDateStr += 'Z';
+  }
+  const createdDate = new Date(rawDateStr);
   const now = new Date();
   const diffMs = now.getTime() - createdDate.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -56,11 +67,13 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
   const diffDays = Math.floor(diffMs / 86400000);
 
   let time = 'Just now';
-  if (diffMins > 0 && diffMins < 60) {
+  if (diffMins <= 0) {
+    time = 'Just now';
+  } else if (diffMins < 60) {
     time = `${diffMins}m ago`;
-  } else if (diffHours > 0 && diffHours < 24) {
+  } else if (diffHours < 24) {
     time = `${diffHours}h ago`;
-  } else if (diffDays > 0) {
+  } else {
     time = `${diffDays}d ago`;
   }
 
@@ -87,7 +100,9 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     color: color,
     bg: bg,
     unread: !item.is_read,
-    action_url: item.action_url
+    action_url: item.action_url,
+    type: item.type,
+    targetGroupId: item.target_group_id
   };
 };
 
@@ -96,6 +111,9 @@ export const useNotifications = () => {
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
   const fetchNotifications = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return; // Skip if not authenticated
+
     try {
       const response = await notificationService.getNotifications(0, 30);
       const mapped = response.data.map(mapBackendNotification);
@@ -110,14 +128,44 @@ export const useNotifications = () => {
     // Initial fetch
     fetchNotifications();
 
-    // Poll every 30 seconds to fetch new notifications dynamically
-    const interval = setInterval(fetchNotifications, 30000);
+    // Setup real-time WebSocket connection for instant zero-latency notification delivery
+    const token = localStorage.getItem('token');
+    let ws: WebSocket | null = null;
+    let fallbackInterval: any = null;
+
+    if (token) {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+      const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
+      const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/notifications?token=${token}`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = () => {
+          // Instantly fetch notifications ONLY when server pushes a new WebSocket event
+          fetchNotifications();
+        };
+        ws.onerror = () => {
+          // Fallback interval ONLY if WebSocket connection fails
+          if (!fallbackInterval) {
+            fallbackInterval = setInterval(fetchNotifications, 120000);
+          }
+        };
+      } catch (err) {
+        console.warn('Failed to establish WebSocket notification channel:', err);
+      }
+    }
 
     const handleCustomEvent = () => fetchNotifications();
     window.addEventListener(EVENT_NAME, handleCustomEvent);
 
     return () => {
-      clearInterval(interval);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+      }
       window.removeEventListener(EVENT_NAME, handleCustomEvent);
     };
   }, [fetchNotifications]);

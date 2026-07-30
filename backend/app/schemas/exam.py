@@ -14,6 +14,8 @@ class ExamAssignRequest(BaseModel):
     status: Optional[str] = "ACTIVE"
 
 class ExamUpdateRequest(BaseModel):
+    quiz_id: Optional[int] = None
+    group_id: Optional[int] = None
     title: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -46,6 +48,8 @@ class ExamAssigneeResponse(BaseModel):
     submitted_at: Optional[datetime]
     score: Optional[float]
     feedback_comment: Optional[str]
+    user_fullname: Optional[str] = None
+    user_email: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -66,6 +70,8 @@ class UserExamResponse(BaseModel):
     end_time: Optional[datetime]
     host_fullname: Optional[str]
     quiz_subject: Optional[str]
+    navigation_rule: Optional[str] = "FREE_NAV"
+    results_published: Optional[bool] = False
 
 
 class ExamAnswerRequest(BaseModel):
@@ -97,3 +103,13 @@ class ExamTakeResponse(BaseModel):
     exam: ExamResponse
     remaining_seconds: int
     questions: List[TakeQuestionResponse] = []
+
+
+class ExamFeedbackRequest(BaseModel):
+    feedback_comment: Optional[str] = None
+    score: Optional[float] = None
+
+
+class AnswerGradeRequest(BaseModel):
+    is_correct: bool
+    score: Optional[float] = None  # Partial score for this individual question
