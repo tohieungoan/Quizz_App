@@ -38,7 +38,7 @@ def duplicate_quiz(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
-    if quiz.user_id != current_user.id:
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to duplicate this quiz")
         
     new_quiz = crud_quiz.duplicate(db=db, quiz_id=quiz_id, user_id=current_user.id)
@@ -120,7 +120,7 @@ def read_quiz(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
     
-    if quiz.user_id != current_user.id:
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to access this quiz")
         
     return quiz
@@ -141,7 +141,7 @@ def update_quiz(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
-    if quiz.user_id != current_user.id:
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to update this quiz")
         
     if quiz.status and quiz.status.lower() == "published":
@@ -168,7 +168,7 @@ def delete_quiz(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
-    if quiz.user_id != current_user.id:
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to delete this quiz")
         
     if quiz.status and quiz.status.lower() == "published":
