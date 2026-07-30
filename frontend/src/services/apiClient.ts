@@ -75,7 +75,11 @@ const fetchWithAuth = async (url: string, init: RequestInit): Promise<Response> 
 const handleResponse = async <T>(res: Response): Promise<T> => {
   if (!res.ok) {
     const error = await res.json().catch(() => ({}))
-    throw new Error(error.detail || `HTTP error ${res.status}`)
+    const detail = error.detail;
+    const errorMessage = typeof detail === 'string' 
+      ? detail 
+      : (detail ? JSON.stringify(detail) : `HTTP error ${res.status}`);
+    throw new Error(errorMessage)
   }
   return res.json()
 }

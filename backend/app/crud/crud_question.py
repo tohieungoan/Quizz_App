@@ -182,11 +182,17 @@ class CRUDQuestion:
             setattr(db_obj, field, value)
             
         if options_data is not None:
-            old_options = {opt.id: opt for opt in db_obj.options}
+            old_options_list = list(db_obj.options)
+            old_options = {opt.id: opt for opt in old_options_list}
             new_option_ids = set()
             
-            for opt_data in options_data:
+            for idx, opt_data in enumerate(options_data):
                 opt_id = opt_data.get("id")
+                
+                # Fallback: if frontend lost the ID, try to map it by index to prevent data loss
+                if not opt_id and idx < len(old_options_list):
+                    opt_id = old_options_list[idx].id
+                    
                 if opt_id and opt_id in old_options:
                     # Update existing option
                     old_opt = old_options[opt_id]
