@@ -23,7 +23,7 @@ from app.schemas.exam import (
 import logging
 logger = logging.getLogger(__name__)
 
-def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str = None) -> None:
+def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str | None = None) -> None:
     """
     Safely dispatch a WebSocket notification from a synchronous thread worker in FastAPI.
     """
@@ -38,14 +38,20 @@ def _send_sync_ws_notification(user_id: int, title: str, content: str, action_ur
         }
         loop = None
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
         except RuntimeError:
-            pass
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+            except Exception:
+                loop = None
 
         if loop and loop.is_running():
             asyncio.run_coroutine_threadsafe(manager.send_personal_message(payload, user_id), loop)
         else:
-            asyncio.run(manager.send_personal_message(payload, user_id))
+            try:
+                asyncio.run(manager.send_personal_message(payload, user_id))
+            except Exception as inner_e:
+                logger.warning(f"Could not run async WS dispatch: {inner_e}")
     except Exception as e:
         logger.warning(f"Failed to push WS notification to user {user_id}: {e}")
 
@@ -637,7 +643,7 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
     db.add(assignee)
     db.commit()
     db.refresh(assignee)
-    return assignee.score
+    return assignee.score if assignee.score is not None else 0.0
 
 
 @router.post("/{exam_id}/start", summary="Start taking an exam")

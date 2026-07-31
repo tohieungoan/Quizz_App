@@ -131,10 +131,16 @@ export const groupService = {
   },
 
   acceptInvite: async (groupId: number | string): Promise<{ message: string }> => {
-    return apiClient.post<{ message: string }>(`/groups/${groupId}/accept-invite`, {});
+    return apiClient.post<{ message: string }>('/groups/invitations/bulk-accept', {
+      all_invitations: false,
+      group_ids: [Number(groupId)]
+    });
   },
 
   declineInvite: async (groupId: number | string): Promise<{ message: string }> => {
-    return apiClient.post<{ message: string }>(`/groups/${groupId}/decline-invite`, {});
+    return apiClient.post<{ message: string }>('/groups/invitations/bulk-decline', {
+      all_invitations: false,
+      group_ids: [Number(groupId)]
+    });
   }
 };

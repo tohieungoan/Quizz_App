@@ -17,6 +17,7 @@ class OptionLive(BaseModel):
 class QuestionLive(BaseModel):
     id: int
     text: str
+    type: Optional[str] = None
     time_limit: Optional[int] = None
     options: List[OptionLive]
     correct_option_key: Optional[str] = None
@@ -88,9 +89,11 @@ class ParticipantResponse(BaseModel):
     user_id: Optional[int] = None
     team_id: Optional[int] = None
     nickname: Optional[str] = None
+    avatar: Optional[str] = None
     status: Optional[str] = None
     joined_at: datetime
     score: float
+    streak: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,6 +102,7 @@ class ParticipantLive(BaseModel):
     id: int
     nickname: str
     score: float
+    streak: int = 0
     answered: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -111,6 +115,7 @@ class RoomLiveStatus(BaseModel):
     current_question_index: int
     current_question_started_at: Optional[datetime] = None
     quiz_title: str
+    total_questions: int
     active_question: Optional[QuestionLive] = None
     participants: List[ParticipantLive]
     answer_distribution: dict[str, int]  # Option key (A, B, C, D) -> count of answers
@@ -119,12 +124,16 @@ class RoomLiveStatus(BaseModel):
 class SubmitAnswerIn(BaseModel):
     participant_id: int
     question_id: int
-    selected_option_id: int
+    selected_option_id: Optional[int] = None
+    answer_text: Optional[str] = None
+    active_power_up: Optional[str] = None
+    streak: Optional[int] = None
 
 
 class SubmitAnswerResponse(BaseModel):
     is_correct: bool
     score: float
+    total_score: float = 0.0
     correct_option_key: Optional[str] = None  # A, B, C, D
 
 

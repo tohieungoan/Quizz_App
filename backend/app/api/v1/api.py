@@ -19,7 +19,7 @@ from app.api.v1.endpoints import (
     rooms,
     notifications,
 )
-from app.api.v1.websockets import ws_notifications
+from app.api.v1.websockets import ws_notifications, ws_room
 
 api_router = APIRouter()
 
@@ -44,3 +44,4 @@ api_router.include_router(rooms.router, prefix="/admin/rooms", tags=["Rooms"])
 
 # WebSockets
 api_router.include_router(ws_notifications.router, tags=["WebSockets"])
+api_router.include_router(ws_room.router, tags=["WebSockets"])

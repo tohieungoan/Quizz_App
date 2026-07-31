@@ -74,6 +74,7 @@ class Participant(Base):
     status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     score: Mapped[float] = mapped_column(Float, default=0.0)
+    streak: Mapped[int] = mapped_column(Integer, default=0)
 
     __table_args__ = (
         UniqueConstraint("room_id", "user_id", name="uq_room_user"),

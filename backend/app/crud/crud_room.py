@@ -1,6 +1,9 @@
 import datetime
 import random
+import urllib.parse
 from typing import List, Optional, Tuple
+
+from app.core.config import settings
 
 from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
@@ -17,36 +20,59 @@ from app.schemas.room import (
 
 
 class CRUDRoom:
+    def check_and_auto_end_room(self, db: Session, room: Optional[Room]) -> Optional[Room]:
+        """
+        If room is WAITING and created_at is older than 15 minutes,
+        auto-end it to free up resources and recycle code.
+        """
+        if room and room.status == "WAITING":
+            now = datetime.datetime.utcnow()
+            elapsed = now - room.created_at
+            if elapsed > datetime.timedelta(minutes=15):
+                room.status = "ENDED"
+                room.ended_at = now
+                db.add(room)
+                db.commit()
+                db.refresh(room)
+        return room
+
     def get(self, db: Session, room_id: int) -> Optional[Room]:
         """Get room by ID."""
-        return db.query(Room).filter(Room.id == room_id).first()
+        room = db.query(Room).filter(Room.id == room_id).first()
+        return self.check_and_auto_end_room(db, room)
 
     def get_by_code(self, db: Session, room_code: str) -> Optional[Room]:
         """
-        Get active room by code (status is not ENDED).
+        Get active room by code (status is not ENDED and not expired).
         This is useful for players attempting to join a room.
         """
-        return db.query(Room).filter(
+        now = datetime.datetime.utcnow()
+        room = db.query(Room).filter(
             Room.room_code == room_code,
-            Room.status != "ENDED"
+            Room.status != "ENDED",
+            or_(Room.expire_at.is_(None), Room.expire_at > now)
         ).first()
+        return self.check_and_auto_end_room(db, room)
 
     def get_all_by_code(self, db: Session, room_code: str) -> Optional[Room]:
         """Get any room by code, regardless of status."""
-        return db.query(Room).filter(Room.room_code == room_code).first()
+        room = db.query(Room).filter(Room.room_code == room_code).first()
+        return self.check_and_auto_end_room(db, room)
 
     def generate_unique_room_code(self, db: Session) -> str:
         """
         Generate a unique 6-digit room code.
-        Ensures the code is unique among all currently active rooms (status != ENDED).
+        Ensures the code is unique among all currently active and unexpired rooms.
         """
         max_attempts = 100
+        now = datetime.datetime.utcnow()
         for _ in range(max_attempts):
             code = str(random.randint(100000, 999999))
-            # Check if there is an active room with this code
+            # Check if there is an active and unexpired room with this code
             exists = db.query(Room).filter(
                 Room.room_code == code,
-                Room.status != "ENDED"
+                Room.status != "ENDED",
+                or_(Room.expire_at.is_(None), Room.expire_at > now)
             ).first()
             if not exists:
                 return code
@@ -55,12 +81,14 @@ class CRUDRoom:
         raise ValueError("Could not generate a unique room code. Please try again.")
 
     def create_room(self, db: Session, obj_in: RoomCreate, host_id: int) -> Room:
-        """Create a new live quiz room."""
+        """Create a new live quiz room with a 2-hour expiration limit."""
         # Generate unique room code
         room_code = self.generate_unique_room_code(db)
         
-        # Default qr_code_url using a free QR code generator API
-        qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={room_code}"
+        # Default qr_code_url using the full frontend lobby join link
+        lobby_url = f"{settings.FRONTEND_URL}/lobby?roomCode={room_code}"
+        encoded_url = urllib.parse.quote(lobby_url)
+        qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
 
         # Generate a default title if not provided
         title = obj_in.title or f"Live Quiz Room {room_code}"
@@ -80,7 +108,8 @@ class CRUDRoom:
             allow_anonymous_question=obj_in.allow_anonymous_question,
             allow_voice_question=obj_in.allow_voice_question,
             use_ai_question=obj_in.use_ai_question,
-            shuffle_options=obj_in.shuffle_options
+            shuffle_options=obj_in.shuffle_options,
+            expire_at=datetime.datetime.utcnow() + datetime.timedelta(hours=2)
         )
         
         db.add(db_obj)
@@ -105,6 +134,25 @@ class CRUDRoom:
         Supports reconnecting if the same user joins again.
         Raises ValueError if nickname is already taken in the active room.
         """
+        # 0. Check group restriction if room is assigned to a target group
+        if room.group_id is not None:
+            if user_id is None:
+                raise ValueError("This room is restricted to group members only. Please log in first.")
+            
+            from app.models.group import Group, GroupMember
+            group = db.query(Group).filter(Group.id == room.group_id).first()
+            if not group:
+                raise ValueError("Associated group not found.")
+            
+            if group.owner_id != user_id:
+                is_member = db.query(GroupMember).filter(
+                    GroupMember.group_id == room.group_id,
+                    GroupMember.user_id == user_id,
+                    GroupMember.status == "APPROVED"
+                ).first()
+                if not is_member:
+                    raise ValueError("You are not an approved member of this study group.")
+
         # 1. If user is authenticated, check if they have already joined this room
         if user_id is not None:
             existing_user = db.query(Participant).filter(
@@ -172,14 +220,20 @@ class CRUDRoom:
         room: Room,
         participant: Participant,
         question_id: int,
-        selected_option_id: int,
-        now: datetime.datetime
-    ) -> Tuple[bool, float, Optional[str]]:
+        selected_option_id: Optional[int] = None,
+        answer_text: Optional[str] = None,
+        active_power_up: Optional[str] = None,
+        client_streak: Optional[int] = None,
+        now: Optional[datetime.datetime] = None
+    ) -> Tuple[bool, float, float, Optional[str]]:
         """
         Submit participant's answer to the active question.
-        Validates timeouts, calculates dynamic scores based on speed,
-        and aggregates participant score.
+        Supports both MULTIPLE_CHOICE (using selected_option_id) and SHORT_ANSWER (using answer_text).
+        Validates timeouts, calculates dynamic scores based on speed, streak bonus, and aggregates participant score.
         """
+        if now is None:
+            now = datetime.datetime.utcnow()
+            
         from app.models.quiz import Question, QuestionOption
         from app.models.room import ParticipantAnswer
         
@@ -197,9 +251,30 @@ class CRUDRoom:
             raise ValueError("Question not found.")
 
         options = db.query(QuestionOption).filter(QuestionOption.question_id == question_id).all()
-        selected_option = next((o for o in options if o.id == selected_option_id), None)
-        if not selected_option:
-            raise ValueError("Selected option is invalid for this question.")
+        raw_type = (question.type or "multiple_choice").lower().strip()
+        is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+
+        selected_option = None
+        is_correct = False
+
+        if is_short_answer:
+            if answer_text:
+                match_text = answer_text.strip().lower()
+                for opt in options:
+                    if opt.is_correct and opt.content and opt.content.strip().lower() == match_text:
+                        selected_option = opt
+                        is_correct = True
+                        break
+                if not selected_option and options:
+                    selected_option = options[0]
+        else:
+            if selected_option_id is not None:
+                selected_option = next((o for o in options if o.id == selected_option_id), None)
+                if not selected_option:
+                    raise ValueError("Selected option is invalid for this question.")
+                is_correct = selected_option.is_correct or False
+            else:
+                is_correct = False
 
         # 3. Check Timeout
         is_timeout = False
@@ -209,22 +284,58 @@ class CRUDRoom:
             if elapsed_seconds > time_limit:
                 is_timeout = True
 
-        # 4. Determine correctness and calculate score
-        is_correct = selected_option.is_correct or False
-        score = 0.0
+        current_streak = participant.streak if participant.streak is not None else (client_streak or 0)
 
+        # 4. Calculate dynamic score (max 1000, min 500) + speed order bonus (1st: +100, 2nd & 3rd: +50) + streak bonus (streak * 10)
+        score = 0.0
         if is_correct and not is_timeout:
-            # Score formula: 500 + 500 * (1 - elapsed / time_limit)
-            elapsed_seconds = max(0.0, (now - room.current_question_started_at).total_seconds())
+            new_streak = current_streak + 1
+            participant.streak = new_streak
+
+            elapsed_seconds = max(0.0, (now - room.current_question_started_at).total_seconds()) if room.current_question_started_at else 0.0
             ratio = elapsed_seconds / time_limit
-            score = 500.0 + 500.0 * (1.0 - min(ratio, 1.0))
-            score = round(score, 2)
+            # Base score ranges from 1000 down to 500
+            base_score = 500.0 + 500.0 * (1.0 - min(ratio, 1.0))
+
+            # Count how many participants ALREADY answered correctly for this question in this room
+            correct_count = db.query(func.count(ParticipantAnswer.id)).join(
+                Participant, ParticipantAnswer.participant_id == Participant.id
+            ).filter(
+                Participant.room_id == room.id,
+                ParticipantAnswer.question_id == question_id,
+                ParticipantAnswer.is_correct == True
+            ).scalar() or 0
+
+            # Order bonus: 1st person -> +100, 2nd & 3rd person -> +50, 4th+ -> +0
+            if correct_count == 0:
+                speed_bonus = 100.0
+            elif correct_count in (1, 2):
+                speed_bonus = 50.0
+            else:
+                speed_bonus = 0.0
+
+            # Streak bonus: +10 per streak count (e.g. 7th streak = +70 pts)
+            streak_bonus = new_streak * 10.0
+
+            raw_score = base_score + speed_bonus + streak_bonus
+
+            # Power-up bonus: double points
+            if active_power_up == 'double':
+                raw_score *= 2.0
+
+            score = round(raw_score, 2)
+        else:
+            if active_power_up == 'shield':
+                participant.streak = current_streak
+            else:
+                participant.streak = 0
 
         # 5. Save ParticipantAnswer
         db_answer = ParticipantAnswer(
             participant_id=participant.id,
             question_id=question_id,
-            selected_option_id=selected_option_id,
+            selected_option_id=selected_option.id if selected_option else None,
+            answer_text=answer_text,
             is_correct=is_correct,
             score=score,
             answered_at=now
@@ -238,16 +349,20 @@ class CRUDRoom:
         db.commit()
         db.refresh(participant)
 
-        # Get correct option key (A, B, C, D)
-        KEYS = ["A", "B", "C", "D"]
-        sorted_options = sorted(options, key=lambda o: o.id)
+        # Get correct answer explanation to send back
         correct_option_key = None
-        for idx, opt in enumerate(sorted_options):
-            if opt.is_correct:
-                correct_option_key = KEYS[idx] if idx < len(KEYS) else "A"
-                break
+        if is_short_answer:
+            correct_opt = next((o for o in options if o.is_correct), None)
+            correct_option_key = correct_opt.content if correct_opt else None
+        else:
+            KEYS = ["A", "B", "C", "D"]
+            sorted_options = sorted(options, key=lambda o: o.id)
+            for idx, opt in enumerate(sorted_options):
+                if opt.is_correct:
+                    correct_option_key = KEYS[idx] if idx < len(KEYS) else "A"
+                    break
 
-        return is_correct, score, correct_option_key
+        return is_correct, score, participant.score, correct_option_key
 
     def update_settings(self, db: Session, room: Room, obj_in: RoomSettingsUpdate) -> Room:
         """Update live room settings (e.g. progression_mode, allow_show_rank, shuffle_options)."""
@@ -359,6 +474,15 @@ class CRUDRoom:
             pageIndex=(skip // limit) + 1 if limit > 0 else 1,
             pageSize=limit
         )
+
+    def leave_room(self, db: Session, participant_id: int) -> bool:
+        """Remove a participant from the room."""
+        participant = db.query(Participant).filter(Participant.id == participant_id).first()
+        if participant:
+            db.delete(participant)
+            db.commit()
+            return True
+        return False
 
 
 crud_room = CRUDRoom()

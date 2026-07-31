@@ -12,7 +12,7 @@ import app.models  # Import all models for SQLAlchemy table detection
 # Automatically create tables in PostgreSQL if they do not exist
 Base.metadata.create_all(bind=engine)
 
-# Automatically synchronize PostgreSQL database columns
+# Automatically synchronize PostgreSQL / SQLite database columns
 try:
     from sqlalchemy import text
     with engine.connect() as conn:
@@ -25,6 +25,13 @@ try:
         conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS progression_mode VARCHAR DEFAULT 'manual';"))
         conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS current_question_index INTEGER DEFAULT 0;"))
         conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS current_question_started_at TIMESTAMP;"))
+        try:
+            if settings.DATABASE_URL.startswith("sqlite"):
+                conn.execute(text("ALTER TABLE participants ADD COLUMN streak INTEGER DEFAULT 0;"))
+            else:
+                conn.execute(text("ALTER TABLE participants ADD COLUMN IF NOT EXISTS streak INTEGER DEFAULT 0;"))
+        except Exception:
+            pass
         conn.commit()
 except Exception:
     pass
