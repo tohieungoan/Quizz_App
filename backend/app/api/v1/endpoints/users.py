@@ -40,13 +40,11 @@ router = APIRouter()
 def process_import_background(valid_users: List[dict], admin_id: int, job_id: str):
     """
     Background task to securely hash passwords and insert users via PostgreSQL Upsert.
-    Also sends an in-app notification to the admin upon completion.
     """
     db = SessionLocal()
     try:
         # Import data using Upsert (ON CONFLICT DO NOTHING)
         imported_count = crud_user.bulk_create(db, users_in=valid_users)
-        
         # Create Success Notification for the Admin
         notification = Notification(
             user_id=admin_id,
@@ -222,9 +220,9 @@ def import_users_file(
     
     return UserImportResult(
         success=True,
-        message="File passed validation. Import is now running in the background. You will receive a notification when it completes.",
+        message=f"File passed validation. {len(valid_users)} users are now being imported in the background. You will receive a notification when it completes.",
         job_id=job_id,
-        imported_count=0,
+        imported_count=len(valid_users),
         errors=[]
     )
 

@@ -5,6 +5,7 @@ import App from './App'
 import './index.css'
 import { AuthProvider } from './store/AuthContext'
 import { initSecurityGuard } from './utils/securityGuard'
+import { Toaster } from 'react-hot-toast'
 
 // Initialize Anti-F12, Anti-DevTools & Right-Click protection globally
 initSecurityGuard()
@@ -14,6 +15,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <AuthProvider>
         <App />
+        <Toaster position="top-right" />
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,

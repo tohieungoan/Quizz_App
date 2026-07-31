@@ -3,9 +3,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import io
 
+from typing import List
 from app.api.deps import get_db, get_current_active_admin
 from app.crud.crud_report import crud_report
-from app.schemas.report import ReportMetrics, ReportPageResponse
+from app.schemas.report import ReportMetrics, ReportPageResponse, ReportParticipant, ReportQuestionAnalysis, ReportParticipantPageResponse, ReportQuestionPageResponse
 
 router = APIRouter()
 
@@ -60,5 +61,34 @@ def export_report(
     # Set headers so the browser downloads it as a file
     filename = f"Report_{type.upper()}_{session_id}.zip"
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
-    
     return response
+
+@router.get("/{session_id}/participants", response_model=ReportParticipantPageResponse, summary="Get participants for a report")
+def get_report_participants(
+    session_id: int,
+    type: str = Query(..., description="Type of session: 'ROOM' or 'EXAM'"),
+    pageIndex: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_admin = Depends(get_current_active_admin)
+):
+    """
+    Retrieve list of participants and their scores for a specific room or exam.
+    """
+    skip = (pageIndex - 1) * pageSize
+    return crud_report.get_report_participants(db, session_id=session_id, session_type=type, skip=skip, limit=pageSize)
+
+@router.get("/{session_id}/questions", response_model=ReportQuestionPageResponse, summary="Get question analysis for a report")
+def get_report_questions(
+    session_id: int,
+    type: str = Query(..., description="Type of session: 'ROOM' or 'EXAM'"),
+    pageIndex: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_admin = Depends(get_current_active_admin)
+):
+    """
+    Retrieve question accuracy analysis for a specific room or exam.
+    """
+    skip = (pageIndex - 1) * pageSize
+    return crud_report.get_report_questions(db, session_id=session_id, session_type=type, skip=skip, limit=pageSize)

@@ -207,9 +207,9 @@ export const Profile: React.FC = () => {
                       type="email"
                       name="email"
                       value={formData.email}
-                      onChange={handleChange}
+                      readOnly
                       placeholder="name@company.com"
-                      className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 rounded-xl text-[14px] focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-slate-800 font-bold shadow-sm"
+                      className="w-full pl-11 pr-4 py-3.5 bg-slate-100 border border-slate-200 rounded-xl text-[14px] text-slate-500 font-bold shadow-sm cursor-not-allowed opacity-80"
                     />
                     {userData.email_verified && formData.email !== userData.email && (
                       <p className="text-xs text-orange-600 mt-2 font-medium flex items-center gap-1.5 absolute -bottom-5 left-0">

@@ -6,6 +6,7 @@ import { AlertModal } from '@/components/ui/AlertModal';
 import { Pagination } from '@/components/ui/Pagination';
 import { Quiz } from '@/data/mockDb';
 import { quizService } from '@/services/quizService';
+import { toast } from 'react-hot-toast';
 
 interface QuizzesProps {
   onCreateQuiz: () => void;

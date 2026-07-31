@@ -3,15 +3,24 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ViewState } from '../types';
 import { useLogout } from '../hooks/useLogout';
+import { useNotifications } from '../hooks/useNotifications';
 
 export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () => void, onNavigate?: (view: ViewState, context?: any) => void }) {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(2);
+  const { notifications, unreadCount, markAsRead } = useNotifications();
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { logout } = useLogout();
+  
+  // Get user profile from local storage
+  const profileStr = localStorage.getItem('user_profile');
+  const userProfile = profileStr ? JSON.parse(profileStr) : null;
+  const userName = userProfile?.full_name || userProfile?.username || 'Admin User';
+  const userEmail = userProfile?.email || 'admin@domain.com';
+  const userRole = userProfile?.role === 'SUPER_ADMIN' ? 'SUPER ADMIN' : userProfile?.role || 'ADMIN';
+  const userAvatar = userProfile?.avatar_url || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCxOZFjRtTn1KzMEEV7iX31u9AQ6sJyjqhXc-nsTbTukpeJa84tkqBFP0O5D8rrREHgTH-VjytyLxZvzB2WeG5810KsteEzleJL5ZHIiB8KZeVDmtOOAqvdbTnfCnIrLDGttGrc6RF-HmPQUABytCVLNXag0-WPvZarNNZbotOcRCryBGQSv7jEVK7OpilxyQiIuxSaBrVbSQgIpXThGII7H0KvWtBpEIn3ur8ByDij8uwZ7elZagsCVlZrsWRk6eZ6W4lpUKss7orW';
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -26,15 +35,7 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const notifications = [
-    { id: 1, title: 'System Warning', desc: 'High traffic detected during Calculus III Exam.', time: '5m ago', icon: AlertCircle, color: 'text-error', bg: 'bg-error-container', unread: true },
-    { id: 2, title: 'Room Completed', desc: 'Physics 101 Final has ended successfully.', time: '1h ago', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-100', unread: true },
-    { id: 3, title: 'New Feedback', desc: 'Sarah Jenkins requested a review on Q14.', time: '2h ago', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/10', unread: false },
-    { id: 4, title: 'Server Maintenance', desc: 'Scheduled maintenance in 2 days.', time: '5h ago', icon: AlertCircle, color: 'text-orange-600', bg: 'bg-orange-100', unread: false },
-    { id: 5, title: 'New Room Created', desc: 'Dr. Hayes started Room L3M4N.', time: '1d ago', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-100', unread: false },
-    { id: 6, title: 'Storage Alert', desc: 'Database storage is at 85% capacity.', time: '2d ago', icon: AlertCircle, color: 'text-error', bg: 'bg-error-container', unread: false },
-    { id: 7, title: 'Weekly Report', desc: 'Your weekly engagement report is ready.', time: '3d ago', icon: MessageSquare, color: 'text-primary', bg: 'bg-primary/10', unread: false },
-  ];
+  // Notifications are now fetched from useNotifications hook
 
   return (
     <header className="bg-surface-bright flex justify-between items-center w-full px-4 md:px-margin-desktop h-20 sticky top-0 z-40 border-b border-outline-variant/30 shadow-[0_4px_20px_-10px_rgba(30,0,169,0.05)] backdrop-blur-md bg-opacity-90">
@@ -77,28 +78,51 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
 
                 {/* List */}
                 <div className="max-h-[380px] overflow-y-auto px-1 pb-1 scrollbar-thin scrollbar-thumb-outline-variant/30 scrollbar-track-transparent">
-                  {notifications.map((notif) => (
-                    <div 
-                      key={notif.id} 
-                      className={`p-2.5 mx-1 mb-1 rounded-lg transition-colors flex items-center gap-3 cursor-pointer ${notif.unread && unreadCount > 0 ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-surface-container-lowest'}`}
-                    >
-                      <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 shadow-sm ${notif.bg} ${notif.color}`}>
-                        <notif.icon className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-[13px] font-semibold text-on-surface mb-0.5 leading-snug">{notif.title}</h4>
-                        <p className="text-[13px] text-on-surface-variant leading-snug line-clamp-2">{notif.desc}</p>
-                        <span className="text-[11px] font-medium text-primary mt-1 flex items-center gap-1">
-                          {notif.time}
-                        </span>
-                      </div>
-                      {notif.unread && unreadCount > 0 && (
-                        <div className="shrink-0 flex items-center justify-center w-6">
-                          <div className="w-2.5 h-2.5 bg-primary rounded-full"></div>
-                        </div>
-                      )}
+                  {notifications.length === 0 ? (
+                    <div className="py-8 text-center text-on-surface-variant flex flex-col items-center">
+                      <Bell className="w-8 h-8 opacity-20 mb-2" />
+                      <p className="text-sm">No new notifications</p>
                     </div>
-                  ))}
+                  ) : (
+                    notifications.map((notif) => {
+                      const Icon = notif.icon || Bell;
+                      return (
+                        <div 
+                          key={notif.id} 
+                          onClick={() => {
+                            if (notif.unread) {
+                              markAsRead(notif.id);
+                            }
+                            if (notif.action_url) {
+                              let finalUrl = notif.action_url;
+                              if (!finalUrl.startsWith('http') && !finalUrl.startsWith('/')) {
+                                finalUrl = 'https://' + finalUrl;
+                              }
+                              // Use window.open for external links to be safe, or just href
+                              window.open(finalUrl, '_blank');
+                            }
+                          }}
+                          className={`p-2.5 mx-1 mb-1 rounded-lg transition-colors flex items-center gap-3 cursor-pointer ${notif.unread && unreadCount > 0 ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-surface-container-lowest'}`}
+                        >
+                          <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 shadow-sm ${notif.bg} ${notif.color}`}>
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-[13px] font-semibold text-on-surface mb-0.5 leading-snug">{notif.title}</h4>
+                            <p className="text-[13px] text-on-surface-variant leading-snug line-clamp-2">{notif.desc}</p>
+                            <span className="text-[11px] font-medium text-primary mt-1 flex items-center gap-1">
+                              {notif.time}
+                            </span>
+                          </div>
+                          {notif.unread && unreadCount > 0 && (
+                            <div className="shrink-0 flex items-center justify-center w-6">
+                              <div className="w-2.5 h-2.5 bg-primary rounded-full"></div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
 
                 {/* Footer */}
@@ -130,10 +154,10 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
             aria-label="Profile menu" 
             className={`flex items-center gap-3 p-1.5 pr-4 rounded-full border transition-all duration-200 group shadow-sm ${isProfileOpen ? 'bg-surface-container-high border-outline-variant/50' : 'bg-surface-container-lowest border-transparent hover:border-outline-variant/30 hover:bg-surface-container-low'}`}
           >
-            <img alt="Dr. Elena Vance" className={`h-[34px] w-[34px] rounded-full object-cover ring-2 transition-colors ${isProfileOpen ? 'ring-primary' : 'ring-primary/20 group-hover:ring-primary'}`} src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxOZFjRtTn1KzMEEV7iX31u9AQ6sJyjqhXc-nsTbTukpeJa84tkqBFP0O5D8rrREHgTH-VjytyLxZvzB2WeG5810KsteEzleJL5ZHIiB8KZeVDmtOOAqvdbTnfCnIrLDGttGrc6RF-HmPQUABytCVLNXag0-WPvZarNNZbotOcRCryBGQSv7jEVK7OpilxyQiIuxSaBrVbSQgIpXThGII7H0KvWtBpEIn3ur8ByDij8uwZ7elZagsCVlZrsWRk6eZ6W4lpUKss7orW" />
+            <img alt={userName} className={`h-[34px] w-[34px] rounded-full object-cover ring-2 transition-colors ${isProfileOpen ? 'ring-primary' : 'ring-primary/20 group-hover:ring-primary'}`} src={userAvatar} />
             <div className="hidden md:flex flex-col items-start">
-              <span className="text-label-bold text-[13px] text-on-surface font-extrabold leading-tight">Dr. Elena Vance</span>
-              <span className="text-[10px] uppercase tracking-wider text-primary font-bold mt-0.5">Super Admin</span>
+              <span className="text-label-bold text-[13px] text-on-surface font-extrabold leading-tight">{userName}</span>
+              <span className="text-[10px] uppercase tracking-wider text-primary font-bold mt-0.5">{userRole}</span>
             </div>
           </button>
 
@@ -144,10 +168,10 @@ export function Header({ onToggleSidebar, onNavigate }: { onToggleSidebar?: () =
                 
                 {/* User Info Header */}
                 <div className="flex items-center gap-3 p-3 bg-surface-container-lowest rounded-xl mb-1">
-                  <img alt="Dr. Elena Vance" className="h-10 w-10 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxOZFjRtTn1KzMEEV7iX31u9AQ6sJyjqhXc-nsTbTukpeJa84tkqBFP0O5D8rrREHgTH-VjytyLxZvzB2WeG5810KsteEzleJL5ZHIiB8KZeVDmtOOAqvdbTnfCnIrLDGttGrc6RF-HmPQUABytCVLNXag0-WPvZarNNZbotOcRCryBGQSv7jEVK7OpilxyQiIuxSaBrVbSQgIpXThGII7H0KvWtBpEIn3ur8ByDij8uwZ7elZagsCVlZrsWRk6eZ6W4lpUKss7orW" />
+                  <img alt={userName} className="h-10 w-10 rounded-full object-cover" src={userAvatar} />
                   <div className="flex flex-col">
-                    <span className="text-[15px] font-bold text-on-surface">Elena Vance</span>
-                    <span className="text-xs font-medium text-on-surface-variant">e.vance@eduquest.com</span>
+                    <span className="text-[15px] font-bold text-on-surface">{userName}</span>
+                    <span className="text-xs font-medium text-on-surface-variant">{userEmail}</span>
                   </div>
                 </div>
 

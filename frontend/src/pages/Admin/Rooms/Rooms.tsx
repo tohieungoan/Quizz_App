@@ -4,7 +4,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Pagination } from '@/components/ui/Pagination';
 import { RoomDetailsModal } from '@/components/ui/RoomDetailsModal';
-import { DUMMY_ROOMS, Room } from '@/data/mockDb';
+import { Room } from '@/data/mockDb';
+import { roomService } from '@/services/roomService';
+import { Loader2 } from 'lucide-react';
 
 interface RoomsProps {
   onNavigate?: (view: string, context?: any) => void;
@@ -13,41 +15,67 @@ interface RoomsProps {
 export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [rooms, setRooms] = useState<Room[]>(DUMMY_ROOMS);
+  const [rooms, setRooms] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [totalItems, setTotalItems] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  const filteredRooms = rooms.filter((room) => {
-    const matchesSearch =
-      room.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      room.room_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      room.host_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      room.quiz_title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'ALL' || room.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const fetchRooms = async () => {
+    setIsLoading(true);
+    try {
+      const data = await roomService.getAdminRooms({
+        skip: (currentPage - 1) * itemsPerPage,
+        limit: itemsPerPage,
+        search: searchTerm || undefined,
+        status: statusFilter
+      });
+      console.log("Admin Rooms API response:", data);
+      if (data && data.data) {
+        setRooms(data.data);
+        setTotalItems(data.total);
+      } else {
+        console.warn("Unexpected API response structure:", data);
+        setRooms([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch rooms:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchRooms();
+  }, [currentPage, searchTerm, statusFilter]);
+
+  // Use debounce for search term to avoid spamming API
+  const [searchInput, setSearchInput] = useState('');
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput);
+      setCurrentPage(1); // Reset to page 1 on new search
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const handleOpenDetails = (room: Room) => {
     setSelectedRoom(room);
     setDetailsModalOpen(true);
   };
 
-  const totalPages = Math.ceil(filteredRooms.length / itemsPerPage);
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedRooms = filteredRooms.slice(
-    startIndex,
-    startIndex + itemsPerPage
-  );
 
-  // Reset page to 1 when filters change
+  // Reset page to 1 when status filter changes
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
+  }, [statusFilter]);
 
   // Handle deep linking from Dashboard to open a specific room's modal
   React.useEffect(() => {
@@ -85,8 +113,8 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
               <input
                 type="text"
                 placeholder="Search room title, code, host..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 border border-outline-variant rounded-lg bg-surface-container-lowest text-sm focus:outline-none focus:border-primary text-on-surface"
               />
             </div>
@@ -119,8 +147,15 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
                 </tr>
               </thead>
               <tbody className="text-body-md text-sm text-on-surface divide-y divide-outline-variant/20">
-                {paginatedRooms.length > 0 ? (
-                  paginatedRooms.map((room) => (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-2" />
+                      <p className="text-on-surface-variant text-sm">Loading rooms...</p>
+                    </td>
+                  </tr>
+                ) : rooms.length > 0 ? (
+                  rooms.map((room) => (
                     <tr key={room.id} className="hover:bg-surface-bright transition-colors">
                       <td className="px-6 py-4 font-bold text-primary whitespace-nowrap">{room.room_code}</td>
                       <td className="px-6 py-4 max-w-xs">
@@ -133,7 +168,7 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
                       <td className="px-6 py-4 text-center font-bold text-on-surface">
                         <div className="inline-flex items-center gap-1 bg-surface-container px-2.5 py-1 rounded-full text-xs">
                           <Users className="w-3.5 h-3.5 text-primary" />
-                          {room.participant_count}
+                          {room.participant_count || room.participants?.length || 0}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center whitespace-nowrap">
@@ -160,21 +195,6 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
                       </td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
-                          {room.status === 'FINISHED' && (
-                            <button
-                              onClick={() => {
-                                if (onNavigate) {
-                                  // Call the prop if it's doing something real, but in App.tsx it's dummy.
-                                  onNavigate('reports', { type: room.mode || 'ROOM', roomId: room.room_code, quizTitle: room.quiz_title, roomTitle: room.title });
-                                }
-                                navigate(`/admin/reports/${room.room_code}`, { state: { type: room.mode || 'ROOM', roomId: room.room_code, quizTitle: room.quiz_title, roomTitle: room.title } });
-                              }}
-                              className="p-1.5 text-on-surface-variant hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                              title="View Report"
-                            >
-                              <FileText className="w-5 h-5" />
-                            </button>
-                          )}
                           <button
                             onClick={() => handleOpenDetails(room)}
                             className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
@@ -200,7 +220,7 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            totalItems={filteredRooms.length}
+            totalItems={totalItems}
             startIndex={startIndex}
             itemsPerPage={itemsPerPage}
             onPageChange={(page) => setCurrentPage(page)}

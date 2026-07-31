@@ -34,10 +34,10 @@ export const RoomDistribution: React.FC<Props> = ({ data }) => {
   let centerMain = totalRooms.toString();
   let centerSub = "Total Rooms";
   if (hoveredSlice === 'game') {
-    centerMain = "65%";
+    centerMain = `${gamePercent}%`;
     centerSub = "Game Mode";
   } else if (hoveredSlice === 'exam') {
-    centerMain = "35%";
+    centerMain = `${examPercent}%`;
     centerSub = "Exam Mode";
   }
   
@@ -136,7 +136,7 @@ export const RoomDistribution: React.FC<Props> = ({ data }) => {
               <div className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] shadow-[0_0_12px_rgba(99,102,241,0.5)]"></div>
               <span className="text-[13px] font-bold text-slate-600">Game Mode</span>
             </div>
-            <span className="text-sm font-black text-slate-800">65%</span>
+            <span className="text-sm font-black text-slate-800">{gamePercent}%</span>
           </div>
 
           {/* Exam Legend */}
@@ -151,7 +151,7 @@ export const RoomDistribution: React.FC<Props> = ({ data }) => {
               <div className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-[#0ea5e9] to-[#2dd4bf] shadow-[0_0_12px_rgba(14,165,233,0.5)]"></div>
               <span className="text-[13px] font-bold text-slate-600">Exam Mode</span>
             </div>
-            <span className="text-sm font-black text-slate-800">35%</span>
+            <span className="text-sm font-black text-slate-800">{examPercent}%</span>
           </div>
         </div>
       </div>
