@@ -5,6 +5,7 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Pagination } from '@/components/ui/Pagination';
 import { DUMMY_QUIZZES, Quiz } from '@/data/mockDb';
 import { quizService } from '@/services/quizService';
+import { toast } from 'react-hot-toast';
 
 interface QuizzesProps {
   onCreateQuiz: () => void;
@@ -82,7 +83,7 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
       fetchQuizzes();
     } catch (error) {
       console.error("Failed to duplicate quiz:", error);
-      alert("Failed to duplicate quiz.");
+      toast.error("Failed to duplicate quiz.");
     }
   };
 
@@ -106,7 +107,7 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
         setQuizzes(quizzes.filter((q) => q.id !== quizToDelete));
       } catch (error: any) {
         console.error("Failed to delete quiz:", error);
-        alert(error.message || "Failed to delete quiz.");
+        toast.error(error.message || "Failed to delete quiz.");
       } finally {
         setQuizToDelete(null);
       }

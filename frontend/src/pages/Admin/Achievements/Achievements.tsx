@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Award, Search, Plus, Trophy, Zap, Flame, Moon, Star, Shield, MoreVertical, Edit2, Trash2, ChevronDown, Type, AlignLeft, Sliders, Target, Sparkles, Users, AlertTriangle } from 'lucide-react';
-import { USER_ACHIEVEMENTS, AchievementBadge } from '@/data/userData';
+import { achievementService, AchievementBadge } from '@/services/achievementService';
+import { useEffect } from 'react';
+import { toast } from 'react-hot-toast';
+import { Pagination } from '@/components/ui/Pagination';
 
 const iconMap: Record<string, React.ElementType> = {
   trophy: Trophy,
@@ -69,11 +72,13 @@ const CustomSelect = ({
 
 
 export function Achievements() {
-  const [achievements, setAchievements] = useState<AchievementBadge[]>(USER_ACHIEVEMENTS);
+  const [achievements, setAchievements] = useState<AchievementBadge[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRarity, setFilterRarity] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAchievement, setEditingAchievement] = useState<AchievementBadge | null>(null);
+  const [loading, setLoading] = useState(true);
   
   const [viewingAchievement, setViewingAchievement] = useState<AchievementBadge | null>(null);
   const [unlockedUsers, setUnlockedUsers] = useState<{id: string, name: string, date: string, color: string}[]>([]);
@@ -83,15 +88,28 @@ export function Achievements() {
   
   const [confirmDialog, setConfirmDialog] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void} | null>(null);
 
-  const filteredAchievements = achievements.filter(a => {
-    const matchesSearch = a.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          a.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRarity = filterRarity === 'All' || a.tier === filterRarity;
-    return matchesSearch && matchesRarity;
-  });
+  const fetchBadges = () => {
+    setLoading(true);
+    achievementService.getBadges({
+      pageIndex: currentPage,
+      pageSize: itemsPerPage,
+      search: searchQuery || undefined,
+      tier: filterRarity
+    })
+    .then(res => {
+      setAchievements(res.data);
+      setTotalItems(res.total);
+    })
+    .catch(console.error)
+    .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchBadges();
+  }, [currentPage, filterRarity, searchQuery]);
 
   const stats = {
-    total: achievements.length,
+    total: totalItems,
     legendary: achievements.filter(a => a.tier === 'LEGENDARY').length,
     epic: achievements.filter(a => a.tier === 'EPIC').length,
     rare: achievements.filter(a => a.tier === 'RARE').length,
@@ -100,21 +118,31 @@ export function Achievements() {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingAchievement) {
-      const savedAchievement = {
-        ...editingAchievement,
-        current_progress: editingAchievement.current_progress || 0
+      const payload = {
+        name: editingAchievement.name,
+        description: editingAchievement.description,
+        icon: editingAchievement.icon,
+        category: editingAchievement.category,
+        tier: editingAchievement.tier,
+        points_required: editingAchievement.points_required,
+        type_value: editingAchievement.type_value,
+        target_value: editingAchievement.target_value
       };
       
-      if (editingAchievement.id) {
-        // Edit existing
-        setAchievements(achievements.map(a => a.id === editingAchievement.id ? savedAchievement : a));
-      } else {
-        // Add new
-        setAchievements([{ ...savedAchievement, id: Date.now() }, ...achievements]);
-      }
+      const savePromise = editingAchievement.id 
+        ? achievementService.updateBadge(editingAchievement.id, payload)
+        : achievementService.createBadge(payload);
+        
+      savePromise.then(() => {
+        fetchBadges();
+        setIsModalOpen(false);
+        setEditingAchievement(null);
+        toast.success(editingAchievement.id ? 'Badge updated successfully' : 'Badge created successfully');
+      }).catch(err => {
+        console.error(err);
+        toast.error(err.message || 'Failed to save badge');
+      });
     }
-    setIsModalOpen(false);
-    setEditingAchievement(null);
   };
 
   const handleDelete = (id: number) => {
@@ -123,22 +151,36 @@ export function Achievements() {
       title: 'Delete Achievement',
       message: 'Are you sure you want to permanently delete this achievement? This action cannot be undone.',
       onConfirm: () => {
-        setAchievements(prev => prev.filter(a => a.id !== id));
-        setConfirmDialog(null);
+        achievementService.deleteBadge(id)
+          .then(() => {
+            fetchBadges();
+            setConfirmDialog(null);
+            toast.success('Badge deleted successfully');
+          })
+          .catch(err => {
+            console.error(err);
+            toast.error('Failed to delete badge');
+          });
       }
     });
   };
 
+  const [usersLoading, setUsersLoading] = useState(false);
+
   const handleViewUsers = (badge: AchievementBadge) => {
     setViewingAchievement(badge);
-    const count = (badge.id % 20) + 5; // Fake number of users for mock
-    setUnlockedUsers(Array.from({ length: count }).map((_, i) => ({
-      id: `u-${badge.id}-${i}`,
-      name: `User ${Math.floor(Math.random() * 9000) + 1000}`,
-
-      date: new Date(Date.now() - Math.random() * 10000000000).toLocaleDateString(),
-      color: ['bg-blue-100 text-blue-600', 'bg-emerald-100 text-emerald-600', 'bg-amber-100 text-amber-600', 'bg-purple-100 text-purple-600'][Math.floor(Math.random() * 4)]
-    })));
+    setUsersLoading(true);
+    achievementService.getBadgeUsers(badge.id)
+      .then(users => {
+        setUnlockedUsers(users.map(u => ({
+          id: `u-${u.id}`,
+          name: u.user_name,
+          date: u.unlocked_at ? new Date(u.unlocked_at).toLocaleDateString() : 'Unknown',
+          color: ['bg-blue-100 text-blue-600', 'bg-emerald-100 text-emerald-600', 'bg-amber-100 text-amber-600', 'bg-purple-100 text-purple-600'][Math.floor(Math.random() * 4)]
+        })));
+      })
+      .catch(console.error)
+      .finally(() => setUsersLoading(false));
   };
 
   return (
@@ -232,11 +274,16 @@ export function Achievements() {
         </div>
 
         {/* Grid List */}
+        {loading ? (
+          <div className="flex justify-center py-20 text-slate-500 font-medium">Loading achievements...</div>
+        ) : achievements.length === 0 ? (
+          <div className="flex justify-center py-20 text-slate-500 font-medium">No achievements found.</div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredAchievements.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item) => {
+          {achievements.map((item) => {
             const Icon = iconMap[item.icon] || Award;
             
-            const mockUnlockedCount = (item.id % 890) + 124; // Generate a deterministic fake count based on ID
+            const unlockedCount = item.unlocked_count || 0;
 
             return (
               <div key={item.id} className="group bg-white p-6 rounded-[24px] border border-slate-200/60 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1.5 relative overflow-hidden">
@@ -308,9 +355,9 @@ export function Achievements() {
                       </div>
                       <div>
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 group-hover/users:text-primary/70">Unlocked By</div>
-                        <div className="text-xs font-black text-slate-800">
-                          {mockUnlockedCount.toLocaleString()} <span className="font-bold text-slate-500">players</span>
-                        </div>
+                        <div className="text-sm font-bold text-slate-800">
+                        {unlockedCount.toLocaleString()} <span className="font-bold text-slate-500">players</span>
+                      </div>
                       </div>
                     </div>
                     <ChevronDown className="w-4 h-4 text-slate-300 -rotate-90 group-hover/users:text-primary group-hover/users:translate-x-1 transition-all" />
@@ -321,43 +368,17 @@ export function Achievements() {
           })}
         </div>
         
-        {/* Pagination */}
-        {Math.ceil(filteredAchievements.length / itemsPerPage) > 1 && (
-          <div className="flex justify-center items-center gap-2 mt-8">
-            <button 
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Previous
-            </button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.ceil(filteredAchievements.length / itemsPerPage) }).map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentPage(i + 1)}
-                  className={`w-9 h-9 flex items-center justify-center rounded-lg text-sm font-bold transition-colors ${currentPage === i + 1 ? 'bg-primary text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-            <button 
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filteredAchievements.length / itemsPerPage)))}
-              disabled={currentPage === Math.ceil(filteredAchievements.length / itemsPerPage)}
-              className="px-4 py-2 rounded-xl text-sm font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Next
-            </button>
-          </div>
         )}
         
-        {filteredAchievements.length === 0 && (
-          <div className="py-20 text-center">
-            <Award className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-slate-600">No achievements found</h3>
-            <p className="text-sm text-slate-400 mt-1">Try adjusting your filters or search query.</p>
-          </div>
+        {totalItems > itemsPerPage && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={Math.ceil(totalItems / itemsPerPage)}
+            totalItems={totalItems}
+            startIndex={(currentPage - 1) * itemsPerPage}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+          />
         )}
 
       </div>
@@ -559,8 +580,13 @@ export function Achievements() {
               </button>
             </div>
 
-            <div className="p-2 overflow-y-auto flex-1">
-              {unlockedUsers.length === 0 ? (
+            <div className="p-2 overflow-y-auto flex-1 min-h-[150px]">
+              {usersLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center">
+                  <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
+                  <div className="text-sm text-slate-500 font-medium">Loading users...</div>
+                </div>
+              ) : unlockedUsers.length === 0 ? (
                 <div className="py-12 text-center text-slate-500 font-medium">No one has unlocked this yet.</div>
               ) : (
                 <div className="flex flex-col gap-1">

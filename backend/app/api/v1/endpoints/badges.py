@@ -17,13 +17,15 @@ def read_badges(
     db: Session = Depends(get_db),
     pageIndex: int = Query(1, ge=1),
     pageSize: int = Query(25, ge=1, le=1000),
+    search: Optional[str] = Query(None),
+    tier: Optional[str] = Query(None),
     current_admin=Depends(get_current_active_admin),
 ):
     """
     Retrieve all badges from the system (Admin only). Returns data and total count.
     """
     skip = (pageIndex - 1) * pageSize
-    badges, total = crud_badge.get_multi_with_total(db, skip=skip, limit=pageSize)
+    badges, total = crud_badge.get_multi_with_total(db, skip=skip, limit=pageSize, search=search, tier=tier)
     return {
         "data": badges,
         "total": total,
@@ -118,4 +120,30 @@ def delete_badge(
         )
     badge = crud_badge.delete(db, badge_id=badge_id)
     return badge
+
+
+@router.get("/{badge_id}/users", response_model=List[BadgeUserResponse], summary="Get users who unlocked a badge")
+def read_badge_users(
+    badge_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_active_admin),
+):
+    """
+    Get a list of users who have unlocked this badge.
+    """
+    results = crud_badge.get_badge_users(db, badge_id=badge_id)
+    response_list = []
+    for user_badge, user in results:
+        response_list.append(BadgeUserResponse(
+            id=user_badge.id,
+            user_id=user_badge.user_id,
+            badge_id=user_badge.badge_id,
+            current_progress=user_badge.current_progress,
+            is_unlocked=user_badge.is_unlocked,
+            is_equipped=user_badge.is_equipped,
+            unlocked_at=user_badge.unlocked_at,
+            user_name=user.fullname or user.username,
+            user_email=user.email
+        ))
+    return response_list
 

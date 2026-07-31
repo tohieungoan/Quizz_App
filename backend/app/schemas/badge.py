@@ -57,6 +57,7 @@ class BadgeUpdate(BaseModel):
 class BadgeResponse(BadgeBase):
     id: int
     created_at: datetime
+    unlocked_count: Optional[int] = 0
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -5,10 +5,12 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { Pagination } from '@/components/ui/Pagination';
 import { Dropdown } from '@/components/ui/Dropdown';
-import { DUMMY_USERS } from '@/data/mockDb';
+import { userService } from '@/services/userService';
+import { Loader2 } from 'lucide-react';
 
 export const Users: React.FC = () => {
-  const [users, setUsers] = useState<UserData[]>(DUMMY_USERS);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -21,6 +23,8 @@ export const Users: React.FC = () => {
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<UserMode>('add');
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
@@ -28,7 +32,7 @@ export const Users: React.FC = () => {
   const [alertState, setAlertState] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message: string | string[];
     type: 'success' | 'error' | 'info';
   }>({
     isOpen: false,
@@ -55,15 +59,52 @@ export const Users: React.FC = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
 
+  const fetchUsers = async () => {
+    setIsLoading(true);
+    try {
+      const data = await userService.getUsers({ limit: 10000 });
+      const formattedUsers: UserData[] = data.map((u) => ({
+        id: u.id.toString(),
+        name: u.fullname || 'Unknown',
+        email: u.email,
+        role: u.role as 'SUPER_ADMIN' | 'USER',
+        status: u.status as 'ACTIVE' | 'SUSPENDED',
+        initials: (u.fullname || u.email)
+          .split(' ')
+          .map((n) => n[0])
+          .join('')
+          .toUpperCase()
+          .substring(0, 2),
+        email_verified: u.email_verified,
+        achievement_points: u.achievement_points,
+        last_login: u.last_login ? new Date(u.last_login).toLocaleString() : 'Never',
+        created_at: new Date(u.created_at).toLocaleDateString(),
+        avatar: u.avatar || undefined,
+        assigned_quizzes: [],
+      }));
+      setUsers(formattedUsers);
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchUsers();
+  }, []);
+
   // Handlers
   const handleCreateNew = () => {
     setSelectedUser(null);
+    setFieldErrors({});
     setModalMode('add');
     setActionModalOpen(true);
   };
 
   const handleEdit = (user: UserData) => {
     setSelectedUser(user);
+    setFieldErrors({});
     setModalMode('edit');
     setActionModalOpen(true);
   };
@@ -79,64 +120,124 @@ export const Users: React.FC = () => {
     setDeleteConfirmOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (userToDelete) {
-      setUsers(users.filter((u) => u.id !== userToDelete));
-      setUserToDelete(null);
+      try {
+        await userService.deleteUser(Number(userToDelete));
+        setUsers(users.filter((u) => u.id !== userToDelete));
+        setAlertState({
+          isOpen: true,
+          title: 'User Deleted',
+          message: 'The user has been successfully removed.',
+          type: 'success',
+        });
+      } catch (error: any) {
+        setAlertState({
+          isOpen: true,
+          title: 'Delete Failed',
+          message: error.message || 'Failed to delete user.',
+          type: 'error',
+        });
+      } finally {
+        setUserToDelete(null);
+        setDeleteConfirmOpen(false);
+      }
     }
   };
 
-  const handleSaveUser = (userData: Partial<UserData>) => {
-    if (modalMode === 'add') {
-      const newUser: UserData = {
-        id: `U-${Math.floor(Math.random() * 900) + 100}`,
-        name: userData.name || 'New User',
-        email: userData.email || '',
-        role: userData.role || 'USER',
-        status: userData.status || 'ACTIVE',
-        initials: (userData.name || 'NU')
-          .split(' ')
-          .map((n) => n[0])
-          .join('')
-          .toUpperCase(),
-        email_verified: userData.email_verified || false,
-        achievement_points: userData.achievement_points || 0,
-        last_login: 'Just now',
-        created_at: new Date().toISOString(),
-        assigned_quizzes: [],
-      };
-      setUsers([newUser, ...users]);
-      setAlertState({
-        isOpen: true,
-        title: 'User Created',
-        message: 'New user has been successfully created.',
-        type: 'success',
-      });
-    } else if (modalMode === 'edit' && selectedUser) {
-      setUsers(users.map((u) => (u.id === selectedUser.id ? { ...u, ...userData } : u)));
-      setAlertState({
-        isOpen: true,
-        title: 'User Updated',
-        message: 'User information has been successfully updated.',
-        type: 'success',
-      });
+  const handleSaveUser = async (userData: Partial<UserData> & { password?: string }) => {
+    setIsSaving(true);
+    setFieldErrors({});
+    try {
+      if (modalMode === 'add') {
+        const payload = {
+          email: userData.email || '',
+          fullname: userData.name || '',
+          role: userData.role || 'USER',
+          status: userData.status || 'ACTIVE',
+          password: userData.password || 'password123',
+          avatar: userData.avatar || undefined,
+        };
+        await userService.createUser(payload);
+        setAlertState({
+          isOpen: true,
+          title: 'User Created',
+          message: 'New user has been successfully created.',
+          type: 'success',
+        });
+      } else if (modalMode === 'edit' && selectedUser) {
+        const payload = {
+          email: userData.email,
+          fullname: userData.name,
+          role: userData.role,
+          status: userData.status,
+          password: userData.password || undefined,
+          avatar: userData.avatar || undefined,
+          achievement_points: userData.achievement_points,
+        };
+        await userService.updateUser(Number(selectedUser.id), payload);
+        setAlertState({
+          isOpen: true,
+          title: 'User Updated',
+          message: 'User information has been successfully updated.',
+          type: 'success',
+        });
+      }
+      fetchUsers(); // Refresh the list
+      setActionModalOpen(false);
+    } catch (error: any) {
+      if (error.name === 'ApiError' && error.fieldErrors) {
+        setFieldErrors(error.fieldErrors);
+      } else {
+        setAlertState({
+          isOpen: true,
+          title: 'Operation Failed',
+          message: error.message || 'An error occurred while saving the user.',
+          type: 'error',
+        });
+      }
+    } finally {
+      setIsSaving(false);
     }
-    setActionModalOpen(false);
   };
 
   const handleBatchImport = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.csv, .json';
-    input.onchange = (e: any) => {
+    input.accept = '.csv, .json, .xlsx, .xls';
+    input.onchange = async (e: any) => {
       const file = e.target.files[0];
       if (file) {
-        setAlertState({
-          isOpen: true,
-          title: 'Import Successful',
-          message: `Successfully imported users from ${file.name}`,
-          type: 'success',
-        });
+        try {
+          const res = await userService.importUsers(file);
+          if (res.success === false) {
+            setAlertState({
+              isOpen: true,
+              title: 'Import Validation Failed',
+              message: res.errors && res.errors.length > 0 ? res.errors : res.message,
+              type: 'error',
+            });
+            return;
+          }
+          setAlertState({
+            isOpen: true,
+            title: 'Import Started',
+            message: `Successfully queued ${res.imported_count || 'all valid'} users for import. The process is running in the background.`,
+            type: 'success',
+          });
+          
+          // Automatically refresh the table after 1.5 seconds to catch newly inserted background users
+          setTimeout(() => {
+            fetchUsers();
+          }, 1500);
+        } catch (error: any) {
+          setAlertState({
+            isOpen: true,
+            title: 'Import Failed',
+            message: error.message || 'Failed to import users.',
+            type: 'error',
+          });
+        }
       }
     };
     input.click();
@@ -235,7 +336,14 @@ export const Users: React.FC = () => {
               </tr>
             </thead>
             <tbody className="text-body-md text-sm text-on-surface divide-y divide-outline-variant/20">
-              {currentUsers.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-2" />
+                    <p className="text-on-surface-variant text-sm">Loading users...</p>
+                  </td>
+                </tr>
+              ) : currentUsers.length > 0 ? (
                 currentUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-surface-bright transition-colors">
                     <td className="px-4 md:px-6 py-4">
@@ -331,6 +439,8 @@ export const Users: React.FC = () => {
         user={selectedUser}
         onClose={() => setActionModalOpen(false)}
         onSave={handleSaveUser}
+        fieldErrors={fieldErrors}
+        isSaving={isSaving}
       />
 
       <ConfirmModal

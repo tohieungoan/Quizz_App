@@ -24,11 +24,37 @@ class CRUDBadge:
         self, 
         db: Session, 
         skip: int = 0, 
-        limit: int = 100
+        limit: int = 100,
+        search: Optional[str] = None,
+        tier: Optional[str] = None
     ) -> Tuple[List[Badge], int]:
         """Get multiple badges and total count for pagination."""
-        total = db.query(Badge).count()
-        badges = db.query(Badge).order_by(Badge.id.desc()).offset(skip).limit(limit).all()
+        query = db.query(Badge)
+        
+        if search:
+            query = query.filter(Badge.name.ilike(f"%{search}%") | Badge.description.ilike(f"%{search}%"))
+        if tier and tier != "All":
+            query = query.filter(Badge.tier == tier)
+            
+        total = query.count()
+        badges = query.order_by(Badge.id.desc()).offset(skip).limit(limit).all()
+        
+        badge_ids = [b.id for b in badges]
+        if badge_ids:
+            from app.models.badge import UserBadge
+            from sqlalchemy import func
+            counts = db.query(UserBadge.badge_id, func.count(UserBadge.id)).filter(
+                UserBadge.badge_id.in_(badge_ids),
+                UserBadge.is_unlocked == True
+            ).group_by(UserBadge.badge_id).all()
+            
+            count_map = {badge_id: count for badge_id, count in counts}
+            for badge in badges:
+                badge.unlocked_count = count_map.get(badge.id, 0)
+        else:
+            for badge in badges:
+                badge.unlocked_count = 0
+                
         return badges, total
 
     def create(self, db: Session, obj_in: BadgeCreate) -> Badge:
@@ -72,7 +98,18 @@ class CRUDBadge:
             db.commit()
         return obj
 
-
-
+    def get_badge_users(self, db: Session, badge_id: int) -> List[Any]:
+        """Get all users who have unlocked a specific badge."""
+        from app.models.badge import UserBadge
+        from app.models.user import User
+        
+        return (
+            db.query(UserBadge, User)
+            .join(User, UserBadge.user_id == User.id)
+            .filter(UserBadge.badge_id == badge_id)
+            .filter(UserBadge.is_unlocked == True)
+            .order_by(UserBadge.unlocked_at.desc())
+            .all()
+        )
 
 crud_badge = CRUDBadge()

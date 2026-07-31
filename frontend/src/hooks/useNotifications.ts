@@ -48,7 +48,8 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
   }
 
   // 2. Map Time & Date from created_at
-  const createdDate = new Date(item.created_at);
+  const dateStrUtc = item.created_at.endsWith('Z') ? item.created_at : `${item.created_at}Z`;
+  const createdDate = new Date(dateStrUtc);
   const now = new Date();
   const diffMs = now.getTime() - createdDate.getTime();
   const diffMins = Math.floor(diffMs / 60000);

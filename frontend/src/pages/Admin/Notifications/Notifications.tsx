@@ -4,7 +4,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 
 export function Notifications() {
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
-  const { notifications, markAllAsRead } = useNotifications();
+  const { notifications, markAllAsRead, markAsRead } = useNotifications();
 
   const displayedNotifs = activeTab === 'unread' ? notifications.filter(n => n.unread) : notifications;
 
@@ -72,7 +72,19 @@ export function Notifications() {
             return (
               <div
                 key={n.id}
-                className={`p-4 rounded-xl border transition-all flex items-start justify-between gap-4 ${
+                onClick={() => {
+                  if (n.unread) {
+                    markAsRead(n.id);
+                  }
+                  if (n.action_url) {
+                    let finalUrl = n.action_url;
+                    if (!finalUrl.startsWith('http') && !finalUrl.startsWith('/')) {
+                      finalUrl = 'https://' + finalUrl;
+                    }
+                    window.open(finalUrl, '_blank');
+                  }
+                }}
+                className={`p-4 rounded-xl border transition-all flex items-start justify-between gap-4 cursor-pointer ${
                   n.unread
                     ? 'bg-white border-primary/30 shadow-sm ring-1 ring-primary/10'
                     : 'bg-surface-container-lowest border-outline-variant/30 opacity-90'

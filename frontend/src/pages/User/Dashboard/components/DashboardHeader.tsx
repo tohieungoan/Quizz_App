@@ -133,7 +133,11 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                             markAsRead(item.id);
                           }
                           if (item.action_url) {
-                            window.location.href = item.action_url;
+                            let finalUrl = item.action_url;
+                            if (!finalUrl.startsWith('http') && !finalUrl.startsWith('/')) {
+                              finalUrl = 'https://' + finalUrl;
+                            }
+                            window.open(finalUrl, '_blank');
                           }
                         }}
                         className={`p-3.5 hover:bg-surface-bright transition-colors flex items-start gap-3 cursor-pointer ${item.unread ? 'bg-primary/5' : ''}`}
