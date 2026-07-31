@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, Users, Laptop, Award, Zap, ChevronRight, Play } from 'lucide-react'
+import { roomService } from '@/services'
 import landingPage1 from '@/assets/images/landing-page-1.jpg'
 import landingPage2 from '@/assets/images/landing-page-2.jpg'
 import landingPage3 from '@/assets/images/landing-page-3.jpg'
@@ -9,7 +10,18 @@ export const LandingPage: React.FC = () => {
   const navigate = useNavigate()
   const [code, setCode] = useState<string[]>(['', '', '', '', '', ''])
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
-  const [nickname, setNickname] = useState('')
+  const [nickname, setNickname] = useState(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      try {
+        const u = JSON.parse(stored)
+        if (u && u.name) return u.name
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    return ''
+  })
   const [codeError, setCodeError] = useState(false)
   const [nickError, setNickError] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
@@ -79,10 +91,45 @@ export const LandingPage: React.FC = () => {
 
     if (isValid) {
       setIsConnecting(true)
-      setTimeout(() => {
-        // Navigate to Lobby with state roomCode and nickname
-        navigate('/lobby', { state: { roomCode, nickname: nickname.trim(), isHost: false, fromSource: 'landing' } })
-      }, 800)
+      roomService.joinRoom(roomCode, nickname.trim())
+        .then(async (participantData) => {
+          let roomData: any = null
+          try {
+            roomData = await roomService.getRoom(roomCode)
+          } catch (e) {}
+
+          if (roomData && roomData.status === 'PLAYING') {
+            navigate('/play', {
+              state: {
+                nickname: nickname.trim(),
+                roomCode,
+                roomId: participantData.room_id,
+                participantId: participantData.id,
+                mode: roomData.mode || 'CLASSIC',
+                score: participantData.score || 0,
+                streak: 0,
+                questionNumber: roomData.current_question_index || 1,
+                fromSource: 'landing'
+              }
+            })
+          } else {
+            navigate('/lobby', {
+              state: {
+                roomCode,
+                nickname: nickname.trim(),
+                participantId: participantData.id,
+                roomId: participantData.room_id,
+                isHost: false,
+                fromSource: 'landing'
+              }
+            })
+          }
+        })
+        .catch((err: any) => {
+          setIsConnecting(false)
+          const errorMsg = err.response?.data?.detail || err.message || 'Failed to join room'
+          alert(`Join Error: ${errorMsg}`)
+        })
     }
   }
 

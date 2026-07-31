@@ -41,14 +41,18 @@ import { GraduationCap } from 'lucide-react';
 const PUBLIC_ONLY_ROUTES = ['/login', '/register'];
 
 const PROTECTED_ROUTES = [
-  '/dashboard', '/lobby', '/exam', '/play', '/leaderboard',
-  '/powerups', '/create-quiz', '/host-panel', '/admin',
+  '/dashboard', '/create-quiz', '/host-panel', '/admin',
+];
+
+const GAME_ROUTES = [
+  '/lobby', '/exam', '/play', '/leaderboard', '/powerups',
 ];
 
 // Routes without Header/Footer (except public pages with header)
 const NO_LAYOUT_ROUTES = [
   '/login', '/register', '/reset-password', '/verify-email', '/verify-notification-email',
   ...PROTECTED_ROUTES,
+  ...GAME_ROUTES,
 ];
 
 const matchesRoute = (pathname: string, routes: string[]) =>

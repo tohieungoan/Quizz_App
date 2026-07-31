@@ -23,7 +23,7 @@ from app.schemas.exam import (
 import logging
 logger = logging.getLogger(__name__)
 
-def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str = None) -> None:
+def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str | None = None) -> None:
     """
     Safely dispatch a WebSocket notification from a synchronous thread worker in FastAPI.
     """
@@ -643,7 +643,7 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
     db.add(assignee)
     db.commit()
     db.refresh(assignee)
-    return assignee.score
+    return assignee.score if assignee.score is not None else 0.0
 
 
 @router.post("/{exam_id}/start", summary="Start taking an exam")

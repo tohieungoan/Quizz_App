@@ -28,14 +28,36 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
     const typeUpper = (item.type || '').toUpperCase();
     const titleUpper = (item.title || '').toUpperCase();
+    const contentUpper = (item.content || '').toUpperCase();
 
+    // Helper for navigation
+    const goToTab = (tab: string, subTab?: string) => {
+      sessionStorage.setItem('dashboard_active_tab', tab);
+      if (subTab) {
+        sessionStorage.setItem('host_studio_active_subtab', subTab);
+      }
+      window.dispatchEvent(new CustomEvent('quizzapp_switch_dashboard_tab', { detail: { tab } }));
+      if (subTab) {
+        window.dispatchEvent(new CustomEvent('quizzapp_switch_host_subtab', { detail: { subTab } }));
+      }
+      if (window.location.pathname !== '/dashboard') {
+        navigate('/dashboard', { state: { activeTab: tab } });
+      }
+    };
+
+    // 0. Live quiz lobby invitation -> Navigate directly to lobby
+    if (item.action_url && item.action_url.includes('/lobby')) {
+      navigate(item.action_url);
+      return;
+    }
+    
     // 1. EXAM_ASSIGNED -> Navigate to My Assigned Exams tab
     if (
       typeUpper === 'EXAM_ASSIGNED' ||
       titleUpper.includes('EXAM ASSIGNED') ||
       titleUpper.includes('NEW EXAM')
     ) {
-      window.dispatchEvent(new CustomEvent('quizzapp_switch_dashboard_tab', { detail: { tab: 'assigned_exams' } }));
+      goToTab('assigned_exams');
     }
     // 2. EXAM_GRADED / FEEDBACK / RESULTS -> Navigate to History & Results tab
     else if (
@@ -46,28 +68,42 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       titleUpper.includes('FEEDBACK') ||
       titleUpper.includes('RESULT')
     ) {
-      window.dispatchEvent(new CustomEvent('quizzapp_switch_dashboard_tab', { detail: { tab: 'history' } }));
+      goToTab('history');
     }
-    // 3. HOST_STUDIO / SUBMISSION -> Navigate to Host Studio tab
+    // 3. GROUP / JOIN REQUEST -> Navigate to Host Studio tab -> My Study Groups sub-tab
+    else if (
+      typeUpper.includes('JOIN_REQUEST') ||
+      typeUpper.includes('GROUP') ||
+      titleUpper.includes('JOIN REQUEST') ||
+      titleUpper.includes('JOIN') ||
+      titleUpper.includes('GROUP') ||
+      contentUpper.includes('REQUEST TO JOIN') ||
+      (item.action_url && item.action_url.startsWith('/groups'))
+    ) {
+      goToTab('host_studio', 'groups');
+    }
+    // 4. HOST_STUDIO / SUBMISSION -> Navigate to Host Studio tab
     else if (
       typeUpper === 'SUBMISSION' ||
       typeUpper === 'HOST_STUDIO' ||
       titleUpper.includes('SUBMISSION')
     ) {
-      window.dispatchEvent(new CustomEvent('quizzapp_switch_dashboard_tab', { detail: { tab: 'host_studio' } }));
+      goToTab('host_studio');
     }
-    // 4. SETTINGS / PROFILE -> Navigate to Settings tab
+    // 5. SETTINGS / PROFILE -> Navigate to Settings tab
     else if (
       typeUpper === 'SETTINGS' ||
       typeUpper === 'PROFILE' ||
       titleUpper.includes('PROFILE')
     ) {
-      window.dispatchEvent(new CustomEvent('quizzapp_switch_dashboard_tab', { detail: { tab: 'settings' } }));
+      goToTab('settings');
     }
-    // 5. Explicit action URL navigation
+    // 6. Explicit action URL navigation
     else if (item.action_url) {
       if (item.action_url.startsWith('/exams/')) {
-        window.dispatchEvent(new CustomEvent('quizzapp_switch_dashboard_tab', { detail: { tab: 'assigned_exams' } }));
+        goToTab('assigned_exams');
+      } else if (item.action_url.startsWith('/groups')) {
+        goToTab('host_studio', 'groups');
       } else {
         navigate(item.action_url);
       }

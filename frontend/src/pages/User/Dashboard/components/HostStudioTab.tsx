@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Play,
@@ -41,8 +42,7 @@ import {
   Eye
 } from 'lucide-react';
 import { HOST_GROUPS_LIST, HostGroup, GroupMember, USER_ASSIGNED_EXAMS, AssignedExam } from '@/data/userData';
-import { groupService, quizService, examService } from '@/services';
-import { useEffect } from 'react';
+import { groupService, quizService, examService, roomService } from '@/services';
 
 const GROUP_ICONS = {
   GraduationCap,
@@ -122,7 +122,29 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   onCreateQuiz,
   onEditQuiz,
 }) => {
-  const [subTab, setSubTab] = useState<'quizzes' | 'groups' | 'exams'>('quizzes');
+  const [subTab, setSubTabState] = useState<'quizzes' | 'groups' | 'exams'>(() => {
+    const saved = sessionStorage.getItem('host_studio_active_subtab');
+    return (saved as 'quizzes' | 'groups' | 'exams') || 'quizzes';
+  });
+
+  const setSubTab = (tab: 'quizzes' | 'groups' | 'exams') => {
+    setSubTabState(tab);
+    sessionStorage.setItem('host_studio_active_subtab', tab);
+  };
+
+  useEffect(() => {
+    const handleSwitchSubTab = (e: Event) => {
+      const customEvt = e as CustomEvent<{ subTab?: 'quizzes' | 'groups' | 'exams' }>;
+      if (customEvt.detail?.subTab) {
+        setSubTabState(customEvt.detail.subTab);
+        sessionStorage.setItem('host_studio_active_subtab', customEvt.detail.subTab);
+      }
+    };
+    window.addEventListener('quizzapp_switch_host_subtab', handleSwitchSubTab);
+    return () => {
+      window.removeEventListener('quizzapp_switch_host_subtab', handleSwitchSubTab);
+    };
+  }, []);
   const [groups, setGroups] = useState<HostGroup[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [groupsError, setGroupsError] = useState<string | null>(null);
@@ -252,10 +274,29 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     }
   };
 
+  const navigate = useNavigate();
+  const [activeRooms, setActiveRooms] = useState<any[]>([]);
+  const [isLoadingActiveRooms, setIsLoadingActiveRooms] = useState(false);
+
+  const loadActiveRooms = async () => {
+    try {
+      setIsLoadingActiveRooms(true);
+      const res = await roomService.getMyActiveRooms();
+      if (Array.isArray(res)) {
+        setActiveRooms(res);
+      }
+    } catch (err) {
+      console.error('Failed to load active rooms:', err);
+    } finally {
+      setIsLoadingActiveRooms(false);
+    }
+  };
+
   useEffect(() => {
     loadGroups();
     loadQuizzes();
     loadExams();
+    loadActiveRooms();
   }, []);
 
   // Copy Feedback State
@@ -1391,6 +1432,126 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             <Play className="w-4 h-4 fill-current" /> Launch Live Room 🚀
           </button>
         </div>
+      </div>
+
+      {/* 🔴 Active Live Rooms Management Section */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 text-white border border-indigo-500/30 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center relative">
+              <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping absolute" />
+              <span className="w-2.5 h-2.5 bg-rose-500 rounded-full relative" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                Active Live Rooms Management
+                <span className="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded-full font-black uppercase">
+                  {activeRooms.length} Live
+                </span>
+              </h3>
+              <p className="text-xs text-slate-300 font-medium">
+                Manage multiple live rooms simultaneously. Re-enter control panels or close active sessions anytime.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={loadActiveRooms}
+            disabled={isLoadingActiveRooms}
+            className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 flex items-center gap-1.5 cursor-pointer"
+          >
+            Refresh List
+          </button>
+        </div>
+
+        {isLoadingActiveRooms ? (
+          <div className="py-6 text-center text-xs text-slate-400 font-bold animate-pulse">
+            Loading active rooms...
+          </div>
+        ) : activeRooms.length === 0 ? (
+          <div className="py-6 text-center text-xs text-slate-400 bg-white/5 rounded-2xl border border-white/10">
+            No active live rooms running right now. Click <strong>"Launch Live Room 🚀"</strong> above to start a new session.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {activeRooms.map((room) => {
+              const isWaiting = room.status === 'WAITING';
+              return (
+                <div key={room.id} className="bg-slate-800/80 border border-white/10 p-4 rounded-2xl flex flex-col justify-between gap-3 shadow-md hover:border-indigo-400/50 transition-all">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-500/30">
+                        PIN: {room.room_code}
+                      </span>
+                      <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                        isWaiting ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      }`}>
+                        {isWaiting ? '⏳ Lobby Waiting' : `▶ Playing (Q${room.current_question_index})`}
+                      </span>
+                    </div>
+
+                    <h4 className="text-sm font-black text-white truncate">
+                      {room.quiz?.title || room.title || 'Live Quiz Room'}
+                    </h4>
+
+                    <div className="flex items-center gap-3 text-[11px] text-slate-300 mt-1.5 font-bold">
+                      <span className="flex items-center gap-1">
+                        👥 {room.participants_count ?? room.participants?.length ?? 0} Members
+                      </span>
+                      <span>•</span>
+                      <span className="uppercase text-amber-300 font-extrabold">{room.mode || 'CLASSIC'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                    <button
+                      onClick={() => {
+                        if (isWaiting) {
+                          navigate('/lobby', {
+                            state: {
+                              roomCode: room.room_code,
+                              roomId: room.id,
+                              isHost: true,
+                              quizTitle: room.quiz?.title || 'Quiz'
+                            }
+                          });
+                        } else {
+                          navigate('/host-panel', {
+                            state: {
+                              roomCode: room.room_code,
+                              roomId: room.id,
+                              quizTitle: room.quiz?.title || 'Quiz',
+                              progressionMode: room.progression_mode || 'manual'
+                            }
+                          });
+                        }
+                      }}
+                      className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" /> {isWaiting ? 'Open Lobby' : 'Control Panel'}
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        if (window.confirm(`Are you sure you want to end room PIN: ${room.room_code}?`)) {
+                          try {
+                            await roomService.endRoom(room.id);
+                            loadActiveRooms();
+                          } catch (e) {
+                            alert("Failed to end room.");
+                          }
+                        }
+                      }}
+                      className="px-3 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs rounded-xl transition-all flex items-center justify-center cursor-pointer"
+                      title="End and close room"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Sub-tab Navigation */}

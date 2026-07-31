@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Trophy,
@@ -11,11 +11,15 @@ import {
   Award,
   Crown,
   TrendingUp,
+  Zap,
+  Star,
 } from 'lucide-react';
+import { roomService } from '@/services';
 
 interface LeaderboardPlayer {
   id: string;
   name: string;
+  avatar?: string;
   score: number;
   displayScore: number;
   streak: number;
@@ -27,14 +31,94 @@ interface LeaderboardPlayer {
   pointsToAdd: number;
 }
 
+// Custom Confetti Component
+const ConfettiCanvas: React.FC<{ active: boolean }> = ({ active }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const colors = ['#f59e0b', '#ec4899', '#8b5cf6', '#10b981', '#3b82f6', '#fbbf24'];
+    const confettiCount = 80;
+    const particles = Array.from({ length: confettiCount }).map(() => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height - canvas.height,
+      r: Math.random() * 6 + 4,
+      d: Math.random() * confettiCount,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      tilt: Math.floor(Math.random() * 10) - 10,
+      tiltAngleIncremental: Math.random() * 0.07 + 0.05,
+      tiltAngle: 0,
+      speedY: Math.random() * 2 + 1.5,
+      rotation: Math.random() * 360,
+    }));
+
+    let animationFrameId: number;
+    let opacity = 1;
+
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach((p) => {
+        p.tiltAngle += p.tiltAngleIncremental;
+        p.y += p.speedY;
+        p.tilt = Math.sin(p.tiltAngle) * 15;
+
+        if (p.y > canvas.height) {
+          p.y = -10;
+          p.x = Math.random() * canvas.width;
+        }
+
+        ctx.beginPath();
+        ctx.lineWidth = p.r;
+        ctx.strokeStyle = p.color;
+        ctx.globalAlpha = opacity;
+        ctx.moveTo(p.x + p.tilt + p.r / 4, p.y);
+        ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r / 4);
+        ctx.stroke();
+      });
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    // Fade out confetti slowly after 3.5 seconds
+    const fadeTimer = setTimeout(() => {
+      const fadeInterval = setInterval(() => {
+        opacity -= 0.05;
+        if (opacity <= 0) {
+          clearInterval(fadeInterval);
+          cancelAnimationFrame(animationFrameId);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }, 50);
+    }, 3500);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      clearTimeout(fadeTimer);
+    };
+  }, [active]);
+
+  if (!active) return null;
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />;
+};
+
 export const LiveLeaderboard: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // State variables passed from Answer Screen
   const state = location.state as {
     nickname?: string;
     roomCode?: string;
+    roomId?: number;
     score?: number;
     streak?: number;
     lastPointsEarned?: number;
@@ -44,382 +128,347 @@ export const LiveLeaderboard: React.FC = () => {
     activeTab?: string;
   } | null;
 
-  const nickname = state?.nickname || 'Guest';
+  // Restore state from sessionStorage on page refresh
+  const roomCode = state?.roomCode || sessionStorage.getItem('play_room_code') || '';
+  const nickname = state?.nickname || sessionStorage.getItem('play_nickname') || 'Guest';
+  const roomId = state?.roomId || Number(sessionStorage.getItem('play_room_id') || 0);
+  const myStreak = state?.streak ?? Number(sessionStorage.getItem('play_final_streak') || 0);
   const fromSource = state?.fromSource || (localStorage.getItem('token') ? 'dashboard' : 'landing');
   const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room';
-  const roomCode = state?.roomCode || '823914';
-  const myFinalScore = state?.score ?? 4450;
-  const myStreak = state?.streak ?? 4;
-  const lastPointsEarned = state?.lastPointsEarned ?? 1000;
-  const lastIsCorrect = state?.lastIsCorrect ?? true;
-  const questionNumber = state?.questionNumber || 3;
 
-  const TOTAL_QUESTIONS = 3;
-  const isGameFinished = questionNumber >= TOTAL_QUESTIONS;
-
-  // Initial Players with base scores
-  const initialPlayers: LeaderboardPlayer[] = [
-    {
-      id: '1',
-      name: 'SpeedRunner',
-      score: 4800,
-      displayScore: 4800,
-      streak: 4,
-      change: 'same',
-      rankChangeAmount: 0,
-      oldRank: 1,
-      newRank: 1,
-      pointsToAdd: isGameFinished ? 300 : 500,
-    },
-    {
-      id: '2',
-      name: 'SarahM',
-      score: 4200,
-      displayScore: 4200,
-      streak: 3,
-      change: 'same',
-      rankChangeAmount: 0,
-      oldRank: 2,
-      newRank: 2,
-      pointsToAdd: isGameFinished ? 100 : 150,
-    },
-    {
-      id: '3',
-      name: nickname,
-      score: myFinalScore - lastPointsEarned,
-      displayScore: myFinalScore - lastPointsEarned,
-      streak: lastIsCorrect ? Math.max(0, myStreak - 1) : myStreak,
-      change: 'same',
-      rankChangeAmount: 0,
-      isMe: true,
-      oldRank: 3,
-      newRank: 3,
-      pointsToAdd: lastPointsEarned,
-    },
-    {
-      id: '4',
-      name: 'DevPro',
-      score: 3700,
-      displayScore: 3700,
-      streak: 2,
-      change: 'same',
-      rankChangeAmount: 0,
-      oldRank: 4,
-      newRank: 4,
-      pointsToAdd: isGameFinished ? 200 : 400,
-    },
-    {
-      id: '5',
-      name: 'Lara Croft',
-      score: 3600,
-      displayScore: 3600,
-      streak: 0,
-      change: 'same',
-      rankChangeAmount: 0,
-      oldRank: 5,
-      newRank: 5,
-      pointsToAdd: 100,
-    },
-    {
-      id: '6',
-      name: 'BugHunter',
-      score: 3400,
-      displayScore: 3400,
-      streak: 1,
-      change: 'same',
-      rankChangeAmount: 0,
-      oldRank: 6,
-      newRank: 6,
-      pointsToAdd: 50,
-    },
-    {
-      id: '7',
-      name: 'FlexboxKing',
-      score: 3100,
-      displayScore: 3100,
-      streak: 0,
-      change: 'same',
-      rankChangeAmount: 0,
-      oldRank: 7,
-      newRank: 7,
-      pointsToAdd: 0,
-    },
-  ];
-
-  // Sort initially to establish old ranks
-  const sortedInitial = [...initialPlayers].sort((a, b) => b.score - a.score);
-  sortedInitial.forEach((p, idx) => {
-    p.oldRank = idx + 1;
-    p.newRank = idx + 1;
-  });
-
-  const [players, setPlayers] = useState<LeaderboardPlayer[]>(sortedInitial);
+  const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<'initial' | 'adding_scores' | 'ranking_shift' | 'podium_reveal'>('initial');
 
+  // Persist session parameters
   useEffect(() => {
-    // 1. Start score count-up after 800ms
+    if (state?.roomId) sessionStorage.setItem('play_room_id', String(state.roomId));
+    if (state?.streak !== undefined) sessionStorage.setItem('play_final_streak', String(state.streak));
+  }, [state]);
+
+  // Fetch real participants from DB
+  useEffect(() => {
+    if (!roomId && !roomCode) return;
+    const fetchLeaderboard = async () => {
+      try {
+        let participantsList: any[] = [];
+        if (roomId) {
+          participantsList = await roomService.getParticipants(roomId);
+        } else {
+          const roomData = await roomService.getRoom(roomCode);
+          participantsList = roomData.participants || [];
+        }
+
+        if (!participantsList || participantsList.length === 0) {
+          console.warn('No participants found for leaderboard. roomId=', roomId, 'roomCode=', roomCode);
+          setLoading(false);
+          return;
+        }
+
+        let myAvatar = '';
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          try {
+            const u = JSON.parse(userStr);
+            myAvatar = u.avatar || u.avatar_url || '';
+          } catch (e) {}
+        }
+
+        const mapped: LeaderboardPlayer[] = participantsList.map((p: any) => {
+          const isMe = p.nickname?.trim().toLowerCase() === nickname.trim().toLowerCase();
+          const avatarUrl = p.avatar || (isMe && myAvatar ? myAvatar : undefined);
+          return {
+            id: String(p.id),
+            name: p.nickname || 'Unknown',
+            avatar: avatarUrl,
+            score: p.score || 0,
+            displayScore: p.score || 0,
+            streak: isMe ? myStreak : 0,
+            change: 'same',
+            rankChangeAmount: 0,
+            isMe,
+            oldRank: 1,
+            newRank: 1,
+            pointsToAdd: 0,
+          };
+        });
+
+        const sorted = [...mapped].sort((a, b) => b.score - a.score);
+        sorted.forEach((p, idx) => {
+          p.oldRank = idx + 1;
+          p.newRank = idx + 1;
+        });
+
+        setPlayers(sorted);
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to load leaderboard participants:', err);
+        setLoading(false);
+      }
+    };
+    fetchLeaderboard();
+  }, [roomId, roomCode, nickname, myStreak]);
+
+  // Trigger podium reveal animation phases with count-up ticks
+  useEffect(() => {
+    if (loading || players.length === 0) return;
+
     const timer1 = setTimeout(() => {
       setPhase('adding_scores');
 
-      let frame = 0;
-      const totalFrames = 20;
-      const interval = setInterval(() => {
-        frame += 1;
-        const progress = frame / totalFrames;
+      // Score count-up ticker animation
+      let step = 0;
+      const totalSteps = 20;
+      const tickerInterval = setInterval(() => {
+        step += 1;
+        const ratio = step / totalSteps;
         setPlayers((prev) =>
           prev.map((p) => ({
             ...p,
-            displayScore: Math.round(p.score + p.pointsToAdd * progress),
+            displayScore: Math.round(p.score * ratio),
           }))
         );
 
-        if (frame >= totalFrames) {
-          clearInterval(interval);
-
-          // 2. Trigger rank shift animation
+        if (step >= totalSteps) {
+          clearInterval(tickerInterval);
           setTimeout(() => {
             setPhase('ranking_shift');
-
-            const updated = players.map((p) => ({ ...p, score: p.score + p.pointsToAdd, displayScore: p.score + p.pointsToAdd }));
-            const sorted = [...updated].sort((a, b) => b.score - a.score);
-
-            const finalRanks = updated.map((p) => {
-              const newRankIdx = sorted.findIndex((x) => x.id === p.id);
-              const newRank = newRankIdx + 1;
-              const rankChangeAmount = p.oldRank - newRank;
-              let change: 'up' | 'down' | 'same' = 'same';
-              if (newRank < p.oldRank) change = 'up';
-              else if (newRank > p.oldRank) change = 'down';
-
-              return {
-                ...p,
-                newRank,
-                change,
-                rankChangeAmount,
-                streak: p.isMe ? myStreak : p.pointsToAdd > 0 ? p.streak + 1 : 0,
-              };
-            });
-
-            setPlayers(finalRanks);
-
-            // 3. Podium Reveal
             setTimeout(() => {
               setPhase('podium_reveal');
-            }, 800);
+            }, 600);
           }, 400);
         }
-      }, 50);
-    }, 800);
+      }, 35);
+    }, 400);
 
     return () => clearTimeout(timer1);
-  }, []);
+  }, [loading]);
 
-  // Sorted list based on active current position
   const currentSorted = [...players].sort((a, b) => a.newRank - b.newRank);
   const top1 = currentSorted.find((p) => p.newRank === 1);
   const top2 = currentSorted.find((p) => p.newRank === 2);
   const top3 = currentSorted.find((p) => p.newRank === 3);
-
   const mePlayer = players.find((p) => p.isMe);
 
-  const isLoggedIn = !!(localStorage.getItem('token') || localStorage.getItem('user'));
-
   const handleNextAction = () => {
-    if (isGameFinished) {
-      if (isLoggedIn || fromSource === 'dashboard') {
-        navigate('/dashboard', { state: { activeTab } });
-      } else {
-        navigate('/');
-      }
-    } else {
-      navigate('/play', {
-        state: {
-          nickname,
-          roomCode,
-          score: myFinalScore,
-          streak: myStreak,
-          activePowerUp: null,
-          questionNumber: questionNumber + 1,
-          fromSource,
-          activeTab,
-        },
-      });
-    }
-  };
+    sessionStorage.removeItem('play_room_code');
+    sessionStorage.removeItem('play_nickname');
+    sessionStorage.removeItem('play_room_id');
+    sessionStorage.removeItem('play_final_score');
+    sessionStorage.removeItem('play_final_streak');
+    sessionStorage.removeItem('play_last_points_earned');
+    sessionStorage.removeItem('play_last_is_correct');
+    sessionStorage.removeItem('play_participant_id');
 
-  const handleLeave = () => {
-    if (isLoggedIn || fromSource === 'dashboard') {
+    if (localStorage.getItem('token')) {
       navigate('/dashboard', { state: { activeTab } });
     } else {
       navigate('/');
     }
   };
 
-  return (
-    <div className="w-full min-h-screen bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white font-sans relative overflow-hidden flex flex-col justify-between">
-      {/* Background Animated Particles */}
-      <div className="absolute inset-0 pointer-events-none z-0">
-        <div className="absolute top-[10%] left-[15%] w-72 h-72 bg-primary/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-[20%] right-[10%] w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute top-[40%] right-[20%] w-60 h-60 bg-amber-500/15 rounded-full blur-3xl" />
+  if (!roomCode && !roomId) {
+    return (
+      <div className="w-full min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 bg-indigo-600/20 rounded-full flex items-center justify-center mb-4">
+          <Trophy className="w-8 h-8 text-indigo-400" />
+        </div>
+        <h2 className="text-xl font-black text-white mb-2">No Active Room Session</h2>
+        <p className="text-xs text-slate-400 max-w-sm leading-relaxed mb-6">
+          You don't seem to be associated with any active quiz room leaderboard.
+        </p>
+        <button
+          onClick={() => navigate(localStorage.getItem('token') ? '/dashboard' : '/')}
+          className="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl font-bold shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+        >
+          Go to Home
+        </button>
       </div>
+    );
+  }
 
-      <div className="relative z-10 max-w-lg mx-auto w-full px-4 py-6 flex-grow flex flex-col justify-between">
+  if (loading) {
+    return (
+      <div className="w-full min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-4" />
+        <p className="text-sm font-bold text-slate-400 animate-pulse">Computing final ranks & podium...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full min-h-screen bg-slate-950 text-white font-body-md relative overflow-hidden flex flex-col">
+      {/* Confetti Animation Canvas */}
+      <ConfettiCanvas active={phase === 'podium_reveal'} />
+
+      {/* Ambient background glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-indigo-800/25 rounded-full blur-3xl pointer-events-none animate-pulse duration-1000" />
+      <div className="absolute bottom-0 left-1/4 w-[400px] h-[250px] bg-purple-800/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/3 right-10 w-[300px] h-[300px] bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="relative z-10 flex-grow flex flex-col w-full max-w-2xl mx-auto px-5 py-5 gap-4">
+
         {/* Header */}
-        <header className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-3.5 py-1.5 rounded-2xl shadow-lg">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-xs font-bold text-slate-200">
-              Room: <span className="text-amber-400 font-extrabold">{roomCode}</span>
-            </span>
-          </div>
-
-          {isGameFinished ? (
-            <button
-              onClick={handleLeave}
-              className="flex items-center gap-1.5 px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded-2xl text-xs font-bold transition-all shadow-md active:scale-95"
-            >
-              <LogOut className="w-3.5 h-3.5" /> Exit Room
-            </button>
-          ) : (
-            <div className="text-[11px] font-bold text-slate-300 bg-white/10 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-white/10 flex items-center gap-1.5">
-              <span>Question {questionNumber} of {TOTAL_QUESTIONS}</span>
+        <header className="flex justify-between items-center bg-slate-800/80 backdrop-blur-xl p-4 rounded-3xl border border-white/10 shadow-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30 animate-pulse">
+              <Trophy className="w-5 h-5 text-white fill-white" />
             </div>
-          )}
+            <div>
+              <h1 className="text-sm font-black text-white leading-tight flex items-center gap-1.5">
+                Final Leaderboard <Sparkles className="w-4 h-4 text-amber-400 animate-spin" />
+              </h1>
+              <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">
+                Room Code: <span className="text-indigo-300 font-black">{roomCode}</span>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleNextAction}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-700/60 border border-white/10 text-slate-300 rounded-xl hover:bg-slate-700 transition-all text-xs font-bold cursor-pointer hover:text-white"
+          >
+            <LogOut className="w-3.5 h-3.5" /> Leave
+          </button>
         </header>
 
-        {/* Title */}
-        <div className="text-center my-3 space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 via-amber-400/30 to-amber-500/20 text-amber-300 border border-amber-400/40 rounded-full px-4 py-1 text-xs font-extrabold uppercase tracking-wider shadow-lg">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-            {isGameFinished ? 'Final Podium Standings' : 'Live Leaderboard'}
-          </div>
-          <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-            {isGameFinished ? '🏆 Grand Finale Results' : 'Leaderboard Standings'}
-          </h1>
-          <p className="text-xs text-indigo-200 font-medium">
-            {phase === 'initial' && 'Calculating round results...'}
-            {phase === 'adding_scores' && '⚡ Scores updating live!'}
-            {(phase === 'ranking_shift' || phase === 'podium_reveal') && mePlayer?.change === 'up' && (
-              <span className="text-emerald-400 font-bold animate-bounce inline-block">
-                🚀 Awesome! You climbed +{mePlayer.rankChangeAmount} Position{mePlayer.rankChangeAmount > 1 ? 's' : ''}!
-              </span>
-            )}
-            {(phase === 'ranking_shift' || phase === 'podium_reveal') && mePlayer?.change !== 'up' && (
-              <span>Scores settled! View rank positions below.</span>
-            )}
-          </p>
-        </div>
+        {/* My Score Banner with Shine Sheen Animation */}
+        {mePlayer && (
+          <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 p-4 rounded-3xl border border-indigo-500/40 shadow-xl shadow-indigo-500/20 flex items-center justify-between group">
+            {/* Sheen animation line */}
+            <div className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent -skew-x-12 -translate-x-full group-hover:translate-x-[300%] transition-transform duration-1000" />
 
-        {/* 🏆 Top 3 Podium (Visual Showcase) */}
-        <section className="my-2">
-          <div className="flex items-end justify-center gap-3 pt-8 pb-2 h-48 relative px-2">
-            {/* 2nd Place */}
-            {top2 && (
-              <div
-                className={`flex flex-col items-center flex-1 transition-all duration-700 ${
-                  phase === 'podium_reveal' ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-60 translate-y-4'
-                }`}
-              >
-                <div className="relative mb-1 flex flex-col items-center justify-center">
-                  <span className="text-xs mb-0.5">🥈</span>
-                  <div
-                    className={`w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-200 to-slate-400 p-0.5 shadow-lg ${
-                      top2.isMe ? 'ring-4 ring-emerald-400' : ''
-                    }`}
-                  >
-                    <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center font-extrabold text-xs text-slate-200">
-                      {top2.name.slice(0, 2).toUpperCase()}
-                    </div>
-                  </div>
-                </div>
-                <span className="text-[11px] font-bold text-slate-200 truncate max-w-[75px]">{top2.name}</span>
-                <span className="text-[10px] text-slate-400 font-extrabold mb-1">{top2.displayScore} Pts</span>
-                <div className="w-full bg-gradient-to-t from-slate-700 via-slate-600 to-slate-500 border-t-2 border-slate-300 h-16 rounded-t-2xl flex items-center justify-center shadow-xl">
-                  <span className="text-slate-200 font-black text-sm">2nd</span>
-                </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200 mb-0.5 flex items-center gap-1">
+                <Zap className="w-3 h-3 text-amber-300 fill-amber-300" /> Your Final Score
+              </p>
+              <p className="text-2xl font-black text-white transition-all">
+                {mePlayer.displayScore.toFixed(0)} <span className="text-sm text-indigo-200 font-bold">pts</span>
+              </p>
+              <p className="text-[10px] text-indigo-200 font-bold mt-0.5">Rank #{mePlayer.newRank} of {players.length}</p>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform overflow-hidden">
+                {mePlayer.avatar ? (
+                  <img src={mePlayer.avatar} alt={mePlayer.name} className="w-full h-full object-cover rounded-2xl" />
+                ) : (
+                  <span className="text-2xl font-black text-amber-300 drop-shadow-md">#{mePlayer.newRank}</span>
+                )}
               </div>
-            )}
+              {myStreak > 0 && (
+                <span className="text-[9px] font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                  <Flame className="w-2.5 h-2.5 fill-current text-amber-400" /> {myStreak} streak
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
-            {/* 1st Place (Winner Crown - Perfectly Centered) */}
-            {top1 && (
-              <div
-                className={`flex flex-col items-center flex-1 -translate-y-2 transition-all duration-700 delay-150 ${
-                  phase === 'podium_reveal' ? 'scale-105 opacity-100' : 'scale-90 opacity-60'
-                }`}
-              >
-                <div className="relative mb-1 flex flex-col items-center justify-center">
-                  {/* Crown Centered Above Avatar */}
-                  <div className="flex justify-center items-center w-full mb-0.5">
-                    <Crown className="w-6 h-6 text-amber-400 fill-amber-300 animate-bounce drop-shadow-md" />
+        {/* Podium Stage with Animated Gold Halo */}
+        <section className="bg-slate-800/80 backdrop-blur-xl p-5 pt-6 rounded-3xl border border-white/10 shadow-2xl relative">
+          <div className="flex items-center gap-2 mb-2">
+            <Crown className="w-4.5 h-4.5 text-amber-400 fill-amber-400 animate-bounce" />
+            <h2 className="text-xs font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
+              🏆 Podium Standings
+            </h2>
+          </div>
+
+          <div className="flex justify-center items-end gap-3 h-[230px] px-2 pt-6">
+            {/* 2nd Place */}
+            <div className="flex flex-col items-center flex-1">
+              {top2 ? (
+                <div className={`flex flex-col items-center mb-1.5 transition-all duration-700 ${phase === 'podium_reveal' ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-90'}`}>
+                  <span className="text-lg mb-0.5 animate-bounce" style={{ animationDelay: '0.2s' }}>🥈</span>
+                  <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-400 to-slate-600 p-0.5 shadow-lg overflow-hidden ${top2.isMe ? 'ring-4 ring-indigo-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
+                    {top2.avatar ? (
+                      <img src={top2.avatar} alt={top2.name} className="w-full h-full object-cover rounded-[14px]" />
+                    ) : (
+                      <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center font-extrabold text-xs text-slate-300">
+                        {top2.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                   </div>
-                  <div className="relative">
-                    <div className="absolute -inset-2 bg-gradient-to-r from-amber-400 to-yellow-300 rounded-2xl blur-md animate-pulse opacity-70" />
-                    <div
-                      className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 p-0.5 shadow-2xl relative z-10 ${
-                        top1.isMe ? 'ring-4 ring-emerald-400' : ''
-                      }`}
-                    >
-                      <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center font-black text-sm text-amber-300">
+                  <span className={`text-[11px] font-bold truncate max-w-[75px] mt-1 ${top2.isMe ? 'text-indigo-300 font-black' : 'text-slate-300'}`}>{top2.name}</span>
+                  <span className="text-[10px] text-slate-400 font-extrabold">{top2.displayScore.toFixed(0)} Pts</span>
+                </div>
+              ) : <div className="flex-1" />}
+              <div className={`w-full bg-gradient-to-t from-slate-600 to-slate-500 border-t-2 border-slate-400 rounded-t-2xl flex items-center justify-center shadow-xl transition-all duration-700 delay-100 ${phase === 'podium_reveal' ? 'h-16' : 'h-0'}`}>
+                <span className="text-slate-200 font-black text-xs">2nd</span>
+              </div>
+            </div>
+
+            {/* 1st Place - Golden Champion Stage with Floating Crown */}
+            <div className="flex flex-col items-center flex-1 relative">
+              {top1 ? (
+                <div className={`flex flex-col items-center mb-1.5 transition-all duration-700 ${phase === 'podium_reveal' ? 'opacity-100 translate-y-0 scale-105' : 'opacity-0 translate-y-8 scale-90'}`}>
+                  {/* Floating Gold Halo */}
+                  <div className="absolute -top-2 w-14 h-14 bg-amber-400/20 rounded-full blur-lg animate-ping pointer-events-none" />
+
+                  <div className="relative mb-0.5 animate-bounce">
+                    <span className="text-2xl">🥇</span>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 absolute -top-1 -right-1 animate-spin" />
+                  </div>
+                  <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-400 to-yellow-600 p-0.5 shadow-2xl shadow-amber-500/50 relative overflow-hidden ${top1.isMe ? 'ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
+                    {top1.avatar ? (
+                      <img src={top1.avatar} alt={top1.name} className="w-full h-full object-cover rounded-[13px]" />
+                    ) : (
+                      <div className="w-full h-full bg-slate-900 rounded-[13px] flex items-center justify-center font-extrabold text-xs text-amber-400">
                         {top1.name.slice(0, 2).toUpperCase()}
                       </div>
-                    </div>
+                    )}
                   </div>
+                  <span className={`text-[11px] font-bold truncate max-w-[85px] mt-1 ${top1.isMe ? 'text-indigo-300 font-black' : 'text-white font-black'}`}>{top1.name}</span>
+                  <span className="text-[10px] text-amber-400 font-black">{top1.displayScore.toFixed(0)} Pts</span>
+                  <span className="text-amber-300 font-black text-[11px] drop-shadow-sm mt-0.5 flex items-center gap-0.5">
+                    1st <Crown className="w-3 h-3 fill-amber-300 text-amber-300" />
+                  </span>
                 </div>
-                <span className="text-xs font-black text-amber-300 truncate max-w-[85px]">{top1.name}</span>
-                <span className="text-[10px] text-amber-400 font-black mb-1">{top1.displayScore} Pts</span>
-                <div className="w-full bg-gradient-to-t from-amber-600 via-amber-500 to-yellow-400 border-t-2 border-yellow-200 h-24 rounded-t-2xl flex items-center justify-center shadow-2xl">
-                  <span className="text-amber-950 font-black text-base drop-shadow-sm">1st 👑</span>
-                </div>
+              ) : <div className="flex-1" />}
+              <div className={`w-full bg-gradient-to-t from-amber-700 via-amber-600 to-amber-500 border-t-2 border-amber-300 rounded-t-2xl flex items-center justify-center shadow-xl shadow-amber-500/30 transition-all duration-700 ${phase === 'podium_reveal' ? 'h-24' : 'h-0'}`}>
+                <span className="text-amber-100 font-black text-xs tracking-wider flex items-center gap-1">1st 🥇</span>
               </div>
-            )}
+            </div>
 
             {/* 3rd Place */}
-            {top3 && (
-              <div
-                className={`flex flex-col items-center flex-1 transition-all duration-700 ${
-                  phase === 'podium_reveal' ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-60 translate-y-4'
-                }`}
-              >
-                <div className="relative mb-1 flex flex-col items-center justify-center">
-                  <span className="text-xs mb-0.5">🥉</span>
-                  <div
-                    className={`w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-700 to-amber-900 p-0.5 shadow-lg ${
-                      top3.isMe ? 'ring-4 ring-emerald-400' : ''
-                    }`}
-                  >
-                    <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center font-extrabold text-xs text-amber-500">
-                      {top3.name.slice(0, 2).toUpperCase()}
-                    </div>
+            <div className="flex flex-col items-center flex-1">
+              {top3 ? (
+                <div className={`flex flex-col items-center mb-1.5 transition-all duration-700 ${phase === 'podium_reveal' ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-90'}`}>
+                  <span className="text-lg mb-0.5 animate-bounce" style={{ animationDelay: '0.4s' }}>🥉</span>
+                  <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-700 to-amber-900 p-0.5 shadow-lg overflow-hidden ${top3.isMe ? 'ring-4 ring-indigo-400 ring-offset-2 ring-offset-slate-900' : ''}`}>
+                    {top3.avatar ? (
+                      <img src={top3.avatar} alt={top3.name} className="w-full h-full object-cover rounded-[14px]" />
+                    ) : (
+                      <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center font-extrabold text-xs text-amber-500">
+                        {top3.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                   </div>
+                  <span className={`text-[11px] font-bold truncate max-w-[75px] mt-1 ${top3.isMe ? 'text-indigo-300 font-black' : 'text-slate-300'}`}>{top3.name}</span>
+                  <span className="text-[10px] text-amber-600 font-extrabold">{top3.displayScore.toFixed(0)} Pts</span>
                 </div>
-                <span className="text-[11px] font-bold text-slate-300 truncate max-w-[75px]">{top3.name}</span>
-                <span className="text-[10px] text-amber-600 font-extrabold mb-1">{top3.displayScore} Pts</span>
-                <div className="w-full bg-gradient-to-t from-amber-900 via-amber-800 to-amber-700 border-t-2 border-amber-600 h-12 rounded-t-2xl flex items-center justify-center shadow-xl">
-                  <span className="text-amber-200 font-black text-xs">3rd</span>
-                </div>
+              ) : <div className="flex-1" />}
+              <div className={`w-full bg-gradient-to-t from-amber-900 via-amber-800 to-amber-700 border-t-2 border-amber-600 rounded-t-2xl flex items-center justify-center shadow-xl transition-all duration-700 delay-200 ${phase === 'podium_reveal' ? 'h-10' : 'h-0'}`}>
+                <span className="text-amber-200 font-black text-xs">3rd</span>
               </div>
-            )}
+            </div>
           </div>
         </section>
 
-        {/* Animated Roster Shift List */}
-        <section className="flex-grow flex flex-col mb-4 bg-slate-800/80 backdrop-blur-xl p-4 rounded-3xl border border-white/10 shadow-2xl">
+        {/* Animated Roster List with Smooth Motion */}
+        <section className="flex-grow flex flex-col bg-slate-800/80 backdrop-blur-xl p-4 rounded-3xl border border-white/10 shadow-2xl">
           <div className="flex items-center justify-between mb-3 px-1">
             <span className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-emerald-400" /> Player Positions & Scores
+              <TrendingUp className="w-4 h-4 text-emerald-400 animate-pulse" /> Player Ranks & Dynamic Scores
             </span>
-            <span className="text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded-full">
-              Live Ranking
+            <span className="text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <Star className="w-3 h-3 text-amber-400 fill-amber-400" /> Live Standings
             </span>
           </div>
 
           {/* Smooth Sliding Roster List */}
-          <div className="relative h-[290px] overflow-hidden">
+          <div className="relative overflow-hidden" style={{ height: `${Math.min(players.length, 7) * 44}px` }}>
             {players.map((player) => {
               const activeRank = phase === 'ranking_shift' || phase === 'podium_reveal' ? player.newRank : player.oldRank;
-              const yPosition = (activeRank - 1) * 41;
-
+              const yPosition = (activeRank - 1) * 44;
               const isMe = player.isMe;
               const hasRankedUp = player.change === 'up';
               const hasRankedDown = player.change === 'down';
@@ -436,28 +485,23 @@ export const LiveLeaderboard: React.FC = () => {
               return (
                 <div
                   key={player.id}
-                  className={`absolute left-0 right-0 h-9.5 px-3 py-2 rounded-2xl border flex items-center justify-between transition-all duration-700 ease-out ${cardStyle}`}
+                  className={`absolute left-0 right-0 h-10 px-3 py-1.5 rounded-2xl border flex items-center justify-between transition-all duration-700 ease-out ${cardStyle}`}
                   style={{ transform: `translateY(${yPosition}px)` }}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Rank Badge */}
                     <span className={`w-5 text-center text-xs font-black ${isMe ? 'text-amber-300' : 'text-slate-300'}`}>
                       #{activeRank}
                     </span>
-
-                    {/* Avatar */}
-                    <div
-                      className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-[9px] ${
-                        isMe ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-600 text-slate-200'
-                      }`}
-                    >
-                      {player.name.slice(0, 2).toUpperCase()}
-                    </div>
-
-                    {/* Nickname & Streak */}
+                    {player.avatar ? (
+                      <img src={player.avatar} alt={player.name} className="w-7 h-7 rounded-lg object-cover shadow-sm flex-shrink-0" />
+                    ) : (
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-[9px] flex-shrink-0 ${isMe ? 'bg-amber-400 text-slate-950 shadow-md' : 'bg-slate-600 text-slate-200'}`}>
+                        {player.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs truncate max-w-[110px] ${isMe ? 'font-black text-white' : 'font-bold'}`}>
-                        {player.name} {isMe && '(You)'}
+                      <span className={`text-xs truncate max-w-[120px] ${isMe ? 'font-black text-white' : 'font-bold'}`}>
+                        {player.name} {isMe && <span className="text-[9px] text-indigo-200 font-bold">(You)</span>}
                       </span>
                       {player.streak > 0 && (
                         <span className="text-[9px] text-amber-300 bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-black flex items-center gap-0.5">
@@ -467,24 +511,22 @@ export const LiveLeaderboard: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Score & Rank Shift Badge */}
                   <div className="flex items-center gap-3">
                     <span className={`text-xs font-extrabold ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                      {player.displayScore} pts
+                      {player.displayScore.toFixed(0)} pts
                     </span>
-
-                    <div className="w-12 flex items-center justify-end">
+                    <div className="w-10 flex items-center justify-end">
                       {(phase === 'ranking_shift' || phase === 'podium_reveal') && hasRankedUp && (
                         <div className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-lg text-[10px] font-extrabold flex items-center gap-0.5 animate-bounce">
-                          <ArrowUp className="w-3 h-3 fill-current" />+{player.rankChangeAmount}
+                          <ArrowUp className="w-3 h-3" />+{player.rankChangeAmount}
                         </div>
                       )}
                       {(phase === 'ranking_shift' || phase === 'podium_reveal') && hasRankedDown && (
                         <div className="px-1.5 py-0.5 bg-rose-500/20 text-rose-400 border border-rose-500/40 rounded-lg text-[10px] font-extrabold flex items-center gap-0.5">
-                          <ArrowDown className="w-3 h-3 fill-current" />
+                          <ArrowDown className="w-3 h-3" />
                         </div>
                       )}
-                      {(phase === 'initial' || phase === 'adding_scores' || player.change === 'same') && (
+                      {player.change === 'same' && (
                         <span className="text-xs text-slate-500 font-bold">-</span>
                       )}
                     </div>
@@ -495,27 +537,16 @@ export const LiveLeaderboard: React.FC = () => {
           </div>
         </section>
 
-        {/* Footer CTA */}
-        <footer className="pt-2">
+        {/* CTA Button */}
+        <footer className="pt-1">
           <button
             onClick={handleNextAction}
-            className={`w-full py-3.5 text-white rounded-2xl text-sm font-extrabold shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all duration-200 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
-              isGameFinished
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/30'
-                : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-indigo-500/30'
-            }`}
+            className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-2xl text-sm font-extrabold shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
           >
-            {isGameFinished ? (
-              <>
-                <Award className="w-4 h-4" /> Finish & Exit Room 🏁
-              </>
-            ) : (
-              <>
-                Next Question <ChevronRight className="w-4 h-4" />
-              </>
-            )}
+            <Award className="w-4 h-4" /> Finish & Exit Room 🏁
           </button>
         </footer>
+
       </div>
     </div>
   );
