@@ -55,7 +55,7 @@ def create_question(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
-    if quiz.user_id != current_user.id:
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to add questions to this quiz")
         
     if quiz.status and quiz.status.lower() == "published":
@@ -81,7 +81,7 @@ def import_questions(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
-    if quiz.user_id != current_user.id:
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions")
         
     if quiz.status and quiz.status.lower() == "published":
@@ -115,7 +115,7 @@ def read_questions(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
-    if not quiz.is_public and quiz.user_id != current_user.id:
+    if not quiz.is_public and quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to view questions for this quiz")
         
     skip = (pageIndex - 1) * pageSize
@@ -142,7 +142,7 @@ def update_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    if question.quiz.user_id != current_user.id:
+    if question.quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to update this question")
         
     if question.quiz.status and question.quiz.status.lower() == "published":
@@ -181,7 +181,7 @@ def delete_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    if question.quiz.user_id != current_user.id:
+    if question.quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to delete this question")
         
     if question.quiz.status and question.quiz.status.lower() == "published":

@@ -1,8 +1,9 @@
-import { ArrowLeft, Wrench, X, List, CheckSquare, AlignLeft, Sparkles, ArrowRight, Check, Plus, Trash2, Edit2, Image as ImageIcon, Mic, UploadCloud, GripVertical, CopyPlus } from 'lucide-react';
+import { ArrowLeft, Wrench, X, List, CheckSquare, AlignLeft, Sparkles, ArrowRight, Check, Plus, Trash2, Edit2, Image as ImageIcon, Mic, UploadCloud, GripVertical, CopyPlus, ChevronDown } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
+import { Dropdown } from '@/components/ui/Dropdown';
 import { QuestionBankModal } from '@/components/ui/QuestionBankModal';
 import { CloudUpload, CloudUploadRef } from '@/components/ui/CloudUpload';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
@@ -20,6 +21,7 @@ export interface BaseQuestion {
   timeLimit: number;
   mediaUrl?: string;
   audioUrl?: string;
+  optionIds?: number[];
 }
 
 export interface MultipleChoiceQuestion extends BaseQuestion {
@@ -49,9 +51,12 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   // Builder State
   const [qText, setQText] = useState('');
   const [mcOptions, setMcOptions] = useState(['Option 1', 'Option 2', 'Option 3', 'Option 4']);
+  const [mcOptionIds, setMcOptionIds] = useState<(number | undefined)[]>([undefined, undefined, undefined, undefined]);
   const [mcCorrect, setMcCorrect] = useState(0);
   const [tfCorrect, setTfCorrect] = useState(true);
+  const [tfOptionIds, setTfOptionIds] = useState<(number | undefined)[]>([undefined, undefined]);
   const [shortCorrect, setShortCorrect] = useState('');
+  const [shortOptionId, setShortOptionId] = useState<number | undefined>(undefined);
   const [qDifficulty, setQDifficulty] = useState<'EASY'|'MEDIUM'|'HARD'>('MEDIUM');
   const [qTimeLimit, setQTimeLimit] = useState<number>(60);
   const [mediaUrl, setMediaUrl] = useState<string | undefined>();
@@ -136,6 +141,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
               if (qType === 'multiple') {
                 const options = (q.options || []).map((o: any) => o.content);
                 const correctIndex = (q.options || []).findIndex((o: any) => o.is_correct);
+                base.optionIds = (q.options || []).map((o: any) => o.id);
                 return {
                   ...base,
                   type: 'multiple',
@@ -145,6 +151,10 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
               } else if (qType === 'truefalse') {
                 const correctOption = (q.options || []).find((o: any) => o.is_correct);
                 const isTrue = correctOption ? correctOption.content.toLowerCase() === 'true' : true;
+                // Make sure we have 2 options ids to match True and False
+                const trueOpt = (q.options || []).find((o: any) => o.content.toLowerCase() === 'true');
+                const falseOpt = (q.options || []).find((o: any) => o.content.toLowerCase() === 'false');
+                base.optionIds = [trueOpt?.id, falseOpt?.id];
                 return {
                   ...base,
                   type: 'truefalse',
@@ -152,6 +162,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                 } as TrueFalseQuestion;
               } else {
                 const correctOption = (q.options || []).find((o: any) => o.is_correct);
+                base.optionIds = correctOption ? [correctOption.id] : [];
                 return {
                   ...base,
                   type: 'short',
@@ -162,6 +173,14 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
             setQuestions(mapped);
           } catch (err) {
             console.error("Failed to load existing questions", err);
+            setAlertState({
+              isOpen: true,
+              title: 'Error Loading Quiz',
+              message: 'Could not load quiz data. Please check your connection.',
+              type: 'error'
+            });
+            // Stop loading to prevent accidental saves of empty questions array
+            return;
           }
         }
       }
@@ -173,9 +192,12 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setEditingType(type);
     setQText('');
     setMcOptions(['Option 1', 'Option 2', 'Option 3', 'Option 4']);
+    setMcOptionIds([undefined, undefined, undefined, undefined]);
     setMcCorrect(0);
     setTfCorrect(true);
+    setTfOptionIds([undefined, undefined]);
     setShortCorrect('');
+    setShortOptionId(undefined);
     setQDifficulty('MEDIUM');
     setQTimeLimit(60);
     setMediaUrl(undefined);
@@ -207,11 +229,14 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setFormResetKey(prev => prev + 1);
     if (q.type === 'multiple') {
       setMcOptions(q.options);
+      setMcOptionIds(q.optionIds || []);
       setMcCorrect(q.correctAnswer);
     } else if (q.type === 'truefalse') {
       setTfCorrect(q.correctAnswer);
+      setTfOptionIds(q.optionIds || [undefined, undefined]);
     } else if (q.type === 'short') {
       setShortCorrect(q.correctAnswer);
+      setShortOptionId(q.optionIds?.[0]);
     }
     
     // Scroll to top of the builder area
@@ -253,11 +278,14 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     
     if (q.type === 'multiple') {
       setMcOptions([...q.options]);
+      setMcOptionIds([]);
       setMcCorrect(q.correctAnswer);
     } else if (q.type === 'truefalse') {
       setTfCorrect(q.correctAnswer);
+      setTfOptionIds([undefined, undefined]);
     } else if (q.type === 'short') {
       setShortCorrect(q.correctAnswer);
+      setShortOptionId(undefined);
     }
     
     // Scroll to top of the builder area
@@ -323,19 +351,18 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     };
 
     if (editingType === 'multiple') {
-      newQ = { ...baseQ, type: 'multiple', options: mcOptions, correctAnswer: mcCorrect };
+      newQ = { ...baseQ, type: 'multiple', options: mcOptions, correctAnswer: mcCorrect, optionIds: mcOptionIds as number[] };
     } else if (editingType === 'truefalse') {
-      newQ = { ...baseQ, type: 'truefalse', correctAnswer: tfCorrect };
+      newQ = { ...baseQ, type: 'truefalse', correctAnswer: tfCorrect, optionIds: tfOptionIds as number[] };
     } else {
-      newQ = { ...baseQ, type: 'short', correctAnswer: shortCorrect };
+      newQ = { ...baseQ, type: 'short', correctAnswer: shortCorrect, optionIds: shortOptionId ? [shortOptionId] : [] };
     }
 
     if (editingId !== null && editingId !== undefined) {
       setQuestions(prev => {
         const hasMatch = prev.some(q => String(q.id) === String(editingId));
         if (!hasMatch) {
-           // We'll show an alert if it somehow couldn't find the match!
-           alert("DEBUG: Không tìm thấy ID " + editingId + " trong mảng questions có độ dài " + prev.length + ". Các ID hiện có: " + prev.map(q => q.id).join(", "));
+           console.warn(`[QuizCreator] Cannot find question ID ${editingId} in questions array. Existing IDs: ${prev.map(q => q.id).join(", ")}`);
         }
         return prev.map(q => String(q.id) === String(editingId) ? newQ : q);
       });
@@ -404,6 +431,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setIsSaving(true);
     try {
       let targetQuizId = '';
+      let updatedQuestions = [...questions];
       const isEditMode = !!(id || initialData?.id);
       const rawId = isEditMode ? (id || initialData?.id).replace('QZ-', '') : '';
 
@@ -415,19 +443,20 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         if (q.type === 'multiple') {
           typeStr = 'Multiple Choice';
           optionsPayload = q.options.map((optText, idx) => ({
+            id: q.optionIds?.[idx],
             content: optText,
             is_correct: idx === q.correctAnswer
           }));
         } else if (q.type === 'truefalse') {
           typeStr = 'True/False';
           optionsPayload = [
-            { content: 'True', is_correct: q.correctAnswer === true },
-            { content: 'False', is_correct: q.correctAnswer === false }
+            { id: q.optionIds?.[0], content: 'True', is_correct: q.correctAnswer === true },
+            { id: q.optionIds?.[1], content: 'False', is_correct: q.correctAnswer === false }
           ];
         } else if (q.type === 'short') {
           typeStr = 'Short Answer';
           optionsPayload = [
-            { content: q.correctAnswer, is_correct: true }
+            { id: q.optionIds?.[0], content: q.correctAnswer, is_correct: true }
           ];
         }
         
@@ -436,15 +465,17 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           type: typeStr,
           difficulty: q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1).toLowerCase(),
           time_limit: q.timeLimit,
-          media_url: q.mediaUrl,
-          audio_url: q.audioUrl,
+          media_url: q.mediaUrl || null,
+          audio_url: q.audioUrl || null,
           options: optionsPayload
         };
       };
 
       if (isEditMode) {
         targetQuizId = rawId;
-        // 1. Update Quiz Shell to Draft (so we can edit questions)
+        // 1. Update Quiz Shell
+        // We only change to Draft temporarily if we are going to publish immediately after. 
+        // Otherwise, keep the requested status.
         await quizService.updateQuiz(targetQuizId, {
           title: quizTitle.trim() || 'Untitled Quiz',
           description: quizDescription,
@@ -454,54 +485,84 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           status: 'Draft'
         });
 
-        // 2. Sync Questions
+        // 2. Delete Questions Sequentially
+        // Calculate ids locally to avoid re-fetching race condition
+        const currentIdsInState = questions.map(q => q.id).filter(qid => !qid.startsWith('q_'));
+        // Any ID that was previously loaded but is now missing needs deletion
         const existingQs = await questionService.getQuestions(targetQuizId);
         const existingIdsInDb = existingQs.map(q => q.id.toString());
-        const currentIdsInState = questions.map(q => q.id).filter(qid => !qid.startsWith('q_'));
-        
-        // Delete removed questions
         const idsToDelete = existingIdsInDb.filter(qid => !currentIdsInState.includes(qid));
-        if (idsToDelete.length > 0) {
-          await Promise.all(idsToDelete.map(qid => questionService.deleteQuestion(qid)));
+        
+        for (const qid of idsToDelete) {
+          await questionService.deleteQuestion(qid);
         }
 
-        // Update or Create
-        const upsertPromises = questions.map(q => {
+        // 3. Update or Create Sequentially to avoid partial failure bugs
+        for (let i = 0; i < updatedQuestions.length; i++) {
+          const q = updatedQuestions[i];
           const payload = generateQuestionPayload(q);
           if (q.id.startsWith('q_')) {
-            return questionService.createQuestion(targetQuizId, payload);
+            const newQ = await questionService.createQuestion(targetQuizId, payload);
+            // Properly update state immutably so next save doesn't duplicate on failure
+            updatedQuestions[i] = {
+              ...q,
+              id: newQ.id.toString(),
+              optionIds: newQ.options?.map((opt: any) => opt.id)
+            };
+            setQuestions([...updatedQuestions]);
           } else {
-            return questionService.updateQuestion(q.id, payload);
+            await questionService.updateQuestion(q.id, payload);
           }
-        });
-        await Promise.all(upsertPromises);
+        }
 
       } else {
-        // 1. Create Quiz Shell as Draft
+        // 1. Create Quiz Shell
         const quizRes = await quizService.createQuiz({
           title: quizTitle.trim() || 'Untitled Quiz',
           description: quizDescription,
           subject: quizSubject,
           difficulty: quizDifficulty,
           is_public: isPublic,
-          status: 'Draft' // ALWAYS Draft initially
+          status: 'Draft'
         });
         
         targetQuizId = quizRes.id;
         
-        // 2. Create Questions
-        const questionPromises = questions.map((q) => {
+        // 2. Create Questions Sequentially
+        for (let i = 0; i < updatedQuestions.length; i++) {
+          const q = updatedQuestions[i];
           const payload = generateQuestionPayload(q);
-          return questionService.createQuestion(targetQuizId, payload);
-        });
-        
-        await Promise.all(questionPromises);
+          const newQ = await questionService.createQuestion(targetQuizId, payload);
+          updatedQuestions[i] = {
+            ...q,
+            id: newQ.id.toString(),
+            optionIds: newQ.options?.map((opt: any) => opt.id)
+          };
+          setQuestions([...updatedQuestions]);
+        }
       }
 
       // 3. Update to Published if requested
       if (status === 'Published') {
         await quizService.updateQuiz(targetQuizId, { status: 'Published' });
+      } else if (isEditMode && initialData?.status === 'Published' && status === 'Draft') {
+        // Handled
       }
+      
+      // 4. Cleanup orphaned draft images
+      const usedUrls = new Set();
+      updatedQuestions.forEach(q => {
+        if (q.mediaUrl) usedUrls.add(q.mediaUrl);
+        if (q.audioUrl) usedUrls.add(q.audioUrl);
+      });
+      
+      draftUploadedUrls.forEach(url => {
+        if (!usedUrls.has(url)) {
+          deleteMediaFile(url);
+        }
+      });
+      // Clear draft tracking since they are now safely in the DB
+      setDraftUploadedUrls(new Set());
       
       setAlertState({
         isOpen: true,
@@ -544,6 +605,21 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }
   };
 
+  const confirmExit = () => {
+    // Delete any draft uploaded URLs that haven't been saved to the DB!
+    draftUploadedUrls.forEach(url => {
+      deleteMediaFile(url);
+    });
+    
+    // Also delete any pending audio
+    if (audioUrl && draftUploadedUrls.has(audioUrl)) {
+      deleteMediaFile(audioUrl);
+    }
+    
+    setExitConfirmOpen(false);
+    onCancel();
+  };
+
   const updateMcOption = (index: number, val: string) => {
     const newOpts = [...mcOptions];
     newOpts[index] = val;
@@ -553,12 +629,17 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const addMcOption = () => {
     if (mcOptions.length >= 8) return;
     setMcOptions([...mcOptions, `Option ${mcOptions.length + 1}`]);
+    setMcOptionIds([...mcOptionIds, undefined]);
   };
 
   const removeMcOption = (index: number) => {
     if (mcOptions.length <= 2) return;
     const newOpts = mcOptions.filter((_, i) => i !== index);
     setMcOptions(newOpts);
+    
+    const newIds = mcOptionIds.filter((_, i) => i !== index);
+    setMcOptionIds(newIds);
+    
     if (mcCorrect === index) setMcCorrect(0);
     else if (mcCorrect > index) setMcCorrect(mcCorrect - 1);
   };
@@ -586,8 +667,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           <h1 className="font-headline-sm text-primary sm:hidden">Creator</h1>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
-          <button onClick={handleCancelClick} disabled={isSaving} className="font-button text-xs md:text-button text-on-surface-variant hover:text-on-surface px-2 md:px-4 py-2 transition-colors hidden sm:block">Close</button>
-          <button onClick={handlePublishClick} disabled={isSaving} className="font-button text-xs md:text-button bg-primary text-on-primary px-3 md:px-6 py-2 md:py-2.5 rounded-lg hover:opacity-90 transition-colors shadow-sm">{isSaving ? 'Saving...' : 'Publish'}</button>
+          <button onClick={handleCancelClick} disabled={isSaving || isUploadingMedia} className="font-button text-xs md:text-button text-on-surface-variant hover:text-on-surface px-2 md:px-4 py-2 transition-colors hidden sm:block">Close</button>
+          <button onClick={handlePublishClick} disabled={isSaving || isUploadingMedia} className="font-button text-xs md:text-button bg-primary text-on-primary px-3 md:px-6 py-2 md:py-2.5 rounded-lg hover:opacity-90 transition-colors shadow-sm disabled:opacity-50">{isSaving ? 'Saving...' : 'Publish'}</button>
         </div>
       </header>
 
@@ -632,34 +713,23 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                 placeholder="Enter quiz description..."
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 z-20">
               <label className="font-label-bold text-on-surface-variant text-sm">Subject <span className="text-error">*</span></label>
-              <select 
-                className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm text-on-surface"
+              <Dropdown 
                 value={quizSubject}
-                onChange={(e) => setQuizSubject(e.target.value)}
-              >
-                <option value="Science">Science</option>
-                <option value="Physics">Physics</option>
-                <option value="Mathematics">Mathematics</option>
-                <option value="Biology">Biology</option>
-                <option value="Literature">Literature</option>
-                <option value="History">History</option>
-                <option value="Computer Science">Computer Science</option>
-                <option value="Chemistry">Chemistry</option>
-              </select>
+                onChange={setQuizSubject}
+                options={["Science", "Physics", "Mathematics", "Biology", "Literature", "History", "Computer Science", "Chemistry"]}
+                className="w-full bg-surface-container-low border-outline-variant"
+              />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 z-10">
               <label className="font-label-bold text-on-surface-variant text-sm">Difficulty <span className="text-error">*</span></label>
-              <select 
-                className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm text-on-surface"
+              <Dropdown 
                 value={quizDifficulty}
-                onChange={(e) => setQuizDifficulty(e.target.value)}
-              >
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </select>
+                onChange={setQuizDifficulty}
+                options={["Easy", "Medium", "Hard"]}
+                className="w-full bg-surface-container-low border-outline-variant"
+              />
             </div>
             
             <div className="h-px w-full bg-outline-variant/50 my-2"></div>
@@ -977,15 +1047,16 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-sm font-bold text-on-surface-variant">Difficulty <span className="text-error">*</span></label>
-                      <select 
+                      <Dropdown 
                         value={qDifficulty}
-                        onChange={e => setQDifficulty(e.target.value as any)}
-                        className="w-full bg-white border border-outline-variant/50 rounded-lg px-3 py-2.5 focus:border-primary outline-none text-sm cursor-pointer shadow-sm"
-                      >
-                        <option value="EASY">Easy</option>
-                        <option value="MEDIUM">Medium</option>
-                        <option value="HARD">Hard</option>
-                      </select>
+                        onChange={(val: any) => setQDifficulty(val)}
+                        options={[
+                          { value: "EASY", label: "Easy" },
+                          { value: "MEDIUM", label: "Medium" },
+                          { value: "HARD", label: "Hard" }
+                        ]}
+                        className="w-full rounded-xl bg-surface border-outline-variant"
+                      />
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-sm font-bold text-on-surface-variant">Time Limit (seconds) <span className="text-error">*</span></label>
@@ -1135,7 +1206,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       <ConfirmModal 
         isOpen={exitConfirmOpen} 
         onClose={() => setExitConfirmOpen(false)} 
-        onConfirm={() => onCancel()} 
+        onConfirm={confirmExit} 
         title="Exit Without Saving" 
         message="You are editing an existing quiz. Any unsaved changes will be lost. Are you sure you want to exit?" 
         confirmText="Exit"

@@ -14,6 +14,10 @@ export const quizService = {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
     return apiClient.get<any>(`/quizzes${query}`);
   },
+  getAdminQuizzes: (params?: any): Promise<any> => {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return apiClient.get<any>(`/admin/quizzes${query}`);
+  },
   getQuiz: (quizId: number | string): Promise<any> => apiClient.get<any>(`/quizzes/${quizId}`),
   createQuiz: (data: QuizCreatePayload): Promise<any> => apiClient.post<any>('/quizzes', data),
   updateQuiz: (quizId: number | string, data: Partial<QuizCreatePayload>): Promise<any> => apiClient.put<any>(`/quizzes/${quizId}`, data),
