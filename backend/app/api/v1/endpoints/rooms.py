@@ -183,6 +183,9 @@ def get_my_active_rooms(
     import datetime
     from sqlalchemy import desc, or_
     from app.models.room import Room
+    from app.crud.crud_room import crud_room
+
+    crud_room.auto_end_stale_rooms(db)
 
     now = datetime.datetime.utcnow()
     active_rooms = db.query(Room).filter(

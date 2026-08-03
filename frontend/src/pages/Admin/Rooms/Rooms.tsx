@@ -4,9 +4,20 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Pagination } from '@/components/ui/Pagination';
 import { RoomDetailsModal } from '@/components/ui/RoomDetailsModal';
-import { Room } from '@/data/mockDb';
 import { roomService } from '@/services/roomService';
 import { Loader2 } from 'lucide-react';
+
+export interface RoomItem {
+  id: string | number;
+  room_code: string;
+  title: string;
+  host_name?: string;
+  quiz_title?: string;
+  quiz_subject?: string;
+  status: 'WAITING' | 'RUNNING' | 'PAUSED' | 'FINISHED' | string;
+  created_at?: string;
+  participant_count?: number;
+}
 
 interface RoomsProps {
   onNavigate?: (view: string, context?: any) => void;
@@ -64,7 +75,7 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const handleOpenDetails = (room: Room) => {
+  const handleOpenDetails = (room: RoomItem) => {
     setSelectedRoom(room);
     setDetailsModalOpen(true);
   };
@@ -174,20 +185,20 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
                       <td className="px-6 py-4 text-center whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                            room.status === 'RUNNING'
+                            room.status === 'RUNNING' || room.status === 'PLAYING'
                               ? 'bg-green-100 text-green-700'
                               : room.status === 'WAITING'
                               ? 'bg-orange-100 text-orange-700'
-                              : 'bg-surface-container text-on-surface-variant'
+                              : 'bg-slate-100 text-slate-500'
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              room.status === 'RUNNING'
+                              room.status === 'RUNNING' || room.status === 'PLAYING'
                                 ? 'bg-green-600 animate-pulse'
                                 : room.status === 'WAITING'
                                 ? 'bg-orange-600'
-                                : 'bg-outline'
+                                : 'bg-slate-400'
                             }`}
                           ></span>
                           {room.status}

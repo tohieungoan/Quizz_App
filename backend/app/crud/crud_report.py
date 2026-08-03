@@ -39,13 +39,13 @@ class CRUDReport:
         
         all_reports = []
 
-        # 1. Fetch finished Rooms
+        # 1. Fetch ended Rooms
         if report_type in ["ALL", "ROOM"]:
             rooms = (
                 db.query(Room, Quiz.title.label("quiz_title"), User.fullname.label("host_name"))
                 .join(Quiz, Room.quiz_id == Quiz.id)
                 .join(User, Room.host_id == User.id)
-                .filter(Room.status == "FINISHED")
+                .filter(Room.status == "ENDED")
                 .all()
             )
             for row in rooms:
@@ -75,13 +75,13 @@ class CRUDReport:
                         avg_score=r_avg
                     ))
 
-        # 2. Fetch finished Exams
+        # 2. Fetch completed Exams (ACTIVE exams that have passed their end_time, or all ACTIVE exams with assignees who completed)
         if report_type in ["ALL", "EXAM"]:
             exams = (
                 db.query(Exam, Quiz.title.label("quiz_title"), User.fullname.label("host_name"))
                 .join(Quiz, Exam.quiz_id == Quiz.id)
                 .join(User, Exam.host_id == User.id)
-                .filter(Exam.status == "FINISHED") # Assuming FINISHED status for exams
+                .filter(Exam.status.in_(["ACTIVE", "ENDED", "FINISHED", "COMPLETED"]))
                 .all()
             )
             for row in exams:
@@ -129,29 +129,78 @@ class CRUDReport:
         if session_type.upper() == "ROOM":
             query = db.query(Participant).filter(Participant.room_id == session_id)
             total = query.count()
-            participants = query.order_by(desc(Participant.score)).offset(skip).limit(limit).all()
-            for p in participants:
+            # Get all participants sorted by score for ranking
+            all_participants = query.order_by(desc(Participant.score)).all()
+            
+            # Build rank map (1-indexed)
+            rank_map = {}
+            for idx, p in enumerate(all_participants):
+                rank_map[p.id] = idx + 1
+            
+            # Paginate
+            paginated = all_participants[skip:skip + limit]
+            
+            for p in paginated:
+                # Calculate correct/total answers
+                total_ans = db.query(func.count(ParticipantAnswer.id)).filter(
+                    ParticipantAnswer.participant_id == p.id
+                ).scalar() or 0
+                correct_ans = db.query(func.count(ParticipantAnswer.id)).filter(
+                    ParticipantAnswer.participant_id == p.id,
+                    ParticipantAnswer.is_correct == True
+                ).scalar() or 0
+                
+                acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0%"
+                
                 results.append(ReportParticipant(
                     id=f"P-{p.id}",
                     user_id=str(p.user_id) if hasattr(p, 'user_id') and p.user_id else None,
                     nickname=p.nickname or "Anonymous",
                     status=p.status or "Completed",
                     joined_at=p.joined_at.strftime("%Y-%m-%d %H:%M") if hasattr(p, 'joined_at') and p.joined_at else None,
-                    score=p.score
+                    score=p.score,
+                    correct_answers=f"{correct_ans}/{total_ans}",
+                    accuracy=acc,
+                    rank=rank_map.get(p.id, 0)
                 ))
         elif session_type.upper() == "EXAM":
             query = db.query(ExamAssignee, User.fullname).outerjoin(User, ExamAssignee.user_id == User.id).filter(ExamAssignee.exam_id == session_id)
             total = query.count()
-            assignees = query.order_by(desc(ExamAssignee.score)).offset(skip).limit(limit).all()
-            for a, fullname in assignees:
+            # Get all for ranking
+            all_assignees = query.order_by(desc(ExamAssignee.score)).all()
+            
+            # Build rank map
+            rank_map = {}
+            for idx, (a, _) in enumerate(all_assignees):
+                rank_map[a.id] = idx + 1
+            
+            # Paginate
+            paginated = all_assignees[skip:skip + limit]
+            
+            for a, fullname in paginated:
                 u_name = fullname if fullname else "Anonymous"
+                
+                # Calculate correct/total answers
+                total_ans = db.query(func.count(ExamAnswer.id)).filter(
+                    ExamAnswer.assignee_id == a.id
+                ).scalar() or 0
+                correct_ans = db.query(func.count(ExamAnswer.id)).filter(
+                    ExamAnswer.assignee_id == a.id,
+                    ExamAnswer.is_correct == True
+                ).scalar() or 0
+                
+                acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0%"
+                
                 results.append(ReportParticipant(
                     id=f"EA-{a.id}",
                     user_id=str(a.user_id) if hasattr(a, 'user_id') and a.user_id else None,
                     nickname=u_name,
                     status=a.status or "Completed",
                     joined_at=a.started_at.strftime("%Y-%m-%d %H:%M") if hasattr(a, 'started_at') and a.started_at else None,
-                    score=a.score or 0
+                    score=a.score or 0,
+                    correct_answers=f"{correct_ans}/{total_ans}",
+                    accuracy=acc,
+                    rank=rank_map.get(a.id, 0)
                 ))
                 
         return ReportParticipantPageResponse(
@@ -254,7 +303,7 @@ class CRUDReport:
         # Generate participants CSV
         participants_output = io.StringIO()
         p_writer = csv.writer(participants_output)
-        p_writer.writerow(["Participant Name", "Score", "Time Taken (mins)", "Status"])
+        p_writer.writerow(["Rank", "Participant Name", "Score", "Correct Answers", "Accuracy (%)", "Joined At", "Status"])
 
         # Generate questions CSV
         questions_output = io.StringIO()
@@ -263,12 +312,25 @@ class CRUDReport:
 
         if session_type.upper() == "ROOM":
             # 1. Participants data
-            participants = db.query(Participant).filter(Participant.room_id == session_id).all()
-            for p in participants:
+            participants = db.query(Participant).filter(Participant.room_id == session_id).order_by(desc(Participant.score)).all()
+            for rank, p in enumerate(participants, 1):
+                total_ans = db.query(func.count(ParticipantAnswer.id)).filter(
+                    ParticipantAnswer.participant_id == p.id
+                ).scalar() or 0
+                correct_ans = db.query(func.count(ParticipantAnswer.id)).filter(
+                    ParticipantAnswer.participant_id == p.id,
+                    ParticipantAnswer.is_correct == True
+                ).scalar() or 0
+                acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0%"
+                joined = p.joined_at.strftime("%Y-%m-%d %H:%M") if hasattr(p, 'joined_at') and p.joined_at else "N/A"
+                
                 p_writer.writerow([
+                    rank,
                     p.nickname or "Anonymous", 
-                    p.score, 
-                    "N/A", 
+                    p.score,
+                    f"\t{correct_ans}/{total_ans}",
+                    acc,
+                    joined,
                     p.status or "Completed"
                 ])
                 
@@ -296,14 +358,28 @@ class CRUDReport:
 
         elif session_type.upper() == "EXAM":
             # 1. Assignees data
-            assignees = db.query(ExamAssignee).filter(ExamAssignee.exam_id == session_id).all()
-            for a in assignees:
+            assignees = db.query(ExamAssignee).filter(ExamAssignee.exam_id == session_id).order_by(desc(ExamAssignee.score)).all()
+            for rank, a in enumerate(assignees, 1):
                 user = db.query(User).filter(User.id == a.user_id).first()
                 u_name = user.fullname if user else "Anonymous"
+                
+                total_ans = db.query(func.count(ExamAnswer.id)).filter(
+                    ExamAnswer.assignee_id == a.id
+                ).scalar() or 0
+                correct_ans = db.query(func.count(ExamAnswer.id)).filter(
+                    ExamAnswer.assignee_id == a.id,
+                    ExamAnswer.is_correct == True
+                ).scalar() or 0
+                acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0%"
+                joined = a.started_at.strftime("%Y-%m-%d %H:%M") if hasattr(a, 'started_at') and a.started_at else "N/A"
+                
                 p_writer.writerow([
+                    rank,
                     u_name,
                     a.score,
-                    "N/A",
+                    f"\t{correct_ans}/{total_ans}",
+                    acc,
+                    joined,
                     a.status or "Completed"
                 ])
                 
@@ -331,8 +407,8 @@ class CRUDReport:
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("participants.csv", participants_output.getvalue().encode('utf-8'))
-            zf.writestr("questions_accuracy.csv", questions_output.getvalue().encode('utf-8'))
+            zf.writestr("participants.csv", participants_output.getvalue().encode('utf-8-sig'))
+            zf.writestr("questions_accuracy.csv", questions_output.getvalue().encode('utf-8-sig'))
             
         return zip_buffer.getvalue()
 

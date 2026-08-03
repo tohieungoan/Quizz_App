@@ -56,5 +56,8 @@ export const userService = {
     const formData = new FormData();
     formData.append('file', file);
     return apiClient.postMultipart<any>('/users/import', formData);
-  }
+  },
+
+  getUserAssignedExams: (userId: number | string): Promise<any[]> =>
+    apiClient.get<any[]>(`/users/${userId}/assigned-exams`),
 };

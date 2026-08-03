@@ -30,7 +30,9 @@ class ReportParticipant(BaseModel):
     status: str
     joined_at: Optional[str] = None
     score: int
-    time_taken: str = "N/A"
+    correct_answers: str = "0/0"  # e.g. "8/10"
+    accuracy: str = "0%"  # e.g. "80.0%"
+    rank: int = 0
 
 class ReportParticipantPageResponse(BaseModel):
     data: List[ReportParticipant]

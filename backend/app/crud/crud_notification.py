@@ -176,4 +176,35 @@ class CRUDNotification:
             
         return False
 
+    def clear_all_read(self, db: Session, user_id: int) -> int:
+        """Delete all read notifications for a user"""
+        count = 0
+        
+        # 1. Delete personal notifications that are read
+        personal_read = db.query(Notification).filter(
+            Notification.user_id == user_id,
+            Notification.id.in_(
+                db.query(NotificationRead.notification_id).filter(
+                    NotificationRead.user_id == user_id,
+                    NotificationRead.is_read == True
+                )
+            )
+        ).all()
+        for n in personal_read:
+            db.delete(n)
+            count += 1
+        
+        # 2. Mark global broadcast notifications as deleted
+        global_read = db.query(NotificationRead).filter(
+            NotificationRead.user_id == user_id,
+            NotificationRead.is_read == True,
+            NotificationRead.is_deleted == False
+        ).all()
+        for nr in global_read:
+            nr.is_deleted = True
+            count += 1
+        
+        db.commit()
+        return count
+
 crud_notification = CRUDNotification()

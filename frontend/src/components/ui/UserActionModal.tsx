@@ -1,6 +1,6 @@
-import { X, User, Mail, Shield, AlertCircle, CheckCircle2, Lock, Calendar, Star, Clock, BookOpen, ChevronDown } from 'lucide-react';
+import { X, User, Mail, Shield, AlertCircle, CheckCircle2, Lock, Calendar, Star, Clock, BookOpen, ChevronDown, Loader2 } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { DUMMY_QUIZZES } from '../../data/mockDb';
+import { userService } from '@/services/userService';
 
 export type UserMode = 'view' | 'edit' | 'add';
 
@@ -8,8 +8,8 @@ export interface UserData {
   id: string;
   name: string;
   email: string;
-  role: 'SUPER_ADMIN' | 'USER';
-  status: 'ACTIVE' | 'SUSPENDED';
+  role: 'SUPER_ADMIN' | 'USER' | string;
+  status: 'ACTIVE' | 'SUSPENDED' | string;
   initials: string;
   email_verified?: boolean;
   achievement_points?: number;
@@ -22,7 +22,7 @@ export interface UserData {
 const CustomSelect = ({ 
   value, 
   options, 
-  onChange,
+  onChange, 
   disabled 
 }: { 
   value: string, 
@@ -88,15 +88,34 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErro
   });
 
   const [password, setPassword] = useState('');
+  const [assignedExams, setAssignedExams] = useState<any[]>([]);
+  const [isLoadingExams, setIsLoadingExams] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen) {
       if ((mode === 'edit' || mode === 'view') && user) {
         setFormData(user);
+        if (mode === 'view' && user.id) {
+          setIsLoadingExams(true);
+          userService.getUserAssignedExams(user.id)
+            .then((data) => {
+              setAssignedExams(Array.isArray(data) ? data : []);
+            })
+            .catch((err) => {
+              console.error('Failed to load assigned exams for user:', err);
+              setAssignedExams([]);
+            })
+            .finally(() => {
+              setIsLoadingExams(false);
+            });
+        }
       } else {
         setFormData({ name: '', email: '', role: 'USER', status: 'ACTIVE', email_verified: false, avatar: '', achievement_points: 0 });
         setPassword('');
+        setAssignedExams([]);
       }
+    } else {
+      setAssignedExams([]);
     }
   }, [isOpen, mode, user]);
 
@@ -305,25 +324,46 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErro
 
                 <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-4 border-b border-outline-variant/30 pb-2 mt-8">Assigned Exams</h3>
                 <div className="space-y-2">
-                  {formData.assigned_quizzes && formData.assigned_quizzes.length > 0 ? (
-                    formData.assigned_quizzes.map(quizId => {
-                      const quiz = DUMMY_QUIZZES.find(q => q.id === quizId);
-                      if (!quiz) return null;
-                      return (
-                        <div key={quizId} className="bg-surface-container-lowest border border-outline-variant/50 p-3 rounded-lg flex items-center justify-between gap-3">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-sm text-on-surface">{quiz.title}</span>
-                            <div className="flex gap-2 items-center mt-1">
-                              <span className="text-[11px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">{quiz.subject}</span>
-                              <span className="text-[11px] font-medium text-primary flex items-center gap-1"><Clock className="w-3 h-3" /> {quiz.time}</span>
-                            </div>
+                  {isLoadingExams ? (
+                    <div className="flex items-center justify-center py-6 text-on-surface-variant bg-surface-container-lowest rounded-lg border border-outline-variant/50">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary mr-2" />
+                      <span className="text-sm">Loading assigned exams...</span>
+                    </div>
+                  ) : assignedExams.length > 0 ? (
+                    assignedExams.map((exam) => (
+                      <div key={exam.id} className="bg-surface-container-lowest border border-outline-variant/50 p-3 rounded-lg flex items-center justify-between gap-3">
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-sm text-on-surface truncate">{exam.title}</span>
+                          <div className="flex flex-wrap gap-2 items-center mt-1">
+                            {exam.subject && (
+                              <span className="text-[11px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">{exam.subject}</span>
+                            )}
+                            {exam.group_name && (
+                              <span className="text-[11px] font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">Group: {exam.group_name}</span>
+                            )}
+                            {exam.timer && (
+                              <span className="text-[11px] font-medium text-primary flex items-center gap-1"><Clock className="w-3 h-3" /> {exam.timer} mins</span>
+                            )}
+                            <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant">
+                              {exam.status || 'ASSIGNED'}
+                            </span>
                           </div>
-                          <span className="text-xs font-bold text-on-surface-variant bg-surface-container px-2 py-1 rounded-md">{quiz.id}</span>
                         </div>
-                      );
-                    })
+                        <div className="text-right shrink-0">
+                          {exam.score !== null && exam.score !== undefined ? (
+                            <span className="text-xs font-mono font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-200">
+                              Score: {exam.score}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold text-on-surface-variant bg-surface-container px-2 py-1 rounded-md">
+                              Exam #{exam.id}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
                   ) : (
-                    <div className="text-sm text-on-surface-variant italic py-2 text-center bg-surface-container-lowest rounded-lg border border-dashed border-outline-variant">
+                    <div className="text-sm text-on-surface-variant italic py-4 text-center bg-surface-container-lowest rounded-lg border border-dashed border-outline-variant">
                       No exams assigned to this user.
                     </div>
                   )}
