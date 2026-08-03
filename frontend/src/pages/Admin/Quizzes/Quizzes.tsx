@@ -4,9 +4,20 @@ import { Dropdown } from '@/components/ui/Dropdown';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { Pagination } from '@/components/ui/Pagination';
-import { Quiz } from '@/data/mockDb';
 import { quizService } from '@/services/quizService';
 import { toast } from 'react-hot-toast';
+
+export interface Quiz {
+  id: string;
+  title: string;
+  status: string;
+  subject: string;
+  q: number;
+  diff: string;
+  author: string;
+  date: string;
+  time: string;
+}
 
 interface QuizzesProps {
   onCreateQuiz: () => void;

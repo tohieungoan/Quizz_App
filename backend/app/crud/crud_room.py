@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 
 from app.core.config import settings
 
-from sqlalchemy import desc, func, or_
+from sqlalchemy import desc, func, or_, and_
 from sqlalchemy.orm import Session
 
 from app.models.quiz import Quiz
@@ -20,15 +20,54 @@ from app.schemas.room import (
 
 
 class CRUDRoom:
+    def auto_end_stale_rooms(self, db: Session) -> int:
+        """
+        Auto-end any rooms that are stale or expired across the entire platform:
+        1. Rooms whose expire_at has passed (expire_at <= now)
+        2. WAITING rooms created > 15 minutes ago
+        3. PLAYING/RUNNING rooms created > 4 hours ago (abandoned games)
+        """
+        now = datetime.datetime.utcnow()
+        waiting_cutoff = now - datetime.timedelta(minutes=15)
+        playing_cutoff = now - datetime.timedelta(hours=4)
+        
+        stale_rooms = db.query(Room).filter(
+            Room.status != "ENDED",
+            or_(
+                and_(Room.expire_at.isnot(None), Room.expire_at <= now),
+                and_(Room.status == "WAITING", Room.created_at <= waiting_cutoff),
+                and_(Room.status.in_(["PLAYING", "RUNNING"]), Room.created_at <= playing_cutoff)
+            )
+        ).all()
+        
+        count = 0
+        for r in stale_rooms:
+            r.status = "ENDED"
+            r.ended_at = now
+            db.add(r)
+            count += 1
+            
+        if count > 0:
+            db.commit()
+            
+        return count
+
     def check_and_auto_end_room(self, db: Session, room: Optional[Room]) -> Optional[Room]:
         """
-        If room is WAITING and created_at is older than 15 minutes,
-        auto-end it to free up resources and recycle code.
+        If room is not ENDED and is stale/expired, auto-end it immediately.
         """
-        if room and room.status == "WAITING":
+        if room and room.status != "ENDED":
             now = datetime.datetime.utcnow()
-            elapsed = now - room.created_at
-            if elapsed > datetime.timedelta(minutes=15):
+            is_stale = False
+            
+            if room.expire_at and room.expire_at <= now:
+                is_stale = True
+            elif room.status == "WAITING" and (now - room.created_at) > datetime.timedelta(minutes=15):
+                is_stale = True
+            elif room.status in ["PLAYING", "RUNNING"] and (now - room.created_at) > datetime.timedelta(hours=4):
+                is_stale = True
+                
+            if is_stale:
                 room.status = "ENDED"
                 room.ended_at = now
                 db.add(room)
@@ -387,6 +426,9 @@ class CRUDRoom:
         Get all rooms for the Admin dashboard with pagination, search, and filtering.
         Calculates participantCount using outer join.
         """
+        # Automatically clean up stale rooms first
+        self.auto_end_stale_rooms(db)
+
         # Base query joining Room, Quiz, User, and counting Participants
         query = db.query(
             Room.id,
@@ -407,7 +449,13 @@ class CRUDRoom:
 
         # Apply Status Filter
         if status and status.upper() != "ALL":
-            query = query.filter(Room.status == status.upper())
+            st_up = status.upper()
+            if st_up in ["RUNNING", "PLAYING"]:
+                query = query.filter(Room.status.in_(["RUNNING", "PLAYING"]))
+            elif st_up in ["FINISHED", "ENDED"]:
+                query = query.filter(Room.status.in_(["FINISHED", "ENDED"]))
+            else:
+                query = query.filter(Room.status == st_up)
 
         # Apply Search Filter (room_code, quiz_title, host_name)
         if search:
@@ -431,7 +479,13 @@ class CRUDRoom:
         total_query = db.query(func.count(Room.id))
         
         if status and status.upper() != "ALL":
-            total_query = total_query.filter(Room.status == status.upper())
+            st_up = status.upper()
+            if st_up in ["RUNNING", "PLAYING"]:
+                total_query = total_query.filter(Room.status.in_(["RUNNING", "PLAYING"]))
+            elif st_up in ["FINISHED", "ENDED"]:
+                total_query = total_query.filter(Room.status.in_(["FINISHED", "ENDED"]))
+            else:
+                total_query = total_query.filter(Room.status == st_up)
             
         if search:
             search_term = f"%{search}%"

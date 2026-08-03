@@ -65,6 +65,27 @@ def mark_all_notifications_as_read(
     count = crud_notification.mark_all_as_read(db, current_user.id)
     return {"success": True, "marked_count": count}
 
+@router.delete("/{notification_id}", summary="Delete a notification")
+def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete (hide) a specific notification for the current user."""
+    success = crud_notification.delete_notification(db, notification_id, current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"success": True}
+
+@router.delete("/", summary="Clear all read notifications")
+def clear_all_read_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete all read notifications for the current user."""
+    count = crud_notification.clear_all_read(db, current_user.id)
+    return {"success": True, "cleared_count": count}
+
 
 # -----------------------------------------
 # ADMIN BROADCAST ENDPOINTS

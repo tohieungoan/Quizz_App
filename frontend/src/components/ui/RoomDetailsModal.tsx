@@ -1,16 +1,17 @@
-import { X, Search, Clock, Users, PlayCircle, StopCircle, PauseCircle, CheckCircle2, User, UserX, UserCheck, ShieldAlert, BookOpen, HelpCircle, Activity } from 'lucide-react';
-import React, { useState } from 'react';
-import { DUMMY_PARTICIPANTS, DUMMY_QUIZZES } from '../../data/mockDb';
+import { X, Search, Clock, Users, PlayCircle, StopCircle, PauseCircle, CheckCircle2, User, UserX, UserCheck, ShieldAlert, BookOpen, HelpCircle, Activity, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { roomService } from '@/services/roomService';
 
 interface Room {
-  id: string;
+  id: string | number;
   room_code: string;
   title: string;
-  host_name: string;
-  quiz_title: string;
-  status: 'WAITING' | 'RUNNING' | 'PAUSED' | 'FINISHED';
-  created_at: string;
-  participant_count: number;
+  host_name?: string;
+  quiz_title?: string;
+  quiz_subject?: string;
+  status: 'WAITING' | 'RUNNING' | 'PAUSED' | 'FINISHED' | string;
+  created_at?: string;
+  participant_count?: number;
 }
 
 interface RoomDetailsModalProps {
@@ -21,38 +22,67 @@ interface RoomDetailsModalProps {
 
 export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen && room?.id) {
+      setIsLoading(true);
+      roomService.getRoomParticipants(room.id)
+        .then((data) => {
+          setParticipants(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => {
+          console.error('Failed to fetch room participants:', err);
+          setParticipants([]);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    } else {
+      setParticipants([]);
+    }
+  }, [isOpen, room?.id]);
 
   if (!isOpen || !room) return null;
 
-  const participants = DUMMY_PARTICIPANTS.filter(p => p.room_id === room.id);
-  const quizInfo = DUMMY_QUIZZES.find(q => q.title === room.quiz_title);
-  
   const filteredParticipants = participants.filter(p => 
-    p.nickname.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (p.user_id && p.user_id.toLowerCase().includes(searchTerm.toLowerCase()))
+    (p.nickname && p.nickname.toLowerCase().includes(searchTerm.toLowerCase())) || 
+    (p.user_id && String(p.user_id).toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const validScores = participants.map(p => p.score).filter(s => s !== undefined && typeof s === 'number');
+  const validScores = participants
+    .map(p => p.score)
+    .filter(s => s !== undefined && s !== null && typeof s === 'number');
   const averageScore = validScores.length > 0 ? (validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(1) : '0';
   const highestScore = validScores.length > 0 ? Math.max(...validScores) : 0;
 
-
-  const getStatusBadge = (status: Room['status']) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case 'RUNNING': return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200"><PlayCircle className="w-3.5 h-3.5" /> LIVE</span>;
       case 'PAUSED': return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200"><PauseCircle className="w-3.5 h-3.5" /> PAUSED</span>;
       case 'WAITING': return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200"><Clock className="w-3.5 h-3.5" /> WAITING</span>;
       case 'FINISHED': return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-surface-container-highest text-on-surface-variant border border-outline-variant"><CheckCircle2 className="w-3.5 h-3.5" /> ENDED</span>;
+      default: return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-surface-container text-on-surface-variant">{status}</span>;
     }
   };
 
   const getParticipantStatusIcon = (status: string) => {
-    switch(status) {
+    switch(status?.toUpperCase()) {
       case 'JOINED': return <span className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded-md text-[11px] font-bold"><UserCheck className="w-3 h-3" /> JOINED</span>;
       case 'LEFT': return <span className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md text-[11px] font-bold"><UserX className="w-3 h-3" /> LEFT</span>;
       case 'KICKED': return <span className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-0.5 rounded-md text-[11px] font-bold"><ShieldAlert className="w-3 h-3" /> KICKED</span>;
       case 'FINISHED': return <span className="flex items-center gap-1 text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md text-[11px] font-bold"><CheckCircle2 className="w-3 h-3" /> FINISHED</span>;
-      default: return null;
+      default: return <span className="flex items-center gap-1 text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-md text-[11px] font-medium">{status || 'UNKNOWN'}</span>;
+    }
+  };
+
+  const formatJoinedTime = (joinedAt?: string) => {
+    if (!joinedAt) return 'N/A';
+    try {
+      return new Date(joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      return joinedAt;
     }
   };
 
@@ -71,13 +101,16 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
                   <div className="bg-primary/10 text-primary font-mono font-bold px-2.5 py-0.5 rounded-md tracking-wider text-sm border border-primary/20">
                     {room.room_code}
                   </div>
+                  {getStatusBadge(room.status)}
                 </div>
                 <h2 className="text-xl font-headline-lg font-bold text-on-surface">
                   {room.title}
                 </h2>
-                <p className="text-sm text-on-surface-variant mt-1">
-                  Host: <strong className="text-on-surface">{room.host_name}</strong>
-                </p>
+                {room.host_name && (
+                  <p className="text-sm text-on-surface-variant mt-1">
+                    Host: <strong className="text-on-surface">{room.host_name}</strong>
+                  </p>
+                )}
               </div>
               <button onClick={onClose} className="p-2 text-on-surface-variant hover:bg-surface-container hover:text-error rounded-full transition-colors">
                 <X className="w-5 h-5" />
@@ -85,26 +118,20 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
             </div>
             
             {/* Quiz Info Box */}
-            {quizInfo && (
+            {room.quiz_title && (
               <div className="mt-4 p-3 bg-surface-bright border border-outline-variant/50 rounded-lg flex flex-wrap items-center gap-4 text-sm">
                 <div className="flex items-center gap-1.5 text-on-surface">
                   <BookOpen className="w-4 h-4 text-primary" />
-                  <span className="font-bold">{quizInfo.title}</span>
+                  <span className="font-bold">{room.quiz_title}</span>
                 </div>
-                <div className="w-1 h-1 rounded-full bg-outline-variant hidden sm:block"></div>
-                <div className="flex items-center gap-1.5 text-on-surface-variant">
-                  <span className="bg-surface-container px-2 py-0.5 rounded-md text-xs font-bold">{quizInfo.subject}</span>
-                </div>
-                <div className="w-1 h-1 rounded-full bg-outline-variant hidden sm:block"></div>
-                <div className="flex items-center gap-1.5 text-on-surface-variant">
-                  <HelpCircle className="w-4 h-4" />
-                  <span>{quizInfo.q} Questions</span>
-                </div>
-                <div className="w-1 h-1 rounded-full bg-outline-variant hidden sm:block"></div>
-                <div className="flex items-center gap-1.5 text-on-surface-variant">
-                  <Activity className="w-4 h-4" />
-                  <span>{quizInfo.diff}</span>
-                </div>
+                {room.quiz_subject && (
+                  <>
+                    <div className="w-1 h-1 rounded-full bg-outline-variant hidden sm:block"></div>
+                    <div className="flex items-center gap-1.5 text-on-surface-variant">
+                      <span className="bg-surface-container px-2 py-0.5 rounded-md text-xs font-bold">{room.quiz_subject}</span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -146,50 +173,65 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
 
           <div className="border border-outline-variant rounded-xl flex flex-col flex-1 overflow-hidden bg-surface-bright shadow-sm">
             <div className="overflow-auto flex-1 relative">
-              <table className="w-full text-left text-sm text-on-surface">
-                <thead className="bg-surface-container-low text-on-surface-variant text-xs uppercase font-label-bold sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="px-6 py-4 font-bold border-b border-outline-variant/50">Participant (Accounts)</th>
-                    <th className="px-6 py-4 font-bold border-b border-outline-variant/50">Joined At</th>
-                    <th className="px-6 py-4 font-bold border-b border-outline-variant/50 text-right">Score</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/30">
-                  {filteredParticipants.length > 0 ? (
-                    filteredParticipants.map((p) => (
-                      <tr key={p.id} className="hover:bg-surface-container-lowest/50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                              <User className="w-4 h-4" />
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-on-surface-variant">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+                  <p className="text-sm font-medium">Loading participants from server...</p>
+                </div>
+              ) : (
+                <table className="w-full text-left text-sm text-on-surface">
+                  <thead className="bg-surface-container-low text-on-surface-variant text-xs uppercase font-label-bold sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      <th className="px-6 py-4 font-bold border-b border-outline-variant/50">Participant</th>
+                      <th className="px-6 py-4 font-bold border-b border-outline-variant/50">Status</th>
+                      <th className="px-6 py-4 font-bold border-b border-outline-variant/50">Joined At</th>
+                      <th className="px-6 py-4 font-bold border-b border-outline-variant/50 text-right">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/30">
+                    {filteredParticipants.length > 0 ? (
+                      filteredParticipants.map((p) => (
+                        <tr key={p.id} className="hover:bg-surface-container-lowest/50 transition-colors group">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              {p.avatar ? (
+                                <img src={p.avatar} alt={p.nickname} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                  <User className="w-4 h-4" />
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-bold text-on-surface">{p.nickname}</p>
+                                {p.user_id && <p className="text-[11px] font-mono text-on-surface-variant">User #{p.user_id}</p>}
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-bold text-on-surface">{p.nickname}</p>
-                              {p.user_id && <p className="text-[11px] font-mono text-on-surface-variant">{p.user_id}</p>}
-                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {getParticipantStatusIcon(p.status)}
+                          </td>
+                          <td className="px-6 py-4 text-on-surface-variant font-medium">
+                            {formatJoinedTime(p.joined_at)}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className="font-mono font-bold text-primary">{p.score ?? 0}</span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-12 text-center text-on-surface-variant">
+                          <div className="flex flex-col items-center justify-center">
+                            <Users className="w-10 h-10 mb-3 opacity-20" />
+                            <p className="font-medium">No participants found</p>
+                            <p className="text-xs mt-1">This room currently has no participants matching your search.</p>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-on-surface-variant font-medium">
-                          {p.joined_at}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <span className="font-mono font-bold text-primary">{p.score}</span>
-                        </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={4} className="px-6 py-12 text-center text-on-surface-variant">
-                        <div className="flex flex-col items-center justify-center">
-                          <Users className="w-10 h-10 mb-3 opacity-20" />
-                          <p className="font-medium">No participants found</p>
-                          <p className="text-xs mt-1">This room currently has no participants matching your search.</p>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>

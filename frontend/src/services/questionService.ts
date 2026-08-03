@@ -2,8 +2,8 @@ import { apiClient } from './apiClient';
 
 export interface QuestionOptionCreatePayload {
   content?: string;
-  audio_url?: string;
-  media_url?: string;
+  audio_url?: string | null;
+  media_url?: string | null;
   is_correct?: boolean;
 }
 
@@ -11,8 +11,8 @@ export interface QuestionCreatePayload {
   parent_question_id?: number | null;
   type?: string;
   content: string;
-  audio_url?: string;
-  media_url?: string;
+  audio_url?: string | null;
+  media_url?: string | null;
   audio_play_limit?: number;
   difficulty?: string;
   time_limit?: number;

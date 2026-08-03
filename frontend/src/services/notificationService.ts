@@ -50,4 +50,16 @@ export const notificationService = {
     scheduledAt?: string | null;
   }): Promise<{ success: boolean; message: string; job_id?: string }> =>
     apiClient.post<{ success: boolean; message: string; job_id?: string }>('/notifications/broadcast', payload),
+
+  /**
+   * Delete a specific notification
+   */
+  deleteNotification: (notificationId: number): Promise<{ success: boolean }> =>
+    apiClient.delete<{ success: boolean }>(`/notifications/${notificationId}`),
+
+  /**
+   * Clear all read notifications
+   */
+  clearAllRead: (): Promise<{ success: boolean; cleared_count: number }> =>
+    apiClient.delete<{ success: boolean; cleared_count: number }>('/notifications/'),
 };

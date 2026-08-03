@@ -1,368 +1,352 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Copy, Trash2, Search, CheckCircle2, FileEdit, Library } from 'lucide-react';
-import { Dropdown } from '@/components/ui/Dropdown';
-import { ConfirmModal } from '@/components/ui/ConfirmModal';
-import { AlertModal } from '@/components/ui/AlertModal';
-import { Pagination } from '@/components/ui/Pagination';
-import { Quiz } from '@/data/mockDb';
-import { quizService } from '@/services/quizService';
-import { toast } from 'react-hot-toast';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Bell, Trophy, HelpCircle, Clock, Check, X } from 'lucide-react';
+import { useNotifications } from '@/hooks/useNotifications';
+import { AiSupportModal } from './AiSupportModal';
+import { groupService } from '@/services';
 
-interface QuizzesProps {
-  onCreateQuiz: () => void;
-  onEditQuiz: (quiz: Quiz) => void;
+interface DashboardHeaderProps {
+  activeTitle: string | null;
+  onLogout: () => void;
 }
 
-export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) => {
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [difficultyFilter, setDifficultyFilter] = useState('All Difficulty');
-  const [subjectFilter, setSubjectFilter] = useState('All Subjects');
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
+  activeTitle,
+  onLogout,
+}) => {
+  const navigate = useNavigate();
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const { notifications, unreadCount, markAllAsRead, markAsRead } = useNotifications();
+  const notifRef = useRef<HTMLDivElement>(null);
 
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
-  const itemsPerPage = 5;
+  const handleNotificationClick = (item: any) => {
+    if (item.unread) {
+      markAsRead(item.id);
+    }
+    setIsNotifOpen(false);
+
+    const typeUpper = (item.type || '').toUpperCase();
+    const titleUpper = (item.title || '').toUpperCase();
+    const contentUpper = (item.content || '').toUpperCase();
+
+    // Helper for navigation
+    const goToTab = (tab: string, subTab?: string) => {
+      sessionStorage.setItem('dashboard_active_tab', tab);
+      if (subTab) {
+        sessionStorage.setItem('host_studio_active_subtab', subTab);
+      }
+      window.dispatchEvent(new CustomEvent('quizzapp_switch_dashboard_tab', { detail: { tab } }));
+      if (subTab) {
+        window.dispatchEvent(new CustomEvent('quizzapp_switch_host_subtab', { detail: { subTab } }));
+      }
+      if (window.location.pathname !== '/dashboard') {
+        navigate('/dashboard', { state: { activeTab: tab } });
+      }
+    };
+
+    // 0. Live quiz lobby invitation -> Navigate directly to lobby
+    if (item.action_url && item.action_url.includes('/lobby')) {
+      navigate(item.action_url);
+      return;
+    }
+    
+    // 1. EXAM_ASSIGNED -> Navigate to My Assigned Exams tab
+    if (
+      typeUpper === 'EXAM_ASSIGNED' ||
+      titleUpper.includes('EXAM ASSIGNED') ||
+      titleUpper.includes('NEW EXAM')
+    ) {
+      goToTab('assigned_exams');
+    }
+    // 2. EXAM_GRADED / FEEDBACK / RESULTS -> Navigate to History & Results tab
+    else if (
+      typeUpper === 'EXAM_GRADED' ||
+      typeUpper === 'FEEDBACK' ||
+      typeUpper === 'RESULTS_PUBLISHED' ||
+      titleUpper.includes('GRADED') ||
+      titleUpper.includes('FEEDBACK') ||
+      titleUpper.includes('RESULT')
+    ) {
+      goToTab('history');
+    }
+    // 3. GROUP / JOIN REQUEST -> Navigate to Host Studio tab -> My Study Groups sub-tab
+    else if (
+      typeUpper.includes('JOIN_REQUEST') ||
+      typeUpper.includes('GROUP') ||
+      titleUpper.includes('JOIN REQUEST') ||
+      titleUpper.includes('JOIN') ||
+      titleUpper.includes('GROUP') ||
+      contentUpper.includes('REQUEST TO JOIN') ||
+      (item.action_url && item.action_url.startsWith('/groups'))
+    ) {
+      goToTab('host_studio', 'groups');
+    }
+    // 4. HOST_STUDIO / SUBMISSION -> Navigate to Host Studio tab
+    else if (
+      typeUpper === 'SUBMISSION' ||
+      typeUpper === 'HOST_STUDIO' ||
+      titleUpper.includes('SUBMISSION')
+    ) {
+      goToTab('host_studio');
+    }
+    // 5. SETTINGS / PROFILE -> Navigate to Settings tab
+    else if (
+      typeUpper === 'SETTINGS' ||
+      typeUpper === 'PROFILE' ||
+      titleUpper.includes('PROFILE')
+    ) {
+      goToTab('settings');
+    }
+    // 6. Explicit action URL navigation
+    else if (item.action_url) {
+      if (item.action_url.startsWith('/exams/')) {
+        goToTab('assigned_exams');
+      } else if (item.action_url.startsWith('/groups')) {
+        goToTab('host_studio', 'groups');
+      } else {
+        navigate(item.action_url);
+      }
+    }
+  };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setIsNotifOpen(false);
+      }
+    };
 
-  // Delete Confirmation State
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [quizToDelete, setQuizToDelete] = useState<string | null>(null);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
-  // Alert State
-  const [alertState, setAlertState] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
-    isOpen: false, title: '', message: '', type: 'info'
+  const [user, setUser] = useState<{ name: string; email: string; avatar?: string; role?: string } | null>(() => {
+    const stored = localStorage.getItem('user');
+    return stored ? JSON.parse(stored) : null;
   });
 
-  const fetchQuizzes = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const params: any = {
-        pageIndex: currentPage,
-        pageSize: itemsPerPage,
-      };
-      if (debouncedSearchTerm) params.keyword = debouncedSearchTerm;
-      if (difficultyFilter !== 'All Difficulty') params.difficulty = difficultyFilter;
-      if (subjectFilter !== 'All Subjects') params.subject = subjectFilter;
-
-      const res = await quizService.getAdminQuizzes(params);
-      if (res && res.data) {
-        const mappedQuizzes: Quiz[] = res.data.map((q: any) => ({
-          id: `QZ-${q.id}`,
-          title: q.title,
-          status: q.status || 'Draft',
-          subject: q.subject || 'General',
-          q: q.question_count || 0,
-          diff: q.difficulty || 'Medium',
-          author: 'Admin',
-          date: new Date(q.created_at).toLocaleDateString(),
-          time: new Date(q.created_at).toLocaleTimeString()
-        }));
-        setQuizzes(mappedQuizzes);
-        setTotalItems(res.total || 0);
-      }
-    } catch (err: any) {
-      console.error("Failed to fetch quizzes", err);
-      setError(err.message || "Failed to load quizzes. Please try again.");
-      setQuizzes([]); // Clear any dummy data
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchQuizzes();
-  }, [currentPage, debouncedSearchTerm, difficultyFilter, subjectFilter]);
+    const handleProfileChange = () => {
+      const stored = localStorage.getItem('user');
+      setUser(stored ? JSON.parse(stored) : null);
+    };
 
-  // Calculate Pagination
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
+    window.addEventListener('storage', handleProfileChange);
+    window.addEventListener('user-profile-updated', handleProfileChange);
 
-  // Actions
-  const handleDuplicate = async (quiz: Quiz) => {
-    try {
-      const rawId = quiz.id.replace('QZ-', '');
-      await quizService.duplicateQuiz(rawId);
-      // Refetch quizzes to get the new duplicate
-      fetchQuizzes();
-      setAlertState({
-        isOpen: true,
-        title: 'Success',
-        message: `Quiz "${quiz.title}" has been duplicated.`,
-        type: 'success'
-      });
-    } catch (error: any) {
-      console.error("Failed to duplicate quiz:", error);
-      toast.error(error.message || "Failed to duplicate quiz.");
-      setAlertState({
-        isOpen: true,
-        title: 'Error',
-        message: error.message || "Failed to duplicate quiz.",
-        type: 'error'
-      });
+    return () => {
+      window.removeEventListener('storage', handleProfileChange);
+      window.removeEventListener('user-profile-updated', handleProfileChange);
+    };
+  }, []);
+
+  const getInitials = (name: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
     }
+    return name.charAt(0).toUpperCase();
   };
 
-  const handleDeleteClick = (id: string) => {
-    setQuizToDelete(id);
-    setDeleteConfirmOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (quizToDelete) {
-      try {
-        const rawId = quizToDelete.replace('QZ-', '');
-        const targetQuiz = quizzes.find(q => q.id === quizToDelete);
-        
-        // If the quiz is Published, we must change it to Draft first to satisfy backend constraints
-        if (targetQuiz && targetQuiz.status === 'Published') {
-          await quizService.updateQuiz(rawId, { status: 'Draft' });
-        }
-
-        await quizService.deleteQuiz(rawId);
-        fetchQuizzes();
-        setAlertState({
-          isOpen: true,
-          title: 'Deleted',
-          message: 'The quiz has been successfully deleted.',
-          type: 'success'
-        });
-      } catch (error: any) {
-        console.error("Failed to delete quiz:", error);
-        toast.error(error.message || "Failed to delete quiz.");
-        setAlertState({
-          isOpen: true,
-          title: 'Error',
-          message: error.message || "Failed to delete quiz.",
-          type: 'error'
-        });
-      } finally {
-        setQuizToDelete(null);
-      }
-    }
+  const getRoleLabel = (role?: string) => {
+    if (!role) return 'Member';
+    if (role === 'ADMIN' || role === 'SUPER_ADMIN') return 'Host';
+    return 'Member';
   };
 
   return (
-    <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="font-headline-xl text-[28px] text-on-surface font-extrabold tracking-tight">
-            Quiz Library
-          </h1>
-          <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
-            Manage and create quizzes for your users.
-          </p>
-
-        </div>
-        <button
-          onClick={onCreateQuiz}
-          className="bg-primary hover:bg-primary/90 text-on-primary font-bold px-5 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 self-start sm:self-auto"
-        >
-          <Plus className="w-5 h-5" />
-          Create New Quiz
-        </button>
-      </div>
-
-      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden mb-8 flex flex-col min-h-[450px]">
-        {/* Table Header / Toolbar */}
-        <div className="px-4 md:px-6 py-4 border-b border-outline-variant/40 flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white">
-          <div className="relative group w-full md:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline w-5 h-5 group-focus-within:text-primary transition-colors" />
+    <>
+      <header className="bg-white border-b border-outline-variant/30 sticky top-0 z-30 px-6 py-3.5 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-4 flex-1 max-w-md">
+          <div className="relative w-full">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline w-4 h-4" />
             <input
               type="text"
-              placeholder="Search by title, subject, ID..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-10 pr-4 py-2 border border-outline-variant rounded-lg bg-surface-container-lowest text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface"
-            />
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2.5 w-full md:w-auto">
-            <Dropdown
-              value={difficultyFilter}
-              onChange={(val) => {
-                setDifficultyFilter(val);
-                setCurrentPage(1);
-              }}
-              options={[
-                { value: 'All Difficulty', label: 'All Difficulty' },
-                { value: 'Easy', label: 'Easy' },
-                { value: 'Medium', label: 'Medium' },
-                { value: 'Hard', label: 'Hard' },
-              ]}
-            />
-
-            <Dropdown
-              value={subjectFilter}
-              onChange={(val) => {
-                setSubjectFilter(val);
-                setCurrentPage(1);
-              }}
-              options={[
-                { value: 'All Subjects', label: 'All Subjects' },
-                { value: 'Science', label: 'Science' },
-                { value: 'Physics', label: 'Physics' },
-                { value: 'Mathematics', label: 'Mathematics' },
-                { value: 'Biology', label: 'Biology' },
-                { value: 'Literature', label: 'Literature' },
-                { value: 'History', label: 'History' },
-                { value: 'Computer Science', label: 'Computer Science' },
-                { value: 'Chemistry', label: 'Chemistry' },
-              ]}
+              placeholder="Search quizzes, subjects, exams..."
+              className="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/40 rounded-xl text-sm focus:outline-none focus:border-primary text-on-surface"
             />
           </div>
         </div>
 
-        {/* Quizzes Table */}
-        <div className="overflow-x-auto flex-1">
-          <table className="w-full text-left border-collapse min-w-[800px]">
-            <thead>
-              <tr className="bg-surface-container/50 text-label-bold text-on-surface-variant uppercase text-xs tracking-wider">
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">ID</th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">Quiz Title</th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">Subject</th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                  Questions
-                </th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                  Difficulty
-                </th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                  Status
-                </th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-right">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody className="text-body-md text-sm text-on-surface divide-y divide-outline-variant/20">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-on-surface-variant">
-                    Loading quizzes...
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-error font-medium">
-                    {error}
-                  </td>
-                </tr>
-              ) : quizzes.length > 0 ? (
-                quizzes.map((quiz) => (
-                  <tr key={quiz.id} className="hover:bg-surface-bright transition-colors">
-                    <td className="px-4 md:px-6 py-4 font-medium text-primary whitespace-nowrap">{quiz.id}</td>
-                    <td className="px-4 md:px-6 py-4 font-semibold text-on-surface max-w-xs truncate">
-                      {quiz.title}
-                    </td>
-                    <td className="px-4 md:px-6 py-4 text-on-surface-variant whitespace-nowrap">{quiz.subject}</td>
-                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">{quiz.q} Qs</td>
-                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          quiz.diff === 'Easy'
-                            ? 'bg-green-100 text-green-700'
-                            : quiz.diff === 'Medium'
-                            ? 'bg-orange-100 text-orange-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        {quiz.diff}
-                      </span>
-                    </td>
-                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          quiz.status === 'Published'
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-surface-container text-on-surface-variant'
-                        }`}
-                      >
-                        {quiz.status === 'Published' ? (
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        ) : (
-                          <FileEdit className="w-3.5 h-3.5" />
-                        )}
-                        {quiz.status}
-                      </span>
-                    </td>
-                    <td className="px-4 md:px-6 py-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => onEditQuiz(quiz)}
-                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
-                          title="Edit Quiz"
-                        >
-                          <Edit2 className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDuplicate(quiz)}
-                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
-                          title="Duplicate Quiz"
-                        >
-                          <Copy className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(quiz.id)}
-                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/40 rounded-md transition-colors"
-                          title="Delete Quiz"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-on-surface-variant">
-                    No quizzes found.
-                  </td>
-                </tr>
+        <div className="flex items-center gap-3">
+          {/* Active Title Badge */}
+          {activeTitle && (
+            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold">
+              <Trophy className="w-3.5 h-3.5 text-amber-600" />
+              Title: {activeTitle}
+            </div>
+          )}
+
+          {/* AI Support Help Button (?) */}
+          <button
+            onClick={() => setIsAiModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs rounded-xl transition-all"
+            title="AI Support Assistant"
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span>AI Help</span>
+          </button>
+
+          {/* Notification Bell Dropdown with Click Outside */}
+          <div
+            ref={notifRef}
+            className="relative"
+          >
+            <button
+              onClick={() => setIsNotifOpen(!isNotifOpen)}
+              className="relative p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-xl transition-all"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <>
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full animate-ping" />
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
+                </>
               )}
-            </tbody>
-          </table>
+            </button>
+
+            {/* Hover Popover Dropdown */}
+            {isNotifOpen && (
+              <div className="absolute right-0 top-full mt-1 w-80 md:w-96 bg-white rounded-2xl shadow-xl border border-outline-variant/30 overflow-hidden z-50 animate-in fade-in duration-150 text-left">
+                <div className="px-4 py-3 bg-surface-container-low border-b border-outline-variant/20 flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-on-surface">Recent Notifications</h4>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={markAllAsRead}
+                      className="text-[10px] font-semibold text-on-surface-variant hover:text-primary transition-colors"
+                    >
+                      Mark all read
+                    </button>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      {unreadCount} New
+                    </span>
+                  </div>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto divide-y divide-outline-variant/20">
+                  {notifications.map((item) => {
+                    const Icon = item.icon || Bell;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => handleNotificationClick(item)}
+                        className={`p-3.5 hover:bg-surface-bright transition-colors flex items-start gap-3 cursor-pointer relative ${item.unread ? 'bg-primary/5' : ''}`}
+                      >
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${item.bg || 'bg-primary/10'} ${item.color}`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h5 className="font-bold text-xs text-on-surface truncate">{item.title}</h5>
+                          <p className="text-xs text-on-surface-variant line-clamp-2 mt-0.5">{item.desc}</p>
+                          
+                          {/* Invite Actions */}
+                          {item.type === 'GROUP_INVITE' && item.targetGroupId && item.unread && (
+                            <div className="flex items-center gap-2 mt-2.5" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await groupService.acceptInvite(item.targetGroupId!);
+                                    markAsRead(item.id);
+                                    alert("Successfully joined the group!");
+                                  } catch (err) {
+                                    console.error(err);
+                                    alert("Failed to join group.");
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition-all flex items-center gap-1 shadow-xs"
+                              >
+                                <Check className="w-3 h-3" /> Accept
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await groupService.declineInvite(item.targetGroupId!);
+                                    markAsRead(item.id);
+                                    alert("Invitation declined.");
+                                  } catch (err) {
+                                    console.error(err);
+                                    alert("Failed to decline invitation.");
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-bold rounded-lg transition-all border border-rose-200 flex items-center gap-1"
+                              >
+                                <X className="w-3 h-3" /> Decline
+                              </button>
+                            </div>
+                          )}
+
+                          {item.type === 'GROUP_INVITE' && item.targetGroupId && !item.unread && (
+                            <span className="text-[10px] text-outline font-bold block mt-2.5 bg-surface-container px-2 py-0.5 rounded-md w-fit">
+                              Invitation Responded
+                            </span>
+                          )}
+
+                          <div className="flex items-center justify-between mt-2.5">
+                            <div className="flex items-center gap-1 text-[10px] text-outline font-medium">
+                              <Clock className="w-3 h-3" /> {item.time} • {item.date}
+                            </div>
+                            {item.type !== 'GROUP_INVITE' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleNotificationClick(item);
+                                }}
+                                className="text-[10px] text-primary font-bold hover:underline"
+                              >
+                                View Details &rarr;
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-2.5 bg-surface-container-low border-t border-outline-variant/20 text-center">
+                  <button 
+                    onClick={markAllAsRead}
+                    className="text-xs font-bold text-primary hover:underline"
+                  >
+                    Mark all as read
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="h-6 w-px bg-outline-variant/30" />
+
+          {/* User Profile */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-secondary text-white font-bold flex items-center justify-center text-xs shadow-sm overflow-hidden shrink-0">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                getInitials(user?.name || 'User')
+              )}
+            </div>
+            <div className="hidden md:flex flex-col text-left">
+              <span className="text-xs font-bold text-on-surface leading-snug truncate max-w-[120px]" title={user?.name || 'User'}>
+                {user?.name || 'Alex Johnson'}
+              </span>
+              <span className="text-[10px] text-on-surface-variant font-medium">
+                {getRoleLabel(user?.role)}
+              </span>
+            </div>
+          </div>
         </div>
+      </header>
 
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={totalItems}
-          startIndex={startIndex}
-          itemsPerPage={itemsPerPage}
-          onPageChange={(page) => setCurrentPage(page)}
-        />
-      </div>
-
-      <ConfirmModal
-        isOpen={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-        onConfirm={confirmDelete}
-        title="Delete Quiz"
-        message="Are you sure you want to delete this quiz? This action cannot be undone."
-      />
-      
-      <AlertModal
-        isOpen={alertState.isOpen}
-        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
-        title={alertState.title}
-        message={alertState.message}
-        type={alertState.type}
-      />
-    </main>
+      {/* AI Support Modal */}
+      <AiSupportModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} />
+    </>
   );
 };

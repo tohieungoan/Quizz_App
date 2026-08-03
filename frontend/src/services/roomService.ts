@@ -58,6 +58,8 @@ export const roomService = {
     question_id: number
     selected_option_id?: number | null
     answer_text?: string
+    active_power_up?: string
+    streak?: number
   }): Promise<any> =>
     apiClient.post<any>(`/rooms/${roomCode}/submit-answer`, params),
 }

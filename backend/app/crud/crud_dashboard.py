@@ -4,6 +4,7 @@ from sqlalchemy import func, desc, Float, case, cast, Date
 from app.models.quiz import Quiz
 from app.models.user import User
 from app.models.room import Room, Participant, ParticipantAnswer
+from app.crud.crud_room import crud_room
 from app.schemas.dashboard import (
     DashboardOverviewResponse, 
     DashboardMetrics, 
@@ -14,10 +15,13 @@ from app.schemas.dashboard import (
 
 class CRUDDashboard:
     def get_overview(self, db: Session) -> DashboardOverviewResponse:
+        # Automatically clean up stale / expired rooms before aggregating metrics
+        crud_room.auto_end_stale_rooms(db)
+
         # 1. Dashboard Metrics
         total_quizzes = db.query(func.count(Quiz.id)).scalar() or 0
         total_users = db.query(func.count(User.id)).scalar() or 0
-        active_rooms = db.query(func.count(Room.id)).filter(Room.status.in_(["RUNNING", "WAITING"])).scalar() or 0
+        active_rooms = db.query(func.count(Room.id)).filter(Room.status.in_(["PLAYING", "RUNNING", "WAITING"])).scalar() or 0
         
         # Avg score based on ParticipantAnswer is_correct percentage
         answer_stats = db.query(
@@ -79,7 +83,7 @@ class CRUDDashboard:
             .join(Quiz, Room.quiz_id == Quiz.id)
             .join(User, Room.host_id == User.id)
             .outerjoin(Participant, Room.id == Participant.room_id)
-            .filter(Room.status == "RUNNING")
+            .filter(Room.status.in_(["PLAYING", "RUNNING", "WAITING"]))
             .group_by(Room.id, Quiz.title, User.fullname)
             .order_by(desc("participant_count"))
             .limit(5)

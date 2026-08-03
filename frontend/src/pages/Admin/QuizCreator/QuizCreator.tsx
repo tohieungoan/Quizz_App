@@ -7,7 +7,6 @@ import { Dropdown } from '@/components/ui/Dropdown';
 import { QuestionBankModal } from '@/components/ui/QuestionBankModal';
 import { CloudUpload, CloudUploadRef } from '@/components/ui/CloudUpload';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
-import { DUMMY_QUIZZES } from '@/data/mockDb';
 import { quizService } from '@/services/quizService';
 import { questionService } from '@/services/questionService';
 
