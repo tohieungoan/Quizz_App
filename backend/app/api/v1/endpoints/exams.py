@@ -17,18 +17,53 @@ from app.schemas.exam import (
     UserExamResponse,
     ExamAnswerRequest,
     ExamTakeResponse,
+    ExamFeedbackRequest,
+    AnswerGradeRequest,
 )
+import logging
+logger = logging.getLogger(__name__)
+
+def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str | None = None) -> None:
+    """
+    Safely dispatch a WebSocket notification from a synchronous thread worker in FastAPI.
+    """
+    try:
+        import asyncio
+        from app.api.v1.websockets.manager import manager
+        payload = {
+            "type": "NOTIFICATION",
+            "title": title,
+            "content": content,
+            "action_url": action_url,
+        }
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+            except Exception:
+                loop = None
+
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(manager.send_personal_message(payload, user_id), loop)
+        else:
+            try:
+                asyncio.run(manager.send_personal_message(payload, user_id))
+            except Exception as inner_e:
+                logger.warning(f"Could not run async WS dispatch: {inner_e}")
+    except Exception as e:
+        logger.warning(f"Failed to push WS notification to user {user_id}: {e}")
 
 def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) -> None:
     """
-    Find all active, non-expired exams belonging to the given group_id,
+    Find all active exams belonging to the given group_id,
     then automatically assign them to user_id (if not already assigned).
     """
-    now = datetime.utcnow()
+    from sqlalchemy import func
     active_exams = db.query(Exam).filter(
         Exam.group_id == group_id,
-        Exam.status == "ACTIVE",
-        Exam.end_time > now
+        func.upper(Exam.status) == "ACTIVE"
     ).all()
 
     for exam in active_exams:
@@ -58,6 +93,13 @@ def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) 
                 created_at=datetime.utcnow()
             )
             db.add(notification)
+
+            _send_sync_ws_notification(
+                user_id=user_id,
+                title="NEW EXAM ASSIGNED (NEW MEMBER)",
+                content=f"You just joined the group and have an ongoing exam '{exam.title}'.",
+                action_url=f"/exams/{exam.id}"
+            )
 
 
 router = APIRouter()
@@ -119,7 +161,7 @@ def assign_exam(
         host_id=current_user.id,
         group_id=body.group_id,
         title=exam_title,
-        start_time=body.start_time,
+        start_time=body.start_time if body.start_time else datetime.utcnow(),
         end_time=body.end_time,
         timer=body.timer,
         navigation_rule=body.navigation_rule,
@@ -160,11 +202,19 @@ def assign_exam(
                 target_type="PERSONAL",
                 target_group_id=group.id,
                 title="NEW EXAM ASSIGNED",
-                content=f"You have a new exam '{exam_title}' from the group '{group.name}' that must be completed before {body.end_time.strftime('%Y-%m-%d %H:%M')}.",
+                content=f"You have a new exam '{exam_title}' from the group '{group.name}'.",
                 type="EXAM_ASSIGNED",
                 action_url=f"/exams/{db_exam.id}",
             )
             db.add(notification)
+
+            # Real-time WebSocket push event (Zero-latency notification)
+            _send_sync_ws_notification(
+                user_id=member.user_id,
+                title="NEW EXAM ASSIGNED",
+                content=f"You have a new exam '{exam_title}' from the group '{group.name}'.",
+                action_url=f"/exams/{db_exam.id}"
+            )
 
     db.commit()
 
@@ -211,6 +261,10 @@ def read_assigned_exams(
             "total_assignees": total_assignees,
             "submitted_count": submitted_count,
             "created_at": exam.created_at,
+            "group_id": exam.group_id,
+            "group_name": exam.group.name if exam.group else None,
+            "quiz_subject": exam.quiz.subject if exam.quiz else None,
+            "navigation_rule": exam.navigation_rule,
         })
     return result
 
@@ -235,7 +289,7 @@ def read_my_exams(
             "id": assignee.id,
             "exam_id": exam.id,
             "status": assignee.status,
-            "score": assignee.score,
+            "score": assignee.score if exam.results_published else None,
             "submitted_at": assignee.submitted_at,
             "exam_title": exam.title,
             "timer": exam.timer,
@@ -243,8 +297,89 @@ def read_my_exams(
             "end_time": exam.end_time,
             "host_fullname": exam.host.fullname if exam.host else None,
             "quiz_subject": exam.quiz.subject if exam.quiz else None,
+            "navigation_rule": exam.navigation_rule,
+            "results_published": exam.results_published,
         })
     return result
+
+
+@router.get("/{exam_id}/my-result", summary="Get current user's own exam result with questions, answers, and host feedback")
+def get_my_exam_result(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Return the logged-in student's detailed result for a specific exam:
+    - Exam metadata (title, host, score, submitted_at, feedback_comment)
+    - Full question list with the student's selected answers and correctness
+    Must be declared BEFORE /{exam_id} to avoid FastAPI routing conflicts.
+    """
+    assignee = db.query(ExamAssignee).filter(
+        ExamAssignee.exam_id == exam_id,
+        ExamAssignee.user_id == current_user.id,
+    ).first()
+    if not assignee:
+        raise HTTPException(status_code=404, detail="Exam result not found")
+
+    exam = assignee.exam
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    # Block access if the host has not published results yet
+    if not exam.results_published:
+        raise HTTPException(
+            status_code=403,
+            detail="Results have not been published yet. Please wait for the host to release them.",
+        )
+
+    quiz = exam.quiz
+    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.id.asc()).all()
+    answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
+    answers_dict = {a.question_id: a for a in answers}
+
+    formatted_questions = []
+    correct_count = 0
+    for q in questions:
+        options = db.query(QuestionOption).filter(QuestionOption.question_id == q.id).order_by(QuestionOption.id.asc()).all()
+        user_ans = answers_dict.get(q.id)
+
+        formatted_options = [
+            {"id": opt.id, "content": opt.content or "", "is_correct": opt.is_correct}
+            for opt in options
+        ]
+
+        is_correct = user_ans.is_correct if user_ans else False
+        if is_correct:
+            correct_count += 1
+
+        formatted_questions.append({
+            "id": q.id,
+            "content": q.content or "Untitled Question",
+            "type": q.type or "MULTIPLE_CHOICE",
+            "options": formatted_options,
+            "user_answer": {
+                "selected_option_id": user_ans.selected_option_id if user_ans else None,
+                "answer_text": user_ans.answer_text if user_ans else None,
+                "is_correct": is_correct,
+                "answer_score": user_ans.score if user_ans else None,
+            } if user_ans else None,
+        })
+
+    return {
+        "exam_id": exam.id,
+        "exam_title": exam.title,
+        "host_fullname": exam.host.fullname if exam.host else None,
+        "quiz_subject": quiz.subject if quiz else None,
+        "status": assignee.status,
+        "score": assignee.score,
+        "started_at": assignee.started_at,
+        "submitted_at": assignee.submitted_at,
+        "feedback_comment": assignee.feedback_comment,
+        "correct_count": correct_count,
+        "total_questions": len(questions),
+        "questions": formatted_questions,
+    }
 
 
 @router.get("/{exam_id}", response_model=ExamAssignDetailResponse, summary="Get details of a specific assigned exam")
@@ -302,6 +437,81 @@ def update_exam(
         )
 
     update_data = body.model_dump(exclude_unset=True)
+    
+    # Check if Quiz or Group is being modified
+    quiz_id_changed = "quiz_id" in update_data and update_data["quiz_id"] != exam.quiz_id
+    group_id_changed = "group_id" in update_data and update_data["group_id"] != exam.group_id
+    
+    if quiz_id_changed or group_id_changed:
+        # Check if any student has started or completed the exam
+        started_assignee = db.query(ExamAssignee).filter(
+            ExamAssignee.exam_id == exam.id,
+            ExamAssignee.status.in_(["IN_PROGRESS", "COMPLETED", "SUBMITTED"])
+        ).first()
+        
+        if started_assignee:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot modify Quiz or Group because some students have already started or submitted the exam."
+            )
+            
+        # Perform the updates
+        if quiz_id_changed:
+            exam.quiz_id = update_data["quiz_id"]
+            del update_data["quiz_id"]
+        
+        if group_id_changed:
+            new_group_id = update_data["group_id"]
+            # Validate new group
+            new_group = db.query(Group).filter(Group.id == new_group_id).first()
+            if not new_group:
+                raise HTTPException(status_code=404, detail="New Study Group not found.")
+            
+            # 1. Delete all existing assignees and notifications for this exam
+            db.query(ExamAssignee).filter(ExamAssignee.exam_id == exam.id).delete()
+            db.query(Notification).filter(
+                Notification.target_type == "PERSONAL",
+                Notification.target_group_id == exam.group_id,
+                Notification.type == "EXAM_ASSIGNED",
+                Notification.sender_id == current_user.id
+            ).delete()
+            
+            # 2. Update group_id
+            exam.group_id = new_group_id
+            del update_data["group_id"]
+            
+            # 3. Create new ExamAssignee and Notification for each approved member in the new group
+            new_members = db.query(GroupMember).filter(
+                GroupMember.group_id == new_group_id,
+                GroupMember.status == "APPROVED"
+            ).all()
+            
+            for member in new_members:
+                assignee = ExamAssignee(
+                    exam_id=exam.id,
+                    user_id=member.user_id,
+                    status="PENDING",
+                )
+                db.add(assignee)
+                
+                # Create notification for new member
+                notification = Notification(
+                    user_id=member.user_id,
+                    sender_id=current_user.id,
+                    target_type="PERSONAL",
+                    target_group_id=new_group_id,
+                    title="NEW EXAM ASSIGNED (GROUP UPDATED)",
+                    content=f"You have a new exam '{exam.title}' assigned to your group '{new_group.name}'.",
+                    type="EXAM_ASSIGNED",
+                    action_url=f"/exams/{exam.id}",
+                )
+                db.add(notification)
+                _send_sync_ws_notification(
+                    user_id=member.user_id,
+                    title="NEW EXAM ASSIGNED (GROUP UPDATED)",
+                    content=f"You have a new exam '{exam.title}' assigned to your group '{new_group.name}'.",
+                    action_url=f"/exams/{exam.id}"
+                )
     
     # Check duplicate active exam if quiz, group or time are modified to identical setup
     if "end_time" in update_data or "start_time" in update_data:
@@ -383,8 +593,31 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
         if not user_ans:
             continue
             
-        if q.type == "WRITTEN":
-            pass
+        q_type = (q.type or "").strip().lower()
+        if q_type in ["essay", "written"]:
+            user_ans.is_correct = False
+            db.add(user_ans)
+        elif q_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank"]:
+            # Evaluate short answer / fill in the blank answers case-insensitively
+            user_val = (user_ans.answer_text or "").strip().lower()
+            correct_opts = db.query(QuestionOption).filter(
+                QuestionOption.question_id == q.id,
+                QuestionOption.is_correct == True
+            ).all()
+            
+            is_match = False
+            for opt in correct_opts:
+                opt_val = (opt.content or "").strip().lower()
+                if user_val == opt_val:
+                    is_match = True
+                    break
+            
+            if is_match:
+                correct_count += 1
+                user_ans.is_correct = True
+            else:
+                user_ans.is_correct = False
+            db.add(user_ans)
         else:
             if user_ans.selected_option_id:
                 correct_option = db.query(QuestionOption).filter(
@@ -394,6 +627,12 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
                 ).first()
                 if correct_option:
                     correct_count += 1
+                    user_ans.is_correct = True
+                else:
+                    user_ans.is_correct = False
+            else:
+                user_ans.is_correct = False
+            db.add(user_ans)
 
     score = (correct_count / total_questions) * 100.0
 
@@ -404,7 +643,7 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
     db.add(assignee)
     db.commit()
     db.refresh(assignee)
-    return assignee.score
+    return assignee.score if assignee.score is not None else 0.0
 
 
 @router.post("/{exam_id}/start", summary="Start taking an exam")
@@ -627,17 +866,44 @@ def submit_answer(
         ExamAnswer.question_id == body.question_id
     ).first()
 
+    # Check correctness based on question type
+    is_correct = False
+    q_type = (question.type or "").strip().lower()
+    if q_type in ["essay", "written"]:
+        is_correct = False
+    elif q_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank"]:
+        user_val = (body.answer_text or "").strip().lower()
+        correct_opts = db.query(QuestionOption).filter(
+            QuestionOption.question_id == question.id,
+            QuestionOption.is_correct == True
+        ).all()
+        for opt in correct_opts:
+            if user_val == (opt.content or "").strip().lower():
+                is_correct = True
+                break
+    else:
+        if body.selected_option_id:
+            correct_opt = db.query(QuestionOption).filter(
+                QuestionOption.id == body.selected_option_id,
+                QuestionOption.question_id == body.question_id,
+                QuestionOption.is_correct == True
+            ).first()
+            if correct_opt:
+                is_correct = True
+
     if not answer:
         answer = ExamAnswer(
             exam_assignee_id=assignee.id,
             question_id=body.question_id,
             selected_option_id=body.selected_option_id,
-            answer_text=body.answer_text
+            answer_text=body.answer_text,
+            is_correct=is_correct
         )
         db.add(answer)
     else:
         answer.selected_option_id = body.selected_option_id
         answer.answer_text = body.answer_text
+        answer.is_correct = is_correct
         db.add(answer)
 
     db.commit()
@@ -714,3 +980,374 @@ def abandon_exam(
 
     score = _helper_submit_exam(db, assignee)
     return {"message": "Exam abandoned (exited). Locked from re-taking.", "score": f"{score}%"}
+
+
+@router.get("/{exam_id}/missed-questions", summary="Get most missed questions in this exam")
+def get_most_missed_questions(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Get questions that were most frequently answered incorrectly in this exam.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if exam.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    from app.models.quiz import Question, QuestionOption
+    from app.models.exam import ExamAssignee, ExamAnswer
+    from sqlalchemy import func
+    
+    questions = db.query(Question).filter(Question.quiz_id == exam.quiz_id).all()
+    
+    assignee_ids = [a.id for a in db.query(ExamAssignee.id).filter(ExamAssignee.exam_id == exam_id).all()]
+    if not assignee_ids:
+        return []
+        
+    total_participants = db.query(ExamAssignee).filter(
+        ExamAssignee.exam_id == exam_id,
+        ExamAssignee.status.in_(["SUBMITTED", "COMPLETED"])
+    ).count()
+    
+    if total_participants == 0:
+        total_participants = db.query(ExamAssignee).filter(
+            ExamAssignee.exam_id == exam_id
+        ).count()
+        
+    if total_participants == 0:
+        return []
+
+    result = []
+    
+    for q in questions:
+        # Count participants who answered this question CORRECTLY
+        correct_count = db.query(func.count(ExamAnswer.id)).filter(
+            ExamAnswer.exam_assignee_id.in_(assignee_ids),
+            ExamAnswer.question_id == q.id,
+            ExamAnswer.is_correct == True
+        ).scalar() or 0
+
+        # Unanswered / skipped / incorrect questions are all counted as missed
+        wrong_count = total_participants - correct_count
+        if wrong_count <= 0:
+            continue
+
+        wrong_percentage = int((wrong_count / total_participants) * 100)
+
+        common_wrong_opt = db.query(
+            ExamAnswer.selected_option_id,
+            func.count(ExamAnswer.id).label("cnt")
+        ).filter(
+            ExamAnswer.exam_assignee_id.in_(assignee_ids),
+            ExamAnswer.question_id == q.id,
+            ExamAnswer.is_correct == False,
+            ExamAnswer.selected_option_id.isnot(None)
+        ).group_by(ExamAnswer.selected_option_id).order_by(func.count(ExamAnswer.id).desc()).first()
+
+        common_wrong_text = "Skipped / Unanswered"
+        if common_wrong_opt:
+            opt_id = common_wrong_opt[0]
+            opt = db.query(QuestionOption).filter(QuestionOption.id == opt_id).first()
+            if opt:
+                common_wrong_text = opt.content or "Skipped / Unanswered"
+        else:
+            common_wrong_text_opt = db.query(
+                ExamAnswer.answer_text,
+                func.count(ExamAnswer.id).label("cnt")
+            ).filter(
+                ExamAnswer.exam_assignee_id.in_(assignee_ids),
+                ExamAnswer.question_id == q.id,
+                ExamAnswer.is_correct == False,
+                ExamAnswer.answer_text.isnot(None)
+            ).group_by(ExamAnswer.answer_text).order_by(func.count(ExamAnswer.id).desc()).first()
+            if common_wrong_text_opt and common_wrong_text_opt[0]:
+                common_wrong_text = common_wrong_text_opt[0]
+
+        correct_opts = db.query(QuestionOption).filter(
+            QuestionOption.question_id == q.id,
+            QuestionOption.is_correct == True
+        ).all()
+        correct_text = ", ".join([o.content for o in correct_opts]) if correct_opts else "N/A"
+
+        result.append({
+            "id": q.id,
+            "question": q.content or "Untitled Question",
+            "wrongCount": wrong_count,
+            "totalCount": total_participants,
+            "wrongPercentage": wrong_percentage,
+            "commonWrongAnswer": common_wrong_text,
+            "correctAnswer": correct_text
+        })
+        
+    result.sort(key=lambda x: x["wrongPercentage"], reverse=True)
+    return result
+
+
+@router.post("/{exam_id}/submissions/{user_id}/reset", summary="Reset a student's exam attempt")
+def reset_student_exam_attempt(
+    exam_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Clear all stored answers and reset progress for a student's exam, allowing them to retake it.
+    Only the host of the exam or SUPER_ADMIN is authorized.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+        
+    if exam.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Permission denied")
+        
+    assignee = db.query(ExamAssignee).filter(
+        ExamAssignee.exam_id == exam_id,
+        ExamAssignee.user_id == user_id
+    ).first()
+    
+    if not assignee:
+        raise HTTPException(status_code=404, detail="Student submission not found for this exam")
+        
+    # 1. Delete all answers for this assignee
+    db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).delete()
+    
+    # 2. Reset assignee fields to default PENDING state
+    assignee.status = "PENDING"
+    assignee.score = None
+    assignee.started_at = None
+    assignee.submitted_at = None
+    assignee.feedback_comment = None
+    
+    db.add(assignee)
+    db.commit()
+    
+    return {"message": "Student exam attempt reset successfully. The student can now retake the exam."}
+
+
+@router.get("/{exam_id}/submissions/{user_id}", summary="Get detailed student submission details (questions, answers, points, and correctness)")
+def get_student_submission_details(
+    exam_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Get detailed view of a student's submission (quiz questions, student answers, option choices, correctness, and feedback).
+    Only the host (owner) or SUPER_ADMIN can view this.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if exam.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    assignee = db.query(ExamAssignee).filter(
+        ExamAssignee.exam_id == exam_id,
+        ExamAssignee.user_id == user_id
+    ).first()
+    if not assignee:
+        raise HTTPException(status_code=404, detail="Student submission not found")
+
+    quiz = exam.quiz
+    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.id.asc()).all()
+    answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
+    answers_dict = {a.question_id: a for a in answers}
+
+    formatted_questions = []
+    for q in questions:
+        options = db.query(QuestionOption).filter(QuestionOption.question_id == q.id).order_by(QuestionOption.id.asc()).all()
+        formatted_options = []
+        for opt in options:
+            formatted_options.append({
+                "id": opt.id,
+                "content": opt.content or "",
+                "is_correct": opt.is_correct
+            })
+
+        user_ans = answers_dict.get(q.id)
+        formatted_questions.append({
+            "id": q.id,
+            "content": q.content or "Untitled Question",
+            "type": q.type or "MULTIPLE_CHOICE",
+            "difficulty": q.difficulty or "Beginner",
+            "time_limit": q.time_limit,
+            "options": formatted_options,
+            "user_answer": {
+                "selected_option_id": user_ans.selected_option_id if user_ans else None,
+                "answer_text": user_ans.answer_text if user_ans else None,
+                "is_correct": user_ans.is_correct if user_ans else False
+            } if user_ans else None
+        })
+
+    student_user = db.query(User).filter(User.id == user_id).first()
+
+    return {
+        "student": {
+            "id": user_id,
+            "fullname": student_user.fullname if student_user else f"User {user_id}",
+            "email": student_user.email if student_user else "N/A"
+        },
+        "status": assignee.status,
+        "score": assignee.score,
+        "started_at": assignee.started_at,
+        "submitted_at": assignee.submitted_at,
+        "feedback_comment": assignee.feedback_comment,
+        "questions": formatted_questions
+    }
+
+
+@router.put("/{exam_id}/submissions/{user_id}/feedback", summary="Save host feedback and grade for a student submission")
+def save_student_submission_feedback(
+    exam_id: int,
+    user_id: int,
+    body: ExamFeedbackRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Update the score and leave feedback comments for a student's submission.
+    Only the host (owner) or SUPER_ADMIN is authorized.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if exam.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    assignee = db.query(ExamAssignee).filter(
+        ExamAssignee.exam_id == exam_id,
+        ExamAssignee.user_id == user_id
+    ).first()
+    if not assignee:
+        raise HTTPException(status_code=404, detail="Student submission not found")
+
+    if body.feedback_comment is not None:
+        assignee.feedback_comment = body.feedback_comment
+    if body.score is not None:
+        assignee.score = body.score
+
+    db.add(assignee)
+    db.commit()
+    db.refresh(assignee)
+
+    # Send Notification to the student
+    notification = Notification(
+        user_id=user_id,
+        sender_id=current_user.id,
+        target_type="PERSONAL",
+        target_group_id=exam.group_id,
+        title="EXAM GRADED & FEEDBACK RECEIVED",
+        content=f"Your submission for exam '{exam.title}' has been graded. Score: {assignee.score}%. Check host feedback.",
+        type="FEEDBACK",
+        action_url=f"/exams/results",
+    )
+    db.add(notification)
+    db.commit()
+
+    # Real-time WebSocket push event (Zero-latency notification for feedback)
+    _send_sync_ws_notification(
+        user_id=user_id,
+        title="EXAM GRADED & FEEDBACK RECEIVED",
+        content=f"Your submission for exam '{exam.title}' has been graded. Score: {assignee.score}%. Check host feedback.",
+        action_url=f"/exams/results"
+    )
+
+    return {
+        "message": "Feedback saved successfully and student notified.",
+        "score": assignee.score,
+        "feedback_comment": assignee.feedback_comment
+    }
+
+
+@router.put(
+    "/{exam_id}/submissions/{user_id}/answers/{question_id}/grade",
+    summary="Grade a single question answer (set correct/incorrect and optional partial score)"
+)
+def grade_single_answer(
+    exam_id: int,
+    user_id: int,
+    question_id: int,
+    body: AnswerGradeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Allow host to override is_correct and assign a partial score for an individual
+    question answer. After saving, recalculates the overall submission score from
+    all answered questions.
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if exam.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    assignee = db.query(ExamAssignee).filter(
+        ExamAssignee.exam_id == exam_id,
+        ExamAssignee.user_id == user_id,
+    ).first()
+    if not assignee:
+        raise HTTPException(status_code=404, detail="Student submission not found")
+
+    answer = db.query(ExamAnswer).filter(
+        ExamAnswer.exam_assignee_id == assignee.id,
+        ExamAnswer.question_id == question_id,
+    ).first()
+    if not answer:
+        raise HTTPException(status_code=404, detail="Answer not found for this question")
+
+    # Update answer correctness and optional partial score
+    answer.is_correct = body.is_correct
+    if body.score is not None:
+        answer.score = body.score
+    elif body.is_correct and answer.score is None:
+        # Auto-set 1.0 point if no score provided and marking correct
+        answer.score = 1.0
+    elif not body.is_correct:
+        answer.score = 0.0
+
+    db.add(answer)
+    db.flush()
+
+    # Recalculate total score for this assignee from all answers
+    all_answers = db.query(ExamAnswer).filter(
+        ExamAnswer.exam_assignee_id == assignee.id
+    ).all()
+
+    total_questions = db.query(Question).filter(
+        Question.quiz_id == exam.quiz_id
+    ).count()
+
+    if total_questions > 0:
+        def effective_score(a: ExamAnswer) -> float:
+            """
+            Use the explicit per-answer score when available.
+            Fall back to 1.0 if the answer is marked correct but score column
+            is still NULL (happens for answers auto-graded via is_correct only).
+            """
+            if a.score is not None:
+                return float(a.score)
+            if a.is_correct is True:
+                return 1.0
+            return 0.0
+
+        earned = sum(effective_score(a) for a in all_answers)
+        max_possible = float(total_questions)
+        assignee.score = round((earned / max_possible) * 100, 2)
+    
+    db.add(assignee)
+    db.commit()
+    db.refresh(answer)
+
+    return {
+        "question_id": question_id,
+        "is_correct": answer.is_correct,
+        "answer_score": answer.score,
+        "overall_score": assignee.score,
+    }
+
+

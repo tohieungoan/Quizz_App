@@ -46,8 +46,47 @@ def process_import_background(valid_users: List[dict], admin_id: int, job_id: st
         # Import data using Upsert (ON CONFLICT DO NOTHING)
         imported_count = crud_user.bulk_create(db, users_in=valid_users)
         logger.info(f"Background import job ({job_id}) finished successfully. Imported {imported_count} users.")
+        
+        # Create Success Notification for the Admin
+        notification = Notification(
+            user_id=admin_id,
+            title="Import Users Complete",
+            content=f"Your background import job ({job_id}) has finished successfully. Imported {imported_count} users out of {len(valid_users)} valid records.",
+            type="SYSTEM",
+        )
+        db.add(notification)
+        db.commit()
+
+        try:
+            from app.api.v1.endpoints.exams import _send_sync_ws_notification
+            _send_sync_ws_notification(
+                user_id=admin_id,
+                title="Import Users Complete",
+                content=f"Your background import job ({job_id}) has finished successfully. Imported {imported_count} users out of {len(valid_users)} valid records."
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Error in background import job {job_id}: {str(e)}")
+        # Notify Admin about failure
+        notification = Notification(
+            user_id=admin_id,
+            title="Import Users Failed",
+            content=f"Your background import job ({job_id}) failed due to an internal error: {str(e)}",
+            type="SYSTEM",
+        )
+        db.add(notification)
+        db.commit()
+
+        try:
+            from app.api.v1.endpoints.exams import _send_sync_ws_notification
+            _send_sync_ws_notification(
+                user_id=admin_id,
+                title="Import Users Failed",
+                content=f"Your background import job ({job_id}) failed due to an internal error: {str(e)}"
+            )
+        except Exception:
+            pass
     finally:
         db.close()
 
@@ -352,4 +391,3 @@ async def request_notification_email_verification(
         verify_url=verify_url
     )
     return {"message": "Verification email has been sent successfully."}
-

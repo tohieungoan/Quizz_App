@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, BarChart2, LogOut, Flame } from 'lucide-react'
+import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, BarChart2, LogOut, Flame, ArrowLeft } from 'lucide-react'
 import { roomService } from '@/services'
 
 interface ParticipantAnswerState {
@@ -15,6 +15,7 @@ interface ParticipantAnswerState {
 interface QuestionDetails {
   id: number
   text: string
+  type?: string // MULTIPLE_CHOICE, SHORT_ANSWER
   options: { key: string; label: string }[]
   correctKey: string
 }
@@ -59,10 +60,18 @@ export const HostLiveReview: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // State variables passed from Lobby
+  // State variables passed from Lobby or restored from sessionStorage
   const state = location.state as { roomCode?: string; quizTitle?: string; roomId?: number; progressionMode?: string } | null
-  const roomCode = state?.roomCode || '823914'
-  const quizTitle = state?.quizTitle || 'Advanced Web Fundamentals Quiz'
+  const roomCode = state?.roomCode || sessionStorage.getItem('host_room_code') || ''
+  const quizTitle = state?.quizTitle || sessionStorage.getItem('host_quiz_title') || 'Live Quiz Session'
+  const roomId = state?.roomId || Number(sessionStorage.getItem('host_room_id') || 0)
+
+  // Persist session parameters
+  useEffect(() => {
+    if (state?.roomCode) sessionStorage.setItem('host_room_code', state.roomCode)
+    if (state?.roomId) sessionStorage.setItem('host_room_id', String(state.roomId))
+    if (state?.quizTitle) sessionStorage.setItem('host_quiz_title', state.quizTitle)
+  }, [state])
 
   const [autoAdvance, setAutoAdvance] = useState(false)
 
@@ -71,7 +80,7 @@ export const HostLiveReview: React.FC = () => {
   }
 
   // Host Control States
-  const isDemoMode = true
+  const isDemoMode = false
   
   const DUMMY_PARTICIPANTS = [
     { id: '1', name: 'SpeedRunner', answered: false, answerKey: null, streak: 4, score: 3200 },
@@ -84,6 +93,7 @@ export const HostLiveReview: React.FC = () => {
   ]
 
   const [questionNumber, setQuestionNumber] = useState(1)
+  const [totalQuestions, setTotalQuestions] = useState(3)
   const [timeLeft, setTimeLeft] = useState(20)
   const [revealAnswer, setRevealAnswer] = useState(false)
   const [participants, setParticipants] = useState<ParticipantAnswerState[]>(isDemoMode ? DUMMY_PARTICIPANTS : [])
@@ -92,21 +102,22 @@ export const HostLiveReview: React.FC = () => {
     isDemoMode ? MOCK_QUESTIONS[1] : {
       id: 0,
       text: 'Loading active question...',
+      type: 'MULTIPLE_CHOICE',
       options: [],
       correctKey: ''
     }
   )
 
-  // Poll live session data from Backend (Active Room Mode)
+  // Real-time updates via WebSocket + 10s polling fallback for Host Panel
   useEffect(() => {
     if (isDemoMode) return
     const token = localStorage.getItem('token')
-    if (!state?.roomId || !token) return
-    const roomId = state.roomId
+    const activeRoomId = roomId || state?.roomId
+    if (!activeRoomId || !token) return
 
     const fetchLiveSession = async () => {
       try {
-        const data = await roomService.getLiveSession(roomId)
+        const data = await roomService.getLiveSession(activeRoomId)
           
           if (data.status === 'ENDED') {
             navigate('/dashboard')
@@ -114,6 +125,9 @@ export const HostLiveReview: React.FC = () => {
           }
 
           setQuestionNumber(data.current_question_index)
+          if (data.total_questions !== undefined) {
+            setTotalQuestions(data.total_questions)
+          }
           
           // Map participants
           setParticipants(data.participants.map((p: any) => ({
@@ -130,13 +144,15 @@ export const HostLiveReview: React.FC = () => {
             setActiveQuestion({
               id: data.active_question.id,
               text: data.active_question.text,
-              options: data.active_question.options,
+              type: data.active_question.type || 'MULTIPLE_CHOICE',
+              options: data.active_question.options || [],
               correctKey: data.active_question.correct_option_key || ''
             })
 
             // Sync timer
             if (data.current_question_started_at) {
-              const startedAt = new Date(data.current_question_started_at + 'Z').getTime()
+              const startedAtStr = data.current_question_started_at
+              const startedAt = new Date(startedAtStr.endsWith('Z') ? startedAtStr : startedAtStr + 'Z').getTime()
               const elapsed = (Date.now() - startedAt) / 1000
               const limit = data.active_question.time_limit || 20
               const remaining = Math.max(0, Math.ceil(limit - elapsed))
@@ -151,16 +167,78 @@ export const HostLiveReview: React.FC = () => {
           }
 
           // Map distribution
-          setDistribution(data.answer_distribution)
+          if (data.answer_distribution) {
+            setDistribution(data.answer_distribution)
+          }
       } catch (err) {
         console.error("Failed to fetch live session:", err)
       }
     }
 
     fetchLiveSession()
-    const interval = setInterval(fetchLiveSession, 1500)
-    return () => clearInterval(interval)
-  }, [state?.roomId, navigate, isDemoMode])
+
+    // 1. Establish WebSocket for instant event-driven updates (zero log spam)
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
+    const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '')
+    const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=Host&isHost=true${token ? `&token=${token}` : ''}`
+
+    let socket: WebSocket | null = null
+    let pingTimer: any = null
+    let reconnectTimer: any = null
+    let isDisposed = false
+
+    const connectHostWS = () => {
+      if (isDisposed) return
+      try {
+        socket = new WebSocket(wsUrl)
+        socket.onopen = () => {
+          pingTimer = setInterval(() => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: "PING" }))
+            }
+          }, 5000)
+        }
+
+        socket.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data)
+            if (msg.type === "PONG") return
+            if (["ANSWER_SUBMITTED", "PLAYER_JOINED", "PLAYER_LEFT", "NEXT_QUESTION"].includes(msg.type)) {
+              fetchLiveSession()
+            }
+          } catch (e) {
+            console.error("Failed to parse WS message in Host Panel:", e)
+          }
+        }
+
+        socket.onclose = () => {
+          if (pingTimer) clearInterval(pingTimer)
+          if (!isDisposed) {
+            reconnectTimer = setTimeout(connectHostWS, 1500)
+          }
+        }
+
+        socket.onerror = () => {
+          if (socket) socket.close()
+        }
+      } catch (e) {
+        console.error("Failed to establish WS in Host Panel:", e)
+        if (!isDisposed) {
+          reconnectTimer = setTimeout(connectHostWS, 2000)
+        }
+      }
+    }
+
+    connectHostWS()
+
+    return () => {
+      isDisposed = true
+      if (pingTimer) clearInterval(pingTimer)
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (socket) socket.close()
+    }
+  }, [state?.roomId, roomCode, navigate, isDemoMode])
 
   // Demo Mode: Simulate participant responses
   useEffect(() => {
@@ -243,30 +321,28 @@ export const HostLiveReview: React.FC = () => {
 
   const handleNextQuestion = async () => {
     if (isDemoMode) {
-      if (questionNumber >= 3) {
-        alert('Demo session completed! Redirecting back to host Dashboard.')
+      if (questionNumber >= totalQuestions) {
+        // End local demo
         navigate('/dashboard')
       } else {
-        const nextNum = questionNumber + 1
-        setQuestionNumber(nextNum)
-        setActiveQuestion(MOCK_QUESTIONS[nextNum])
-        setRevealAnswer(false)
+        setQuestionNumber(prev => prev + 1)
       }
       return
     }
 
-    if (!state?.roomId) return
-    const roomId = state.roomId
+    const token = localStorage.getItem('token')
+    const activeRoomId = roomId || state?.roomId
+    if (!activeRoomId || !token) {
+      alert("Host session invalid or expired. Please re-enter room from Dashboard.")
+      return
+    }
+    
     try {
-      const data = await roomService.nextQuestion(roomId)
-      if (data.status === 'ENDED') {
-        alert('Game session completed! Redirecting back to host Dashboard.')
-        navigate('/dashboard')
-      } else {
-        setRevealAnswer(false)
-      }
+      setRevealAnswer(false)
+      await roomService.nextQuestion(activeRoomId)
     } catch (err) {
-      console.error(err)
+      console.error("Failed to advance question:", err)
+      alert("Error advancing to the next question.")
     }
   }
 
@@ -275,24 +351,26 @@ export const HostLiveReview: React.FC = () => {
       navigate('/dashboard')
       return
     }
+    const token = localStorage.getItem('token')
+    const activeRoomId = roomId || state?.roomId
+    if (!activeRoomId || !token) return
 
-    if (!window.confirm('Are you sure you want to end this live session? All progress will be cleared.')) return
-    if (!state?.roomId) return
-    const roomId = state.roomId
+    const confirmClose = window.confirm("Are you sure you want to close this room? This will end the live session for all players.")
+    if (!confirmClose) return
+
     try {
-      await roomService.endRoom(roomId)
+      await roomService.endRoom(activeRoomId)
       navigate('/dashboard')
     } catch (err) {
-      console.error(err)
+      console.error("Failed to close room:", err)
+      alert("Error closing room session.")
     }
   }
 
-  // Get option color code to draw colorful distribution bars (A: Red, B: Blue, C: Yellow, D: Green)
   const getOptionColorProps = (key: string, isCorrect: boolean, isRevealed: boolean) => {
-    const defaultColor = 'bg-slate-400'
-    let textStyle = 'text-slate-900'
-    let barBg = 'bg-primary/20 border-primary/30'
-    let keyBg = defaultColor
+    let textStyle = 'text-slate-800'
+    let keyBg = 'bg-slate-500'
+    let barBg = 'bg-primary/20 border-primary/30 ring-2 ring-primary/5'
 
     if (isRevealed && isCorrect) {
       textStyle = 'text-emerald-800 font-black'
@@ -387,12 +465,21 @@ export const HostLiveReview: React.FC = () => {
               <span>{timeLeft > 0 ? `${timeLeft}s left` : 'Time Up!'}</span>
             </div>
 
+            {/* Exit to Dashboard (Keep Room Running) */}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all border-2 border-slate-300 text-xs font-black shadow-sm cursor-pointer"
+              title="Return to Dashboard while keeping this live room running"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Dashboard
+            </button>
+
             {/* End session block */}
             <button
               onClick={handleEndSession}
               className="flex items-center gap-1.5 px-4 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all border-2 border-red-300 text-xs font-black shadow-md cursor-pointer"
             >
-              <LogOut className="w-3.5 h-3.5" /> Close Room
+              <LogOut className="w-3.5 h-3.5" /> End Room
             </button>
           </div>
         </header>
@@ -407,9 +494,11 @@ export const HostLiveReview: React.FC = () => {
             <div className="bg-white rounded-3xl p-6 border-2 border-outline-variant/30 shadow-md text-left flex flex-col justify-between">
               <div className="flex justify-between items-center mb-3">
                 <span className="bg-primary text-white px-3.5 py-1 rounded-full text-xs font-black shadow-sm">
-                  Question {questionNumber} of 3
+                  Question {questionNumber} of {totalQuestions}
                 </span>
-                <span className="text-xs text-slate-700 font-extrabold">Type: Multiple Choice</span>
+                <span className="text-xs text-slate-700 font-extrabold">
+                  Type: {activeQuestion.type === 'SHORT_ANSWER' ? 'Short Answer' : 'Multiple Choice'}
+                </span>
               </div>
               <h2 className="font-headline-md text-lg md:text-xl font-black text-on-surface leading-relaxed">
                 {activeQuestion.text}
@@ -435,39 +524,95 @@ export const HostLiveReview: React.FC = () => {
                 </button>
               </div>
 
-              {/* Bar Chart Bars */}
-              <div className="flex flex-col gap-4">
-                {activeQuestion.options.map((opt) => {
-                  const count = distribution[opt.key as keyof typeof distribution]
-                  const maxCount = Math.max(...Object.values(distribution), 1)
-                  const percentWidth = Math.round((count / maxCount) * 100)
-                  const isCorrectOption = opt.key === activeQuestion.correctKey
-                  
-                  const colors = getOptionColorProps(opt.key, isCorrectOption, revealAnswer)
-
-                  return (
-                    <div key={opt.key} className="flex flex-col gap-1.5 text-left">
-                      <div className="flex justify-between items-center text-xs font-extrabold">
-                        <span className={`flex items-center gap-2 ${colors.textStyle}`}>
-                          <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black text-white ${colors.keyBg} shadow-md`}>
-                            {opt.key}
-                          </span>
-                          {opt.label} {(revealAnswer && isCorrectOption) && '✓ (Correct)'}
-                        </span>
-                        <span className="text-slate-800 font-black">{count} answers</span>
-                      </div>
-
-                      {/* Bar body */}
-                      <div className="h-6.5 w-full bg-slate-100 border-2 border-outline-variant/30 rounded-lg overflow-hidden relative flex items-center">
-                        <div 
-                          className={`h-full transition-all duration-500 rounded-r-md border-r-2 ${colors.barBg}`}
-                          style={{ width: `${percentWidth}%` }}
-                        />
-                      </div>
+              {/* Bar Chart Bars / Short Answer Text Grid */}
+              {activeQuestion.type === 'SHORT_ANSWER' ? (
+                <div className="flex flex-col gap-4 text-left overflow-y-auto max-h-[300px] pr-2">
+                  {Object.entries(distribution).length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 font-extrabold italic text-sm">
+                      No text answers submitted yet.
                     </div>
-                  )
-                })}
-              </div>
+                  ) : (
+                    Object.entries(distribution)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([answer, count], idx) => {
+                        const maxCount = Math.max(...Object.values(distribution), 1)
+                        const percentWidth = Math.round((count / maxCount) * 100)
+                        
+                        // Short answer is correct if it matches any correct option from DB
+                        const isCorrect = activeQuestion.options.some(
+                          opt => opt.label.trim().toLowerCase() === answer.trim().toLowerCase()
+                        )
+
+                        return (
+                          <div key={idx} className="flex flex-col gap-1.5">
+                            <div className="flex justify-between items-center text-xs font-black">
+                              <span className="flex items-center gap-2">
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white ${
+                                  isCorrect && revealAnswer ? 'bg-emerald-500' : 'bg-slate-400'
+                                } shadow-sm`}>
+                                  {idx + 1}
+                                </span>
+                                <span className={`text-sm ${
+                                  isCorrect && revealAnswer ? 'text-emerald-800 font-black' : 'text-slate-800'
+                                }`}>
+                                  "{answer}" {(isCorrect && revealAnswer) && (
+                                    <span className="text-[9px] bg-emerald-100 text-emerald-850 px-2 py-0.5 rounded-full border border-emerald-350 font-black ml-2">CORRECT</span>
+                                  )}
+                                </span>
+                              </span>
+                              <span className="text-slate-800 font-extrabold">{count} responses</span>
+                            </div>
+
+                            {/* Response Bar representation */}
+                            <div className="w-full bg-[#f3f3f9] h-7 rounded-xl overflow-hidden border border-outline-variant/30 relative flex items-center shadow-inner">
+                              <div
+                                className={`h-full transition-all duration-500 rounded-r-xl border-r-2 ${
+                                  isCorrect && revealAnswer 
+                                    ? 'bg-emerald-500/25 border-emerald-450 ring-2 ring-emerald-500/5 animate-pulse'
+                                    : 'bg-slate-500/10 border-slate-400'
+                                }`}
+                                style={{ width: `${percentWidth}%` }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {activeQuestion.options.map((opt) => {
+                    const count = distribution[opt.key as keyof typeof distribution] || 0
+                    const maxCount = Math.max(...Object.values(distribution), 1)
+                    const percentWidth = Math.round((count / maxCount) * 100)
+                    const isCorrectOption = opt.key === activeQuestion.correctKey
+                    
+                    const colors = getOptionColorProps(opt.key, isCorrectOption, revealAnswer)
+
+                    return (
+                      <div key={opt.key} className="flex flex-col gap-1.5 text-left">
+                        <div className="flex justify-between items-center text-xs font-extrabold">
+                          <span className={`flex items-center gap-2 ${colors.textStyle}`}>
+                            <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black text-white ${colors.keyBg} shadow-md`}>
+                              {opt.key}
+                            </span>
+                            {opt.label} {(revealAnswer && isCorrectOption) && '✓ (Correct)'}
+                          </span>
+                          <span className="text-slate-800 font-black">{count} answers</span>
+                        </div>
+
+                        {/* Bar body */}
+                        <div className="h-6.5 w-full bg-slate-100 border-2 border-outline-variant/30 rounded-lg overflow-hidden relative flex items-center">
+                          <div 
+                            className={`h-full transition-all duration-500 rounded-r-md border-r-2 ${colors.barBg}`}
+                            style={{ width: `${percentWidth}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* Progress Summary info */}
               <div className="mt-6 pt-4 border-t-2 border-outline-variant/20 flex justify-between items-center">
@@ -495,65 +640,52 @@ export const HostLiveReview: React.FC = () => {
               <p className="text-[10px] text-slate-850 font-bold mt-0.5">Submissions tracking</p>
             </div>
 
-            {/* List */}
-            <div className="flex-grow overflow-y-auto flex flex-col gap-2.5 pr-1">
-              {participants.map((participant) => (
-                <div 
-                  key={participant.id} 
-                  className={`flex items-center justify-between p-2.5 rounded-xl border-2 border-outline-variant/25 bg-slate-50 hover:bg-slate-100/50 transition-colors`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    {/* Status indicator */}
-                    <div className="w-6 h-6 rounded-md bg-slate-300 text-slate-800 flex items-center justify-center font-black text-[9px] shadow-sm">
-                      {participant.name.slice(0,2).toUpperCase()}
-                    </div>
-                    <div className="flex flex-col text-left">
-                      <span className="text-xs font-black text-on-surface">{participant.name}</span>
-                      {participant.streak > 0 && (
-                        <span className="text-[9px] text-amber-600 bg-amber-50 border border-amber-250 px-2 py-0.5 rounded-full font-black flex items-center gap-0.5 mt-1 shadow-sm">
-                          <Flame className="w-2.5 h-2.5 fill-current text-amber-500" /> {participant.streak} streak
+            <div className="flex-grow overflow-y-auto flex flex-col gap-2.5 pr-1.5">
+              {participants.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 font-bold text-xs italic">
+                  No players in the room.
+                </div>
+              ) : (
+                participants.map((p) => (
+                  <div key={p.id} className="flex justify-between items-center p-3 rounded-xl border border-outline-variant bg-surface-container-lowest/30 shadow-xs">
+                    <span className="text-xs font-black text-slate-850 truncate max-w-[150px]">
+                      {p.name}
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-600 font-extrabold">{p.score} pts</span>
+                      {p.answered ? (
+                        <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                          Answered
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                          Thinking...
                         </span>
                       )}
                     </div>
                   </div>
-
-                  {/* Submission indicator badge */}
-                  <div>
-                    {participant.answered ? (
-                      <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 border-2 border-emerald-300 px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500 fill-emerald-100" /> Done
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-black text-amber-700 bg-amber-100 border-2 border-amber-300 px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-550 animate-ping" /> Thinking
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
+            {/* Action Advance Bar Footer */}
+            <div className="mt-4 pt-4 border-t-2 border-outline-variant/20">
+              <button
+                onClick={handleNextQuestion}
+                className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white rounded-2xl font-button text-sm font-extrabold hover:shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer shadow-md"
+              >
+                {questionNumber >= totalQuestions ? (
+                  <>End Quiz Session <Award className="w-4 h-4" /></>
+                ) : (
+                  <>Advance Next Question <ChevronRight className="w-4.5 h-4.5" /></>
+                )}
+              </button>
+            </div>
           </div>
 
         </div>
-
-        {/* Footer Actions */}
-        <footer className="bg-white rounded-2xl border-2 border-outline-variant/30 shadow-md p-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-black text-slate-800">Live Room Actions:</span>
-          </div>
-
-          <button
-            onClick={handleNextQuestion}
-            className="flex items-center gap-2 px-8 py-3.5 bg-primary text-white rounded-xl font-button text-sm font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 active:scale-98 cursor-pointer"
-          >
-            {questionNumber >= 3 ? (
-              <>Finish Game & Close <Award className="w-4 h-4" /></>
-            ) : (
-              <>Next Question ({questionNumber} of 3) <ChevronRight className="w-4 h-4" /></>
-            )}
-          </button>
-        </footer>
 
       </div>
     </div>

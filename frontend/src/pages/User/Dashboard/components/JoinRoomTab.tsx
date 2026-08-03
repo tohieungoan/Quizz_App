@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DoorOpen, ArrowRight, ShieldCheck, User, Users, PlusCircle, CheckCircle2, BookOpen, Trash2 } from 'lucide-react';
-import { groupService } from '@/services';
+import { groupService, roomService } from '@/services';
 
 interface EnrolledGroup {
   id: string;
@@ -17,8 +17,20 @@ export const JoinRoomTab: React.FC = () => {
 
   // Part 1: Room Code State
   const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '', '', '']);
-  const [nickname, setNickname] = useState('Alex Johnson');
+  const [nickname, setNickname] = useState(() => {
+    const stored = localStorage.getItem('user');
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        if (u && u.name) return u.name;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return 'Alex Johnson';
+  });
   const [roomError, setRoomError] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
 
   // Part 2: Group Invite Code State
   const [groupInviteCode, setGroupInviteCode] = useState('');
@@ -74,7 +86,7 @@ export const JoinRoomTab: React.FC = () => {
     }
   };
 
-  const handleJoinLiveRoom = (e: React.FormEvent) => {
+  const handleJoinLiveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     const fullCode = pinDigits.join('');
     if (fullCode.length < 6) {
@@ -82,16 +94,50 @@ export const JoinRoomTab: React.FC = () => {
       return;
     }
     setRoomError('');
-    sessionStorage.setItem('dashboard_active_tab', 'join_room');
-    navigate('/lobby', {
-      state: {
-        roomCode: fullCode,
-        nickname: nickname.trim() || 'Alex Johnson',
-        isHost: false,
-        fromSource: 'dashboard',
-        activeTab: 'join_room',
-      },
-    });
+    setIsJoining(true);
+    try {
+      const participantData = await roomService.joinRoom(fullCode, nickname.trim() || 'Alex Johnson');
+      sessionStorage.setItem('dashboard_active_tab', 'join_room');
+
+      let roomData: any = null;
+      try {
+        roomData = await roomService.getRoom(fullCode);
+      } catch (e) {}
+
+      if (roomData && roomData.status === 'PLAYING') {
+        navigate('/play', {
+          state: {
+            nickname: nickname.trim() || 'Alex Johnson',
+            roomCode: fullCode,
+            roomId: participantData.room_id,
+            participantId: participantData.id,
+            mode: roomData.mode || 'CLASSIC',
+            score: participantData.score || 0,
+            streak: 0,
+            questionNumber: roomData.current_question_index || 1,
+            fromSource: 'dashboard',
+            activeTab: 'join_room',
+          },
+        });
+      } else {
+        navigate('/lobby', {
+          state: {
+            roomCode: fullCode,
+            nickname: nickname.trim() || 'Alex Johnson',
+            participantId: participantData.id,
+            roomId: participantData.room_id,
+            isHost: false,
+            fromSource: 'dashboard',
+            activeTab: 'join_room',
+          },
+        });
+      }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to join room';
+      setRoomError(errorMsg);
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   const handleJoinGroup = async (e: React.FormEvent) => {

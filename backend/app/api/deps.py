@@ -58,13 +58,15 @@ def get_current_user(
         token_data = TokenPayload(**payload)
         if token_data.sub is None:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token.",
+                headers={"WWW-Authenticate": "Bearer"},
             )
     except (JWTError, ValidationError):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     user = crud_user.get_by_id(db, user_id=int(token_data.sub))
     if not user:
@@ -95,7 +97,12 @@ async def get_current_user_ws(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         raise HTTPException(status_code=403, detail="Invalid or expired token.")
         
-    user = crud_user.get_by_id(db, user_id=int(token_data.sub))
+    try:
+        user_id = int(token_data.sub)
+        user = crud_user.get_by_id(db, user_id=user_id)
+    except (ValueError, TypeError):
+        user = crud_user.get_by_email(db, email=token_data.sub)
+
     if not user:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         raise HTTPException(status_code=404, detail="User not found.")

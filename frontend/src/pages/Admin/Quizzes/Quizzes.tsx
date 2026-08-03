@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Copy, Trash2, Search, CheckCircle2, FileEdit, Library } from 'lucide-react';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { AlertModal } from '@/components/ui/AlertModal';
 import { Pagination } from '@/components/ui/Pagination';
-import { DUMMY_QUIZZES, Quiz } from '@/data/mockDb';
+import { Quiz } from '@/data/mockDb';
 import { quizService } from '@/services/quizService';
 import { toast } from 'react-hot-toast';
 
@@ -15,22 +16,47 @@ interface QuizzesProps {
 export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) => {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [difficultyFilter, setDifficultyFilter] = useState('All Difficulty');
   const [subjectFilter, setSubjectFilter] = useState('All Subjects');
 
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 5;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Delete Confirmation State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [quizToDelete, setQuizToDelete] = useState<string | null>(null);
 
+  // Alert State
+  const [alertState, setAlertState] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
+    isOpen: false, title: '', message: '', type: 'info'
+  });
+
   const fetchQuizzes = async () => {
     try {
       setIsLoading(true);
-      const res = await quizService.getQuizzes({ pageSize: 100 });
+      setError(null);
+      const params: any = {
+        pageIndex: currentPage,
+        pageSize: itemsPerPage,
+      };
+      if (debouncedSearchTerm) params.keyword = debouncedSearchTerm;
+      if (difficultyFilter !== 'All Difficulty') params.difficulty = difficultyFilter;
+      if (subjectFilter !== 'All Subjects') params.subject = subjectFilter;
+
+      const res = await quizService.getAdminQuizzes(params);
       if (res && res.data) {
         const mappedQuizzes: Quiz[] = res.data.map((q: any) => ({
           id: `QZ-${q.id}`,
@@ -44,10 +70,12 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
           time: new Date(q.created_at).toLocaleTimeString()
         }));
         setQuizzes(mappedQuizzes);
+        setTotalItems(res.total || 0);
       }
-    } catch (error) {
-      console.error("Failed to fetch quizzes", error);
-      setQuizzes(DUMMY_QUIZZES); // Fallback if API fails for some reason
+    } catch (err: any) {
+      console.error("Failed to fetch quizzes", err);
+      setError(err.message || "Failed to load quizzes. Please try again.");
+      setQuizzes([]); // Clear any dummy data
     } finally {
       setIsLoading(false);
     }
@@ -55,24 +83,11 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
 
   useEffect(() => {
     fetchQuizzes();
-  }, []);
-
-  // Filtered Quizzes Logic
-  const filteredQuizzes = quizzes.filter((quiz) => {
-    const matchesSearch =
-      quiz.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quiz.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quiz.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDifficulty = difficultyFilter === 'All Difficulty' || quiz.diff === difficultyFilter;
-    const matchesSubject = subjectFilter === 'All Subjects' || quiz.subject === subjectFilter;
-
-    return matchesSearch && matchesDifficulty && matchesSubject;
-  });
+  }, [currentPage, debouncedSearchTerm, difficultyFilter, subjectFilter]);
 
   // Calculate Pagination
-  const totalPages = Math.ceil(filteredQuizzes.length / itemsPerPage);
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentQuizzes = filteredQuizzes.slice(startIndex, startIndex + itemsPerPage);
 
   // Actions
   const handleDuplicate = async (quiz: Quiz) => {
@@ -81,9 +96,21 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
       await quizService.duplicateQuiz(rawId);
       // Refetch quizzes to get the new duplicate
       fetchQuizzes();
-    } catch (error) {
+      setAlertState({
+        isOpen: true,
+        title: 'Success',
+        message: `Quiz "${quiz.title}" has been duplicated.`,
+        type: 'success'
+      });
+    } catch (error: any) {
       console.error("Failed to duplicate quiz:", error);
-      toast.error("Failed to duplicate quiz.");
+      toast.error(error.message || "Failed to duplicate quiz.");
+      setAlertState({
+        isOpen: true,
+        title: 'Error',
+        message: error.message || "Failed to duplicate quiz.",
+        type: 'error'
+      });
     }
   };
 
@@ -104,10 +131,22 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
         }
 
         await quizService.deleteQuiz(rawId);
-        setQuizzes(quizzes.filter((q) => q.id !== quizToDelete));
+        fetchQuizzes();
+        setAlertState({
+          isOpen: true,
+          title: 'Deleted',
+          message: 'The quiz has been successfully deleted.',
+          type: 'success'
+        });
       } catch (error: any) {
         console.error("Failed to delete quiz:", error);
         toast.error(error.message || "Failed to delete quiz.");
+        setAlertState({
+          isOpen: true,
+          title: 'Error',
+          message: error.message || "Failed to delete quiz.",
+          type: 'error'
+        });
       } finally {
         setQuizToDelete(null);
       }
@@ -135,7 +174,7 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
         </button>
       </div>
 
-      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden mb-8 flex flex-col">
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden mb-8 flex flex-col min-h-[450px]">
         {/* Table Header / Toolbar */}
         <div className="px-4 md:px-6 py-4 border-b border-outline-variant/40 flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white">
           <div className="relative group w-full md:w-80">
@@ -217,8 +256,14 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
                     Loading quizzes...
                   </td>
                 </tr>
-              ) : currentQuizzes.length > 0 ? (
-                currentQuizzes.map((quiz) => (
+              ) : error ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-error font-medium">
+                    {error}
+                  </td>
+                </tr>
+              ) : quizzes.length > 0 ? (
+                quizzes.map((quiz) => (
                   <tr key={quiz.id} className="hover:bg-surface-bright transition-colors">
                     <td className="px-4 md:px-6 py-4 font-medium text-primary whitespace-nowrap">{quiz.id}</td>
                     <td className="px-4 md:px-6 py-4 font-semibold text-on-surface max-w-xs truncate">
@@ -296,7 +341,7 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
-          totalItems={filteredQuizzes.length}
+          totalItems={totalItems}
           startIndex={startIndex}
           itemsPerPage={itemsPerPage}
           onPageChange={(page) => setCurrentPage(page)}
@@ -309,6 +354,14 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
         onConfirm={confirmDelete}
         title="Delete Quiz"
         message="Are you sure you want to delete this quiz? This action cannot be undone."
+      />
+      
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+        title={alertState.title}
+        message={alertState.message}
+        type={alertState.type}
       />
     </main>
   );

@@ -1,13 +1,22 @@
 import React from 'react';
 import { Award, Flame, CheckSquare, Play, TrendingUp, PieChart, BookOpen, Clock, Layers } from 'lucide-react';
-import { USER_RECENT_ACTIVITIES, USER_ASSIGNED_EXAMS } from '@/data/userData';
+import { USER_RECENT_ACTIVITIES } from '@/data/userData';
 
 interface OverviewTabProps {
   onStartExam: (exam: any) => void;
   onJoinRoom: () => void;
+  assignedExams?: any[];
+  isLoadingExams?: boolean;
 }
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ onStartExam, onJoinRoom }) => {
+export const OverviewTab: React.FC<OverviewTabProps> = ({ 
+  onStartExam, 
+  onJoinRoom,
+  assignedExams = [],
+  isLoadingExams = false
+}) => {
+  const pendingExams = assignedExams.filter(e => e.status !== 'Submitted');
+
   const quizDistribution = [
     { label: 'Quizzes Participated', count: 28, percentage: 58, color: 'bg-primary', stroke: '#4f46e5' },
     { label: 'Quizzes Created', count: 14, percentage: 29, color: 'bg-emerald-600', stroke: '#059669' },
@@ -37,7 +46,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ onStartExam, onJoinRoo
             Welcome back, Alex! 👋
           </h1>
           <p className="text-indigo-100 text-sm leading-relaxed">
-            You have 2 pending assigned exams for this week. Keep up your study streak!
+            {pendingExams.length > 0 
+              ? `You have ${pendingExams.length} pending assigned exams. Keep up your study streak!`
+              : "You have no pending assigned exams. All clear!"}
           </p>
           <div className="pt-2 flex flex-wrap gap-3">
             <button
@@ -107,29 +118,39 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ onStartExam, onJoinRoo
         <div className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="font-bold text-lg text-on-surface">Assigned Exams</h3>
-            <span className="text-xs font-semibold text-primary">{USER_ASSIGNED_EXAMS.length} Active</span>
+            <span className="text-xs font-semibold text-primary">{pendingExams.length} Pending</span>
           </div>
 
           <div className="space-y-3">
-            {USER_ASSIGNED_EXAMS.map((exam) => (
-              <div
-                key={exam.id}
-                className="p-4 rounded-xl border border-outline-variant/40 hover:border-primary/40 transition-all flex items-center justify-between gap-4 bg-surface-container-lowest"
-              >
-                <div>
-                  <h4 className="font-bold text-sm text-on-surface">{exam.title}</h4>
-                  <p className="text-xs text-on-surface-variant mt-0.5">
-                    Due: <span className="font-medium text-error">{exam.due}</span> • {exam.subject}
-                  </p>
-                </div>
-                <button
-                  onClick={() => onStartExam(exam)}
-                  className="bg-primary text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-primary/90 transition-all shrink-0"
-                >
-                  Start Exam
-                </button>
+            {isLoadingExams ? (
+              <div className="py-10 flex justify-center items-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
               </div>
-            ))}
+            ) : pendingExams.length === 0 ? (
+              <div className="py-10 text-center text-xs text-on-surface-variant">
+                No pending assigned exams. All clear!
+              </div>
+            ) : (
+              pendingExams.map((exam) => (
+                <div
+                  key={exam.id}
+                  className="p-4 rounded-xl border border-outline-variant/40 hover:border-primary/40 transition-all flex items-center justify-between gap-4 bg-surface-container-lowest"
+                >
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-sm text-on-surface truncate">{exam.title}</h4>
+                    <p className="text-xs text-on-surface-variant mt-0.5 truncate">
+                      Due: <span className="font-medium text-error">{exam.due !== 'No Deadline' ? new Date(exam.due).toLocaleString('vi-VN') : 'No Deadline'}</span> • {exam.subject}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onStartExam(exam)}
+                    className="bg-primary text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-primary/90 transition-all shrink-0"
+                  >
+                    {exam.status === 'In Progress' ? 'Continue' : 'Start'}
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

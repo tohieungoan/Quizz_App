@@ -148,7 +148,7 @@ export function QuestionBankModal({ isOpen, onClose, onAddQuestions, existingQue
         onClick={onClose}
       />
       
-      <div className="bg-[#f8fafc] w-full max-w-2xl rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] relative flex flex-col max-h-[85vh] overflow-hidden border border-white/40 ring-1 ring-slate-900/5">
+      <div className="bg-[#f8fafc] w-full max-w-2xl rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] relative flex flex-col min-h-[550px] max-h-[85vh] overflow-hidden border border-white/40 ring-1 ring-slate-900/5">
         
         {/* Premium Header */}
         <div className="px-6 py-5 border-b border-slate-200/60 flex justify-between items-center bg-white">

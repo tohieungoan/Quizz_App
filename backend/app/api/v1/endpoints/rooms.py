@@ -10,6 +10,7 @@ from app.api.deps import (
 )
 from app.crud.crud_quiz import crud_quiz
 from app.crud.crud_room import crud_room
+from app.api.v1.websockets.room_manager import room_websocket_manager
 from app.schemas.room import (
     ParticipantJoin,
     ParticipantResponse,
@@ -21,6 +22,41 @@ from app.schemas.room import (
     SubmitAnswerIn,
     SubmitAnswerResponse,
 )
+
+import logging
+logger = logging.getLogger(__name__)
+
+def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str | None = None) -> None:
+    """
+    Safely dispatch a WebSocket notification from a synchronous thread worker in FastAPI.
+    """
+    try:
+        import asyncio
+        from app.api.v1.websockets.manager import manager
+        payload = {
+            "type": "NOTIFICATION",
+            "title": title,
+            "content": content,
+            "action_url": action_url,
+        }
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop_policy().get_event_loop()
+            except Exception:
+                loop = None
+
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(manager.send_personal_message(payload, user_id), loop)
+        else:
+            try:
+                asyncio.run(manager.send_personal_message(payload, user_id))
+            except Exception as inner_e:
+                logger.warning(f"Could not run async WS dispatch: {inner_e}")
+    except Exception as e:
+        logger.warning(f"Failed to push WS notification to user {user_id}: {e}")
 
 router = APIRouter()
 
@@ -85,12 +121,104 @@ def launch_room(
 
     try:
         room = crud_room.create_room(db=db, obj_in=room_in, host_id=current_user.id)
+        
+        # Dispatch notifications if a specific group is targeted
+        if room.group_id is not None:
+            try:
+                from app.models.group import GroupMember
+                from app.models.notification import Notification
+                
+                # Fetch all approved members of this target group
+                members = db.query(GroupMember).filter(
+                    GroupMember.group_id == room.group_id,
+                    GroupMember.status == "APPROVED"
+                ).all()
+                
+                for member in members:
+                    # Skip the host
+                    if member.user_id == current_user.id:
+                        continue
+                    
+                    # Create database notification entry
+                    notif = Notification(
+                        sender_id=current_user.id,
+                        user_id=member.user_id,
+                        target_type="PERSONAL",
+                        target_group_id=room.group_id,
+                        title="New Live Quiz Started",
+                        content=f"{current_user.fullname or current_user.email} has started a live quiz '{quiz.title}'. Join now with code: {room.room_code}",
+                        type="GROUP_INVITE",
+                        action_url=f"/lobby?roomCode={room.room_code}"
+                    )
+                    db.add(notif)
+                    
+                    # Push WS notification real-time
+                    _send_sync_ws_notification(
+                        user_id=member.user_id,
+                        title="New Live Quiz Started",
+                        content=f"{current_user.fullname or current_user.email} has started a live quiz '{quiz.title}'. Join now with code: {room.room_code}",
+                        action_url=f"/lobby?roomCode={room.room_code}"
+                    )
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to dispatch target group notifications: {e}")
+                
         return room
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/my-active-rooms", response_model=list[RoomResponse], summary="Get all active live rooms hosted by current user")
+def get_my_active_rooms(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    """
+    Retrieve all active rooms (WAITING or PLAYING) hosted by the currently authenticated user.
+    Enables host to manage multiple live rooms simultaneously.
+    """
+    import datetime
+    from sqlalchemy import desc, or_
+    from app.models.room import Room
+
+    now = datetime.datetime.utcnow()
+    active_rooms = db.query(Room).filter(
+        Room.host_id == current_user.id,
+        Room.status.in_(["WAITING", "PLAYING"]),
+        or_(Room.expire_at.is_(None), Room.expire_at > now)
+    ).order_by(desc(Room.created_at)).all()
+    
+    for room in active_rooms:
+        active_q = None
+        if room.status == "PLAYING" and room.quiz and room.quiz.questions:
+            sorted_questions = sorted(room.quiz.questions, key=lambda q: q.id)
+            if 1 <= room.current_question_index <= len(sorted_questions):
+                q = sorted_questions[room.current_question_index - 1]
+                KEYS = ["A", "B", "C", "D"]
+                sorted_opts = sorted(q.options, key=lambda o: o.id)
+                options_live = []
+                for idx, opt in enumerate(sorted_opts):
+                    options_live.append({
+                        "id": opt.id,
+                        "key": KEYS[idx] if idx < len(KEYS) else "A",
+                        "label": opt.content or ""
+                    })
+                raw_type = (q.type or "multiple_choice").lower().strip()
+                is_short = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+                active_q = {
+                    "id": q.id,
+                    "text": q.content or "",
+                    "type": "SHORT_ANSWER" if is_short else "MULTIPLE_CHOICE",
+                    "time_limit": q.time_limit,
+                    "options": options_live if not is_short else [],
+                    "correct_option_key": None
+                }
+        room.active_question = active_q
+    
+    return active_rooms
 
 
 @router.get("/{room_code}", response_model=RoomResponse, summary="Get active room by code")
@@ -125,11 +253,15 @@ def get_room_by_code(
                     "key": KEYS[idx] if idx < len(KEYS) else "A",
                     "label": opt.content or ""
                 })
+            raw_type = (q.type or "multiple_choice").lower().strip()
+            is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+            standardized_type = "SHORT_ANSWER" if is_short_answer else "MULTIPLE_CHOICE"
             active_q = {
                 "id": q.id,
                 "text": q.content or "",
+                "type": standardized_type,
                 "time_limit": q.time_limit,
-                "options": options_live,
+                "options": options_live if not is_short_answer else [],
                 "correct_option_key": None
             }
 
@@ -139,7 +271,7 @@ def get_room_by_code(
 
 
 @router.post("/{room_id}/end", response_model=RoomResponse, summary="End a live room")
-def end_room(
+async def end_room(
     room_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
@@ -162,11 +294,13 @@ def end_room(
         )
 
     updated_room = crud_room.update_status(db=db, room=room, status="ENDED")
+    # Broadcast game ended to all websocket clients
+    await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
     return updated_room
 
 
 @router.post("/{room_code}/join", response_model=ParticipantResponse, status_code=status.HTTP_201_CREATED, summary="Join a live room by code")
-def join_room_by_code(
+async def join_room_by_code(
     room_code: str,
     *,
     db: Session = Depends(get_db),
@@ -201,6 +335,17 @@ def join_room_by_code(
             nickname=participant_in.nickname,
             user_id=user_id
         )
+        
+        # Broadcast player joined event to all websocket clients in room
+        active_nicknames = [p.nickname for p in room.participants]
+        await room_websocket_manager.broadcast_to_room(
+            room_code,
+            {
+                "type": "PLAYER_JOINED",
+                "player": participant.nickname,
+                "players": active_nicknames
+            }
+        )
         return participant
     except ValueError as e:
         raise HTTPException(
@@ -224,11 +369,26 @@ def get_room_participants(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Room not found."
         )
-    return room.participants
+    
+    result = []
+    for p in room.participants:
+        avatar_url = p.user.avatar if p.user and p.user.avatar else None
+        result.append({
+            "id": p.id,
+            "room_id": p.room_id,
+            "user_id": p.user_id,
+            "team_id": p.team_id,
+            "nickname": p.nickname,
+            "avatar": avatar_url,
+            "status": p.status,
+            "joined_at": p.joined_at,
+            "score": p.score,
+        })
+    return result
 
 
 @router.post("/{room_id}/start", response_model=RoomResponse, summary="Start a live room (change status to PLAYING)")
-def start_room(
+async def start_room(
     room_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
@@ -256,7 +416,15 @@ def start_room(
             detail=f"Cannot start room because its current status is {room.status}. Must be WAITING."
         )
 
+    if not room.participants or len(room.participants) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot start the room because no participants have joined yet."
+        )
+
     updated_room = crud_room.next_question(db=db, room=room)
+    # Broadcast game started to all websocket clients in room
+    await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
     return updated_room
 
 
@@ -300,9 +468,13 @@ def get_live_session(
             if opt.is_correct:
                 correct_option_key = KEYS[idx] if idx < len(KEYS) else "A"
             
+        raw_type = (q.type or "multiple_choice").lower().strip()
+        is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+        standardized_type = "SHORT_ANSWER" if is_short_answer else "MULTIPLE_CHOICE"
         active_question = {
             "id": q.id,
             "text": q.content or "",
+            "type": standardized_type,
             "time_limit": q.time_limit,
             "options": options_live,
             "correct_option_key": correct_option_key
@@ -310,29 +482,54 @@ def get_live_session(
 
     # 2. Participants and Answer Distribution
     participants_live = []
-    distribution = {"A": 0, "B": 0, "C": 0, "D": 0}
+    distribution = {}
     
     from app.models.room import ParticipantAnswer
     
-    for p in room.participants:
-        answered = False
-        if active_question:
+    is_short_ans = False
+    if active_question:
+        raw_type = (q.type or "multiple_choice").lower().strip()
+        is_short_ans = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+        
+    if is_short_ans and active_question:
+        for p in room.participants:
+            answered = False
             ans = db.query(ParticipantAnswer).filter(
                 ParticipantAnswer.participant_id == p.id,
                 ParticipantAnswer.question_id == active_question["id"]
             ).first()
             if ans:
                 answered = True
-                selected_key = next((o["key"] for o in active_question["options"] if o["id"] == ans.selected_option_id), None)
-                if selected_key in distribution:
-                    distribution[selected_key] += 1
-                    
-        participants_live.append({
-            "id": p.id,
-            "nickname": p.nickname or "",
-            "score": p.score,
-            "answered": answered
-        })
+                ans_text = (ans.answer_text or "").strip()
+                if not ans_text:
+                    ans_text = "[No Answer]"
+                distribution[ans_text] = distribution.get(ans_text, 0) + 1
+            participants_live.append({
+                "id": p.id,
+                "nickname": p.nickname or "",
+                "score": p.score,
+                "answered": answered
+            })
+    else:
+        distribution = {"A": 0, "B": 0, "C": 0, "D": 0}
+        for p in room.participants:
+            answered = False
+            if active_question:
+                ans = db.query(ParticipantAnswer).filter(
+                    ParticipantAnswer.participant_id == p.id,
+                    ParticipantAnswer.question_id == active_question["id"]
+                ).first()
+                if ans:
+                    answered = True
+                    selected_key = next((o["key"] for o in active_question["options"] if o["id"] == ans.selected_option_id), None)
+                    if selected_key in distribution:
+                        distribution[selected_key] += 1
+            participants_live.append({
+                "id": p.id,
+                "nickname": p.nickname or "",
+                "score": p.score,
+                "answered": answered
+            })
 
     return {
         "room_id": room.id,
@@ -341,6 +538,7 @@ def get_live_session(
         "current_question_index": room.current_question_index,
         "current_question_started_at": room.current_question_started_at,
         "quiz_title": room.quiz.title if room.quiz else "Quiz",
+        "total_questions": len(room.quiz.questions) if room.quiz and room.quiz.questions else 0,
         "active_question": active_question,
         "participants": participants_live,
         "answer_distribution": distribution
@@ -348,7 +546,7 @@ def get_live_session(
 
 
 @router.post("/{room_id}/next-question", response_model=RoomResponse, summary="Host advances room to the next question")
-def next_question(
+async def next_question(
     room_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
@@ -365,11 +563,20 @@ def next_question(
         raise HTTPException(status_code=403, detail="You do not have permission to advance this room.")
 
     updated_room = crud_room.next_question(db=db, room=room)
+    # Broadcast NEXT_QUESTION to all client WebSockets in room
+    await room_websocket_manager.broadcast_to_room(
+        room.room_code,
+        {
+            "type": "NEXT_QUESTION",
+            "current_question_index": updated_room.current_question_index,
+            "status": updated_room.status
+        }
+    )
     return updated_room
 
 
 @router.post("/{room_code}/submit-answer", response_model=SubmitAnswerResponse, summary="Submit participant's answer to the active question")
-def submit_answer(
+async def submit_answer(
     room_code: str,
     *,
     db: Session = Depends(get_db),
@@ -403,17 +610,32 @@ def submit_answer(
     import datetime
     now = datetime.datetime.utcnow()
     try:
-        is_correct, score, correct_option_key = crud_room.submit_answer(
+        is_correct, score, total_score, correct_option_key = crud_room.submit_answer(
             db=db,
             room=room,
             participant=participant,
             question_id=answer_in.question_id,
             selected_option_id=answer_in.selected_option_id,
+            answer_text=answer_in.answer_text,
+            active_power_up=answer_in.active_power_up,
+            client_streak=answer_in.streak,
             now=now
         )
+
+        # Real-time WebSocket notification to host panel
+        await room_websocket_manager.broadcast_to_room(
+            room.room_code,
+            {
+                "type": "ANSWER_SUBMITTED",
+                "participant_id": participant.id,
+                "question_id": answer_in.question_id
+            }
+        )
+
         return {
             "is_correct": is_correct,
             "score": score,
+            "total_score": total_score,
             "correct_option_key": correct_option_key
         }
     except ValueError as e:
@@ -448,3 +670,41 @@ def update_room_settings(
 
     updated_room = crud_room.update_settings(db=db, room=room, obj_in=settings_in)
     return updated_room
+
+
+@router.post("/participants/{participant_id}/leave", summary="Leave a live room")
+async def leave_room_endpoint(
+    participant_id: int,
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Remove a participant from the room when they choose to leave.
+    """
+    from app.models.room import Participant
+    participant = db.query(Participant).filter(Participant.id == participant_id).first()
+    room_code = None
+    nickname = None
+    if participant and participant.room:
+        room_code = participant.room.room_code
+        nickname = participant.nickname
+
+    success = crud_room.leave_room(db=db, participant_id=participant_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Participant not found."
+        )
+
+    if room_code and nickname:
+        db_room = crud_room.get_by_code(db=db, room_code=room_code)
+        active_nicknames = [p.nickname for p in db_room.participants] if db_room else []
+        await room_websocket_manager.broadcast_to_room(
+            room_code,
+            {
+                "type": "PLAYER_LEFT",
+                "player": nickname,
+                "players": active_nicknames
+            }
+        )
+        
+    return {"message": "Successfully left the room."}

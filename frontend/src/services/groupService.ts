@@ -128,5 +128,19 @@ export const groupService = {
 
   removeMember: async (groupId: number | string, memberId: number | string): Promise<{ message: string }> => {
     return apiClient.delete<{ message: string }>(`/groups/${groupId}/members/${memberId}`);
+  },
+
+  acceptInvite: async (groupId: number | string): Promise<{ message: string }> => {
+    return apiClient.post<{ message: string }>('/groups/invitations/bulk-accept', {
+      all_invitations: false,
+      group_ids: [Number(groupId)]
+    });
+  },
+
+  declineInvite: async (groupId: number | string): Promise<{ message: string }> => {
+    return apiClient.post<{ message: string }>('/groups/invitations/bulk-decline', {
+      all_invitations: false,
+      group_ids: [Number(groupId)]
+    });
   }
 };
