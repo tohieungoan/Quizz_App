@@ -1,5 +1,6 @@
-import { Library, MonitorPlay, Users, Star, LayoutDashboard } from 'lucide-react';
+import { Library, MonitorPlay, Users, Star, LayoutDashboard, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { dashboardService, DashboardOverviewResponse } from '@/services/dashboardService';
 import { MetricCard } from './components/MetricCard';
 import { HottestQuizzes } from './components/HottestQuizzes';
 import { RoomDistribution } from './components/RoomDistribution';
@@ -7,50 +8,49 @@ import { ActiveRoomsTable } from './components/ActiveRoomsTable';
 import { EngagementChart } from './components/EngagementChart';
 
 export function AdminDashboard() {
-  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardOverviewResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const DUMMY_DASHBOARD_DATA = {
-      metrics: {
-        total_quizzes: 1240,
-        total_users: 85200,
-        active_rooms: 42,
-        avg_score: 76
-      },
-      hottest_quizzes: [
-        { quiz_id: 1, title: "Modern Neuroscience 101", play_count: 2400 },
-        { quiz_id: 2, title: "Advanced Calculus Prep", play_count: 1800 },
-        { quiz_id: 3, title: "World History: WWII", play_count: 1200 },
-        { quiz_id: 4, title: "AP Chemistry Basics", play_count: 950 },
-        { quiz_id: 5, title: "Intro to Python", play_count: 820 }
-      ],
-      room_distribution: {
-        game_mode: 27,
-        exam_mode: 15
-      },
-      top_active_rooms: [
-        { id: 1, room_code: "EDU-4921", quiz_title: "Modern Neuroscience 101", host_name: "Prof. D. Thorne", participant_count: 24, status: "RUNNING" },
-        { id: 2, room_code: "EDU-3810", quiz_title: "World History: WWII", host_name: "Dr. Sarah Jenkins", participant_count: 12, status: "RUNNING" },
-        { id: 3, room_code: "EDU-9924", quiz_title: "Intro to Python", host_name: "T.A. Marcus", participant_count: 45, status: "RUNNING" },
-        { id: 4, room_code: "EDU-1123", quiz_title: "Advanced Calculus", host_name: "Prof. J. Smith", participant_count: 30, status: "RUNNING" },
-        { id: 5, room_code: "EDU-4452", quiz_title: "Biology 101: Cells", host_name: "Dr. M. Lee", participant_count: 18, status: "RUNNING" }
-      ],
-      engagement_history: [
-        { date: "07-21", room_count: 12 },
-        { date: "07-22", room_count: 19 },
-        { date: "07-23", room_count: 15 },
-        { date: "07-24", room_count: 25 },
-        { date: "07-25", room_count: 22 },
-        { date: "07-26", room_count: 30 },
-        { date: "07-27", room_count: 42 }
-      ]
+    const fetchDashboardData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await dashboardService.getOverview();
+        setDashboardData(data);
+      } catch (err: any) {
+        console.error("Failed to fetch dashboard data", err);
+        setError("Failed to load dashboard metrics.");
+      } finally {
+        setIsLoading(false);
+      }
     };
     
-    // Simulate a brief loading time for a realistic feel
-    setTimeout(() => {
-      setDashboardData(DUMMY_DASHBOARD_DATA);
-    }, 500);
+    fetchDashboardData();
   }, []);
+
+  if (isLoading) {
+    return (
+      <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full flex items-center justify-center min-h-[50vh]">
+        <div className="flex flex-col items-center justify-center text-primary/60">
+          <Loader2 className="w-8 h-8 animate-spin mb-4" />
+          <p className="font-medium text-sm">Loading metrics...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full flex items-center justify-center min-h-[50vh]">
+        <div className="bg-error/10 text-error px-6 py-4 rounded-xl border border-error/20 flex flex-col items-center">
+          <p className="font-bold mb-2">{error}</p>
+          <button onClick={() => window.location.reload()} className="text-sm font-semibold hover:underline">Try Again</button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">

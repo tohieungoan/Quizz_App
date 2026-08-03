@@ -60,6 +60,7 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     rawDateStr += 'Z';
   }
   const createdDate = new Date(rawDateStr);
+
   const now = new Date();
   const diffMs = now.getTime() - createdDate.getTime();
   const diffMins = Math.floor(diffMs / 60000);

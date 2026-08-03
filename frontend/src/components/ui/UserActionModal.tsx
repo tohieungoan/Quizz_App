@@ -42,7 +42,7 @@ const CustomSelect = ({
         className={`w-full flex items-center justify-between px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-lg text-sm focus:outline-none transition-all ${isOpen ? 'ring-1 ring-primary border-primary' : ''} text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest disabled:cursor-not-allowed`}
       >
         <span>{selectedOption?.label}</span>
-        <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        {!disabled && <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />}
       </button>
       
       {isOpen && !disabled && (
@@ -72,9 +72,11 @@ interface UserActionModalProps {
   mode: UserMode;
   user?: UserData | null;
   onSave: (user: Partial<UserData>) => void;
+  fieldErrors?: Record<string, string>;
+  isSaving?: boolean;
 }
 
-export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserActionModalProps) {
+export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErrors = {}, isSaving = false }: UserActionModalProps) {
   const [formData, setFormData] = useState<Partial<UserData>>({
     name: '',
     email: '',
@@ -144,29 +146,33 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserAct
                   <input 
                     required
                     type="text"
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || isSaving}
                     value={formData.name || ''}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest"
+                    className={`w-full bg-surface-container-low border rounded-lg px-4 py-2.5 outline-none focus:ring-1 text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest ${fieldErrors.fullname ? 'border-error focus:border-error focus:ring-error' : 'border-outline-variant focus:border-primary focus:ring-primary'}`}
                     placeholder="e.g. John Doe"
                   />
+                  {fieldErrors.fullname && <p className="text-xs text-error mt-1.5 font-medium flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {fieldErrors.fullname}</p>}
                 </div>
 
-                {/* Email */}
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-label-bold text-on-surface-variant mb-1.5">
-                    <Mail className="w-4 h-4" /> Email Address <span className="text-error">*</span>
-                  </label>
-                  <input 
-                    required
-                    type="email"
-                    disabled={isReadOnly}
-                    value={formData.email || ''}
-                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest"
-                    placeholder="e.g. john@example.com"
-                  />
-                </div>
+                {/* Email (Only in Add mode) */}
+                {mode === 'add' && (
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-label-bold text-on-surface-variant mb-1.5">
+                      <Mail className="w-4 h-4" /> Email Address <span className="text-error">*</span>
+                    </label>
+                    <input 
+                      required
+                      type="email"
+                      disabled={isReadOnly || isSaving}
+                      value={formData.email || ''}
+                      onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      className={`w-full bg-surface-container-low border rounded-lg px-4 py-2.5 outline-none focus:ring-1 text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest ${fieldErrors.email ? 'border-error focus:border-error focus:ring-error' : 'border-outline-variant focus:border-primary focus:ring-primary'}`}
+                      placeholder="e.g. john@example.com"
+                    />
+                    {fieldErrors.email && <p className="text-xs text-error mt-1.5 font-medium flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {fieldErrors.email}</p>}
+                  </div>
+                )}
 
                 {/* Password (Only in Add mode) */}
                 {mode === 'add' && (
@@ -177,11 +183,14 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserAct
                     <input 
                       required
                       type="password"
+                      minLength={8}
+                      disabled={isSaving}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface"
+                      className={`w-full bg-surface-container-low border rounded-lg px-4 py-2.5 outline-none focus:ring-1 text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest ${fieldErrors.password ? 'border-error focus:border-error focus:ring-error' : 'border-outline-variant focus:border-primary focus:ring-primary'}`}
                       placeholder="Enter a secure password..."
                     />
+                    {fieldErrors.password && <p className="text-xs text-error mt-1.5 font-medium flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {fieldErrors.password}</p>}
                   </div>
                 )}
 
@@ -192,12 +201,13 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserAct
                   </label>
                   <input 
                     type="url"
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || isSaving}
                     value={formData.avatar || ''}
                     onChange={e => setFormData({ ...formData, avatar: e.target.value })}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest"
+                    className={`w-full bg-surface-container-low border rounded-lg px-4 py-2.5 outline-none focus:ring-1 text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest ${fieldErrors.avatar ? 'border-error focus:border-error focus:ring-error' : 'border-outline-variant focus:border-primary focus:ring-primary'}`}
                     placeholder="https://example.com/avatar.png"
                   />
+                  {fieldErrors.avatar && <p className="text-xs text-error mt-1.5 font-medium flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {fieldErrors.avatar}</p>}
                 </div>
               </div>
             </div>
@@ -245,12 +255,13 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserAct
                   </label>
                   <input 
                     type="number"
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || isSaving}
                     value={formData.achievement_points || 0}
                     onChange={e => setFormData({ ...formData, achievement_points: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest"
+                    className={`w-full bg-surface-container-low border rounded-lg px-4 py-2.5 outline-none focus:ring-1 text-on-surface disabled:opacity-70 disabled:bg-surface-container-lowest ${fieldErrors.achievement_points ? 'border-error focus:border-error focus:ring-error' : 'border-outline-variant focus:border-primary focus:ring-primary'}`}
                     placeholder="0"
                   />
+                  {fieldErrors.achievement_points && <p className="text-xs text-error mt-1.5 font-medium flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {fieldErrors.achievement_points}</p>}
                 </div>
 
               </div>
@@ -324,17 +335,23 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave }: UserAct
               <div className="pt-4 flex justify-end gap-3 border-t border-outline-variant/30">
                 <button 
                   type="button" 
+                  disabled={isSaving}
                   onClick={onClose}
-                  className="px-5 py-2.5 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant hover:bg-surface-container transition-colors"
+                  className="px-5 py-2.5 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  className="px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-2 transition-colors shadow-sm"
+                  disabled={isSaving}
+                  className="px-5 py-2.5 bg-primary text-on-primary rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-2 transition-colors shadow-sm disabled:opacity-70"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  {mode === 'add' ? 'Create User' : 'Save Changes'}
+                  {isSaving ? (
+                    <div className="w-4 h-4 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin"></div>
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
+                  {isSaving ? 'Saving...' : (mode === 'add' ? 'Create User' : 'Save Changes')}
                 </button>
               </div>
             )}

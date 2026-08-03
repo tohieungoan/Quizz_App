@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Send, Megaphone, AlertCircle, Info, CheckCircle2, Radio, Smartphone, Monitor, Link as LinkIcon, Users, UsersRound, User, CalendarClock } from 'lucide-react';
 import { notificationService } from '@/services/notificationService';
+import { toast } from 'react-hot-toast';
 
 export function Broadcast() {
   const [title, setTitle] = useState('');
@@ -43,12 +44,16 @@ export function Broadcast() {
       setIsScheduled(false);
       setScheduledAt('');
       
-      const targetStr = targetType === 'ALL_USERS' ? 'all users' : targetType === 'GROUP' ? 'group' : 'user';
-      setSuccessMsg(`Broadcast ${isScheduled ? 'scheduled' : 'sent'} successfully to ${targetStr}!`);
-      setTimeout(() => setSuccessMsg(''), 3000);
+      toast.success(`Broadcast ${isScheduled ? 'scheduled' : 'sent'} successfully!`);
+      
+      // Notify all active useNotifications hooks across the app to refetch immediately (e.g. for the AdminHeader bell icon)
+      if (!isScheduled) {
+        window.dispatchEvent(new Event('quizzapp_notifications_updated'));
+      }
+      
     } catch (err: any) {
       console.error('Failed to send broadcast:', err);
-      alert(err?.response?.data?.detail || 'Failed to send system broadcast.');
+      toast.error(err?.response?.data?.detail || 'Failed to send system broadcast.');
     } finally {
       setIsSending(false);
     }

@@ -7,6 +7,12 @@ let refreshQueue: Array<() => void> = []
 // Automatically attach Authorization header if token exists
 const buildHeaders = (extra?: Record<string, string>): Record<string, string> => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
+  
+  // If explicitly set to empty string, delete it (useful for FormData which needs to set its own Content-Type with boundaries)
+  if (headers['Content-Type'] === '') {
+    delete headers['Content-Type']
+  }
+
   const token = localStorage.getItem('token')
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
@@ -72,14 +78,37 @@ const fetchWithAuth = async (url: string, init: RequestInit): Promise<Response> 
   return fetch(url, { ...init, headers: buildHeaders(init.headers as Record<string, string>) })
 }
 
+export class ApiError extends Error {
+  public fieldErrors?: Record<string, string>;
+  constructor(message: string, fieldErrors?: Record<string, string>) {
+    super(message);
+    this.name = 'ApiError';
+    this.fieldErrors = fieldErrors;
+  }
+}
+
 const handleResponse = async <T>(res: Response): Promise<T> => {
   if (!res.ok) {
     const error = await res.json().catch(() => ({}))
-    const detail = error.detail;
-    const errorMessage = typeof detail === 'string' 
-      ? detail 
-      : (detail ? JSON.stringify(detail) : `HTTP error ${res.status}`);
-    throw new Error(errorMessage)
+    let errorMsg = `HTTP error ${res.status}`
+    let fieldErrors: Record<string, string> | undefined;
+
+    if (Array.isArray(error.detail)) {
+      fieldErrors = {};
+      error.detail.forEach((e: any) => {
+        const fieldName = e.loc[e.loc.length - 1];
+        fieldErrors![fieldName] = e.msg;
+      });
+      errorMsg = "Please check the highlighted fields for errors.";
+    } else if (error.detail) {
+      errorMsg = typeof error.detail === 'string' 
+        ? error.detail 
+        : JSON.stringify(error.detail);
+    } else if (error.message) {
+      errorMsg = error.message;
+    }
+
+    throw new ApiError(errorMsg, fieldErrors);
   }
   return res.json()
 }
@@ -98,6 +127,16 @@ export const apiClient = {
       method: 'POST',
       headers: extraHeaders,
       body: JSON.stringify(body),
+    }).then(handleResponse<T>),
+
+  postMultipart: <T = unknown>(
+    endpoint: string,
+    body: FormData
+  ): Promise<T> =>
+    fetchWithAuth(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': '' }, // Empty string tells buildHeaders to delete it
+      body: body,
     }).then(handleResponse<T>),
 
   /** Reserved for form-urlencoded (OAuth2 login) — authorization header not needed */

@@ -22,3 +22,32 @@ class ReportPageResponse(BaseModel):
     total: int
     pageIndex: int
     pageSize: int
+
+class ReportParticipant(BaseModel):
+    id: str
+    user_id: Optional[str] = None
+    nickname: str
+    status: str
+    joined_at: Optional[str] = None
+    score: int
+    time_taken: str = "N/A"
+
+class ReportParticipantPageResponse(BaseModel):
+    data: List[ReportParticipant]
+    total: int
+    pageIndex: int
+    pageSize: int
+
+class ReportQuestionAnalysis(BaseModel):
+    id: int
+    question: str
+    correct: int
+    incorrect: int
+    rate: float
+    difficulty: str = "Medium"
+
+class ReportQuestionPageResponse(BaseModel):
+    data: List[ReportQuestionAnalysis]
+    total: int
+    pageIndex: int
+    pageSize: int

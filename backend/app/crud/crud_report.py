@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, or_
+from sqlalchemy import func, desc, or_, case
 import csv
 import io
 import zipfile
@@ -8,7 +8,7 @@ from app.models.quiz import Quiz, Question
 from app.models.user import User
 from app.models.room import Room, Participant, ParticipantAnswer
 from app.models.exam import Exam, ExamAssignee, ExamAnswer
-from app.schemas.report import ReportMetrics, ReportListItem, ReportPageResponse
+from app.schemas.report import ReportMetrics, ReportListItem, ReportPageResponse, ReportParticipant, ReportQuestionAnalysis, ReportParticipantPageResponse, ReportQuestionPageResponse
 
 class CRUDReport:
     def get_metrics(self, db: Session) -> ReportMetrics:
@@ -117,6 +117,131 @@ class CRUDReport:
 
         return ReportPageResponse(
             data=paginated_reports,
+            total=total,
+            pageIndex=(skip // limit) + 1 if limit > 0 else 1,
+            pageSize=limit
+        )
+
+    def get_report_participants(self, db: Session, session_id: int, session_type: str, skip: int = 0, limit: int = 50) -> ReportParticipantPageResponse:
+        results = []
+        total = 0
+        
+        if session_type.upper() == "ROOM":
+            query = db.query(Participant).filter(Participant.room_id == session_id)
+            total = query.count()
+            participants = query.order_by(desc(Participant.score)).offset(skip).limit(limit).all()
+            for p in participants:
+                results.append(ReportParticipant(
+                    id=f"P-{p.id}",
+                    user_id=str(p.user_id) if hasattr(p, 'user_id') and p.user_id else None,
+                    nickname=p.nickname or "Anonymous",
+                    status=p.status or "Completed",
+                    joined_at=p.joined_at.strftime("%Y-%m-%d %H:%M") if hasattr(p, 'joined_at') and p.joined_at else None,
+                    score=p.score
+                ))
+        elif session_type.upper() == "EXAM":
+            query = db.query(ExamAssignee, User.fullname).outerjoin(User, ExamAssignee.user_id == User.id).filter(ExamAssignee.exam_id == session_id)
+            total = query.count()
+            assignees = query.order_by(desc(ExamAssignee.score)).offset(skip).limit(limit).all()
+            for a, fullname in assignees:
+                u_name = fullname if fullname else "Anonymous"
+                results.append(ReportParticipant(
+                    id=f"EA-{a.id}",
+                    user_id=str(a.user_id) if hasattr(a, 'user_id') and a.user_id else None,
+                    nickname=u_name,
+                    status=a.status or "Completed",
+                    joined_at=a.started_at.strftime("%Y-%m-%d %H:%M") if hasattr(a, 'started_at') and a.started_at else None,
+                    score=a.score or 0
+                ))
+                
+        return ReportParticipantPageResponse(
+            data=results,
+            total=total,
+            pageIndex=(skip // limit) + 1 if limit > 0 else 1,
+            pageSize=limit
+        )
+
+    def get_report_questions(self, db: Session, session_id: int, session_type: str, skip: int = 0, limit: int = 50) -> ReportQuestionPageResponse:
+        results = []
+        total = 0
+        if session_type.upper() == "ROOM":
+            room = db.query(Room).filter(Room.id == session_id).first()
+            if room:
+                query = db.query(
+                    Question.id,
+                    Question.content,
+                    Question.difficulty,
+                    func.count(ParticipantAnswer.id).label("total_ans"),
+                    func.sum(case((ParticipantAnswer.is_correct == True, 1), else_=0)).label("correct_ans")
+                ).outerjoin(
+                    ParticipantAnswer,
+                    (ParticipantAnswer.question_id == Question.id) &
+                    (ParticipantAnswer.participant_id.in_(
+                        db.query(Participant.id).filter(Participant.room_id == session_id)
+                    ))
+                ).filter(
+                    Question.quiz_id == room.quiz_id
+                ).group_by(Question.id)
+                
+                total = db.query(func.count(Question.id)).filter(Question.quiz_id == room.quiz_id).scalar() or 0
+                stats = query.offset(skip).limit(limit).all()
+                
+                for row in stats:
+                    q_id, q_content, q_diff, t_ans, c_ans = row
+                    t_ans = t_ans or 0
+                    c_ans = c_ans or 0
+                    i_ans = t_ans - c_ans
+                    acc = round((c_ans / t_ans * 100), 2) if t_ans > 0 else 0.0
+                    
+                    results.append(ReportQuestionAnalysis(
+                        id=q_id,
+                        question=q_content or "No content",
+                        correct=int(c_ans),
+                        incorrect=int(i_ans),
+                        rate=float(acc),
+                        difficulty=q_diff or "Medium"
+                    ))
+                    
+        elif session_type.upper() == "EXAM":
+            exam = db.query(Exam).filter(Exam.id == session_id).first()
+            if exam:
+                query = db.query(
+                    Question.id,
+                    Question.content,
+                    Question.difficulty,
+                    func.count(ExamAnswer.id).label("total_ans"),
+                    func.sum(case((ExamAnswer.is_correct == True, 1), else_=0)).label("correct_ans")
+                ).outerjoin(
+                    ExamAnswer,
+                    (ExamAnswer.question_id == Question.id) &
+                    (ExamAnswer.assignee_id.in_(
+                        db.query(ExamAssignee.id).filter(ExamAssignee.exam_id == session_id)
+                    ))
+                ).filter(
+                    Question.quiz_id == exam.quiz_id
+                ).group_by(Question.id)
+                
+                total = db.query(func.count(Question.id)).filter(Question.quiz_id == exam.quiz_id).scalar() or 0
+                stats = query.offset(skip).limit(limit).all()
+                
+                for row in stats:
+                    q_id, q_content, q_diff, t_ans, c_ans = row
+                    t_ans = t_ans or 0
+                    c_ans = c_ans or 0
+                    i_ans = t_ans - c_ans
+                    acc = round((c_ans / t_ans * 100), 2) if t_ans > 0 else 0.0
+                    
+                    results.append(ReportQuestionAnalysis(
+                        id=q_id,
+                        question=q_content or "No content",
+                        correct=int(c_ans),
+                        incorrect=int(i_ans),
+                        rate=float(acc),
+                        difficulty=q_diff or "Medium"
+                    ))
+                    
+        return ReportQuestionPageResponse(
+            data=results,
             total=total,
             pageIndex=(skip // limit) + 1 if limit > 0 else 1,
             pageSize=limit
