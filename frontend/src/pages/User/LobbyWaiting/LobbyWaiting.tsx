@@ -100,7 +100,7 @@ export const LobbyWaiting: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const state = location.state as { roomCode?: string; nickname?: string; isHost?: boolean; fromSource?: 'landing' | 'dashboard'; activeTab?: string; roomId?: number; participantId?: number; quizTitle?: string; progressionMode?: string } | null
+  const state = location.state as { roomCode?: string; nickname?: string; isHost?: boolean; fromSource?: 'landing' | 'dashboard'; activeTab?: string; roomId?: number; participantId?: number; quizTitle?: string; progressionMode?: string; allowShowRank?: boolean } | null
   
   const queryParams = new URLSearchParams(location.search)
   const urlRoomCode = queryParams.get('roomCode')
@@ -272,19 +272,55 @@ export const LobbyWaiting: React.FC = () => {
     const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=${isHost}${token ? `&token=${token}` : ''}`
 
     let socket: WebSocket | null = null
+    let pingTimer: any = null
+    let reconnectTimer: any = null
+    let isDisposed = false
 
     const connectWebSocket = () => {
+      if (isDisposed) return
       try {
         socket = new WebSocket(wsUrl)
 
         socket.onopen = () => {
           console.log(`WebSocket connection opened for room: ${roomCode}`)
+          
+          // Re-verify room status on reconnect: if already PLAYING, redirect!
+          if (!isHost) {
+            roomService.getRoom(roomCode)
+              .then((res) => {
+                if (res.status === 'PLAYING') {
+                  navigate('/play', {
+                    state: {
+                      nickname,
+                      roomCode,
+                      roomId: res.id,
+                      participantId: participantId || state?.participantId,
+                      mode: res.mode,
+                      score: 0,
+                      streak: 0,
+                      questionNumber: res.current_question_index || 1,
+                      fromSource,
+                      activeTab
+                    }
+                  })
+                }
+              })
+              .catch((err) => console.error("Error checking room status on WS open:", err))
+          }
+
+          // Periodic PING to keep connection alive
+          pingTimer = setInterval(() => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: "PING" }))
+            }
+          }, 5000)
         }
 
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
             console.log("WebSocket event received:", data)
+            if (data.type === "PONG") return
 
             if (data.type === "PLAYER_JOINED" || data.type === "PLAYER_LEFT") {
               const playerNicknames: string[] = data.players || []
@@ -336,19 +372,30 @@ export const LobbyWaiting: React.FC = () => {
 
         socket.onclose = (event) => {
           console.log("WebSocket connection closed", event)
+          if (pingTimer) clearInterval(pingTimer)
+          if (!isDisposed) {
+            reconnectTimer = setTimeout(connectWebSocket, 1500)
+          }
         }
 
         socket.onerror = (error) => {
           console.error("WebSocket connection error:", error)
+          if (socket) socket.close()
         }
       } catch (err) {
         console.error("Failed to establish WebSocket room connection:", err)
+        if (!isDisposed) {
+          reconnectTimer = setTimeout(connectWebSocket, 2000)
+        }
       }
     }
 
     connectWebSocket()
 
     return () => {
+      isDisposed = true
+      if (pingTimer) clearInterval(pingTimer)
+      if (reconnectTimer) clearTimeout(reconnectTimer)
       if (socket) {
         socket.close()
       }
@@ -413,7 +460,8 @@ export const LobbyWaiting: React.FC = () => {
           roomCode,
           roomId: targetRoomId,
           quizTitle: state?.quizTitle || 'Advanced Web Fundamentals Quiz',
-          progressionMode: state?.progressionMode || 'manual'
+          progressionMode: state?.progressionMode || 'manual',
+          allowShowRank: state?.allowShowRank ?? true
         }
       })
     } catch (err: any) {

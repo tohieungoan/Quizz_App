@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DoorOpen, ArrowRight, ShieldCheck, User, Users, PlusCircle, CheckCircle2, BookOpen, Trash2 } from 'lucide-react';
 import { groupService, roomService } from '@/services';
+import { recordDailyActivity } from '@/utils/streakTracker';
 
 interface EnrolledGroup {
-  id: string;
+  groupId: number;
+  code: string;
   name: string;
   host: string;
   membersCount: number;
@@ -46,7 +48,8 @@ export const JoinRoomTab: React.FC = () => {
       setIsLoadingGroups(true);
       const data = await groupService.getMyMemberships();
       const mapped = data.map((eg): EnrolledGroup => ({
-        id: eg.group_code,
+        groupId: eg.id,
+        code: eg.group_code,
         name: eg.name,
         host: eg.host,
         membersCount: eg.membersCount,
@@ -97,6 +100,7 @@ export const JoinRoomTab: React.FC = () => {
     setIsJoining(true);
     try {
       const participantData = await roomService.joinRoom(fullCode, nickname.trim() || 'Alex Johnson');
+      recordDailyActivity();
       sessionStorage.setItem('dashboard_active_tab', 'join_room');
 
       let roomData: any = null;
@@ -163,8 +167,15 @@ export const JoinRoomTab: React.FC = () => {
     }
   };
 
-  const handleLeaveGroup = (id: string) => {
-    setEnrolledGroups(enrolledGroups.filter((g) => g.id !== id));
+  const handleLeaveGroup = async (groupId: number) => {
+    if (!window.confirm("Are you sure you want to leave this study group?")) return;
+    try {
+      await groupService.leaveGroup(groupId);
+      setEnrolledGroups(prev => prev.filter((g) => g.groupId !== groupId));
+    } catch (err: any) {
+      console.error("Failed to leave study group:", err);
+      alert(err?.response?.data?.detail || "Failed to leave study group.");
+    }
   };
 
   return (
@@ -325,7 +336,7 @@ export const JoinRoomTab: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {enrolledGroups.map((group) => (
             <div
-              key={group.id}
+              key={group.groupId}
               className="p-6 rounded-2xl border border-outline-variant/30 hover:border-primary/40 transition-all bg-surface-container-lowest flex flex-col justify-between space-y-4"
             >
               <div className="space-y-2">
@@ -333,7 +344,7 @@ export const JoinRoomTab: React.FC = () => {
                   <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-green-100 text-green-700">
                     {group.status}
                   </span>
-                  <span className="text-xs text-outline font-mono font-bold">{group.id}</span>
+                  <span className="text-xs text-outline font-mono font-bold">#{group.code}</span>
                 </div>
                 <h4 className="font-bold text-base text-on-surface">{group.name}</h4>
                 <p className="text-xs text-on-surface-variant">Host: <span className="font-semibold text-on-surface">{group.host}</span></p>
@@ -345,7 +356,7 @@ export const JoinRoomTab: React.FC = () => {
               <div className="pt-3 border-t border-outline-variant/20 flex items-center justify-between">
                 <span className="text-[11px] text-on-surface-variant font-medium">{group.lastActivity}</span>
                 <button
-                  onClick={() => handleLeaveGroup(group.id)}
+                  onClick={() => handleLeaveGroup(group.groupId)}
                   className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded-lg transition-colors"
                   title="Leave Group"
                 >

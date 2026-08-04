@@ -176,9 +176,39 @@ class CRUDUser:
         # On conflict (email), do nothing
         stmt = stmt.on_conflict_do_nothing(index_elements=['email'])
         
-        result = db.execute(stmt)
+    def update_last_login_and_streak(self, db: Session, user: User) -> User:
+        """Update last_login and reset study_streak to 0 if last_login was > 1 day ago."""
+        now = datetime.utcnow()
+        today = now.date()
+
+        if user.last_login:
+            last_date = user.last_login.date()
+            delta_days = (today - last_date).days
+            if delta_days > 1:
+                user.study_streak = 0
+
+        user.last_login = now
+        db.add(user)
         db.commit()
-        return result.rowcount
+        db.refresh(user)
+        return user
+
+    def increment_study_streak(self, db: Session, user: User) -> User:
+        """Increment user study_streak by 1."""
+        user.study_streak = (user.study_streak or 0) + 1
+        user.updated_at = datetime.utcnow()
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def add_achievement_points(self, db: Session, user: User, points: int) -> User:
+        """Add achievement points (EXP) to user."""
+        user.achievement_points = (user.achievement_points or 0) + points
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
 
 crud_user = CRUDUser()
 

@@ -21,6 +21,9 @@ class QuestionLive(BaseModel):
     time_limit: Optional[int] = None
     options: List[OptionLive]
     correct_option_key: Optional[str] = None
+    audio_url: Optional[str] = None
+    media_url: Optional[str] = None
+    audio_play_limit: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

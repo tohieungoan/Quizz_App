@@ -148,12 +148,13 @@ def import_users_file(
     Uses PostgreSQL Upsert to safely handle concurrent registrations without IntegrityError crashes.
     Max limit: 10,000 rows per file for enterprise safety.
     """
-    if not (file.filename.endswith('.csv') or file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
+    filename = file.filename or ""
+    if not (filename.endswith('.csv') or filename.endswith('.xlsx') or filename.endswith('.xls')):
         raise HTTPException(status_code=400, detail="Only CSV or Excel files are allowed.")
     
     rows = []
     
-    if file.filename.endswith('.csv'):
+    if filename.endswith('.csv'):
         # Use utf-8-sig to automatically strip the BOM character (\ufeff) that Excel adds when exporting CSV
         content = file.file.read().decode("utf-8-sig")
         csv_reader = csv.DictReader(io.StringIO(content))
@@ -326,6 +327,17 @@ def get_user_settings(
         db.commit()
         db.refresh(settings_obj)
     return settings_obj
+
+
+@router.post("/me/streak", response_model=UserResponse, summary="Increment daily study streak")
+def increment_my_streak(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Increment current user's daily study streak by 1.
+    """
+    return crud_user.increment_study_streak(db, current_user)
 
 
 @router.put("/me/settings", response_model=UserSettingResponse, summary="Update user notification settings")

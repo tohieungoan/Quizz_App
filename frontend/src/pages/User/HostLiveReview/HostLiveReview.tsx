@@ -16,8 +16,11 @@ interface QuestionDetails {
   id: number
   text: string
   type?: string // MULTIPLE_CHOICE, SHORT_ANSWER
+  time_limit?: number
   options: { key: string; label: string }[]
   correctKey: string
+  audio_url?: string | null
+  media_url?: string | null
 }
 
 const MOCK_QUESTIONS: Record<number, QuestionDetails> = {
@@ -61,7 +64,7 @@ export const HostLiveReview: React.FC = () => {
   const location = useLocation()
 
   // State variables passed from Lobby or restored from sessionStorage
-  const state = location.state as { roomCode?: string; quizTitle?: string; roomId?: number; progressionMode?: string } | null
+  const state = location.state as { roomCode?: string; quizTitle?: string; roomId?: number; progressionMode?: string; allowShowRank?: boolean } | null
   const roomCode = state?.roomCode || sessionStorage.getItem('host_room_code') || ''
   const quizTitle = state?.quizTitle || sessionStorage.getItem('host_quiz_title') || 'Live Quiz Session'
   const roomId = state?.roomId || Number(sessionStorage.getItem('host_room_id') || 0)
@@ -73,10 +76,24 @@ export const HostLiveReview: React.FC = () => {
     if (state?.quizTitle) sessionStorage.setItem('host_quiz_title', state.quizTitle)
   }, [state])
 
-  const [autoAdvance, setAutoAdvance] = useState(false)
+  const [autoAdvance, setAutoAdvance] = useState(state?.progressionMode === 'auto')
+  const [allowShowRank, setAllowShowRank] = useState(state?.allowShowRank ?? true)
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false)
+  const [leaderboardTimeLeft, setLeaderboardTimeLeft] = useState(5)
+  const [hasInitializedAutoAdvance, setHasInitializedAutoAdvance] = useState(false)
 
-  const handleAutoAdvanceChange = (val: boolean) => {
+  const handleAutoAdvanceChange = async (val: boolean) => {
     setAutoAdvance(val)
+    const activeRoomId = roomId || state?.roomId
+    if (activeRoomId) {
+      try {
+        await roomService.updateSettings(activeRoomId, {
+          progression_mode: val ? 'auto' : 'manual'
+        })
+      } catch (err) {
+        console.error("Failed to update room progression_mode in DB:", err)
+      }
+    }
   }
 
   // Host Control States
@@ -95,6 +112,7 @@ export const HostLiveReview: React.FC = () => {
   const [questionNumber, setQuestionNumber] = useState(1)
   const [totalQuestions, setTotalQuestions] = useState(3)
   const [timeLeft, setTimeLeft] = useState(20)
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null)
   const [revealAnswer, setRevealAnswer] = useState(false)
   const [participants, setParticipants] = useState<ParticipantAnswerState[]>(isDemoMode ? DUMMY_PARTICIPANTS : [])
   const [distribution, setDistribution] = useState<Record<string, number>>({ A: 0, B: 0, C: 0, D: 0 })
@@ -128,6 +146,13 @@ export const HostLiveReview: React.FC = () => {
           if (data.total_questions !== undefined) {
             setTotalQuestions(data.total_questions)
           }
+          if (data.progression_mode && !hasInitializedAutoAdvance) {
+            setAutoAdvance(data.progression_mode === 'auto')
+            setHasInitializedAutoAdvance(true)
+          }
+          if (data.allow_show_rank !== undefined) {
+            setAllowShowRank(data.allow_show_rank)
+          }
           
           // Map participants
           setParticipants(data.participants.map((p: any) => ({
@@ -145,15 +170,19 @@ export const HostLiveReview: React.FC = () => {
               id: data.active_question.id,
               text: data.active_question.text,
               type: data.active_question.type || 'MULTIPLE_CHOICE',
+              time_limit: data.active_question.time_limit || 20,
               options: data.active_question.options || [],
-              correctKey: data.active_question.correct_option_key || ''
+              correctKey: data.active_question.correct_option_key || '',
+              audio_url: data.active_question.audio_url,
+              media_url: data.active_question.media_url
             })
 
             // Sync timer
             if (data.current_question_started_at) {
               const startedAtStr = data.current_question_started_at
-              const startedAt = new Date(startedAtStr.endsWith('Z') ? startedAtStr : startedAtStr + 'Z').getTime()
-              const elapsed = (Date.now() - startedAt) / 1000
+              const ms = new Date(startedAtStr.endsWith('Z') ? startedAtStr : startedAtStr + 'Z').getTime()
+              setStartedAtMs(ms)
+              const elapsed = (Date.now() - ms) / 1000
               const limit = data.active_question.time_limit || 20
               const remaining = Math.max(0, Math.ceil(limit - elapsed))
               setTimeLeft(remaining)
@@ -279,20 +308,31 @@ export const HostLiveReview: React.FC = () => {
     return () => clearInterval(interval)
   }, [questionNumber, isDemoMode, activeQuestion.correctKey])
 
-  // Demo Mode: Local countdown timer
+  // Host Countdown Timer Effect (Synced with server timestamp)
   useEffect(() => {
-    if (!isDemoMode) return
-    if (timeLeft <= 0) {
-      setRevealAnswer(true)
+    if (showLeaderboardModal || !startedAtMs || isDemoMode) {
+      if (timeLeft <= 0) {
+        setRevealAnswer(true)
+      }
       return
     }
 
-    const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1)
-    }, 1000)
+    const limit = activeQuestion.time_limit || 20
+
+    const updateHostTimer = () => {
+      const elapsed = (Date.now() - startedAtMs) / 1000
+      const remaining = Math.max(0, Math.ceil(limit - elapsed))
+      setTimeLeft(remaining)
+      if (remaining === 0) {
+        setRevealAnswer(true)
+      }
+    }
+
+    updateHostTimer()
+    const timer = setInterval(updateHostTimer, 250)
 
     return () => clearInterval(timer)
-  }, [timeLeft, isDemoMode])
+  }, [startedAtMs, showLeaderboardModal, isDemoMode, activeQuestion])
 
   // Demo Mode: Dynamic answer distribution computation
   useEffect(() => {
@@ -306,20 +346,40 @@ export const HostLiveReview: React.FC = () => {
     setDistribution(counts)
   }, [participants, isDemoMode])
 
+  // Leaderboard Modal 5s Auto-advance countdown
+  useEffect(() => {
+    if (!showLeaderboardModal || !autoAdvance) {
+      setLeaderboardTimeLeft(5)
+      return
+    }
+
+    if (leaderboardTimeLeft <= 0) {
+      proceedToNextQuestion()
+      return
+    }
+
+    const timer = setInterval(() => {
+      setLeaderboardTimeLeft(prev => prev - 1)
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [showLeaderboardModal, autoAdvance, leaderboardTimeLeft])
+
   // Auto Advance countdown clock trigger (if ON)
   useEffect(() => {
-    if (timeLeft <= 0 && autoAdvance) {
+    if (timeLeft <= 0 && autoAdvance && !showLeaderboardModal) {
       const timer = setTimeout(() => {
         handleNextQuestion()
       }, 3000)
       return () => clearTimeout(timer)
     }
-  }, [timeLeft, autoAdvance])
+  }, [timeLeft, autoAdvance, showLeaderboardModal, questionNumber])
 
   const answeredTotal = participants.filter(s => s.answered).length
   const pctAnswered = participants.length > 0 ? Math.round((answeredTotal / participants.length) * 100) : 0
 
-  const handleNextQuestion = async () => {
+  const proceedToNextQuestion = async () => {
+    setShowLeaderboardModal(false)
     if (isDemoMode) {
       if (questionNumber >= totalQuestions) {
         // End local demo
@@ -344,6 +404,17 @@ export const HostLiveReview: React.FC = () => {
       console.error("Failed to advance question:", err)
       alert("Error advancing to the next question.")
     }
+  }
+
+  const handleNextQuestion = async () => {
+    // Check if we should trigger the 3-question Leaderboard standings modal
+    if (allowShowRank && questionNumber % 3 === 0 && questionNumber < totalQuestions && !showLeaderboardModal) {
+      setLeaderboardTimeLeft(5)
+      setShowLeaderboardModal(true)
+      return
+    }
+
+    await proceedToNextQuestion()
   }
 
   const handleEndSession = async () => {
@@ -500,9 +571,38 @@ export const HostLiveReview: React.FC = () => {
                   Type: {activeQuestion.type === 'SHORT_ANSWER' ? 'Short Answer' : 'Multiple Choice'}
                 </span>
               </div>
-              <h2 className="font-headline-md text-lg md:text-xl font-black text-on-surface leading-relaxed">
+              <h2 className="font-headline-md text-lg md:text-xl font-black text-on-surface leading-relaxed mb-4">
                 {activeQuestion.text}
               </h2>
+
+              {activeQuestion.media_url && (
+                <div className="w-full flex justify-center mb-4">
+                  {activeQuestion.media_url.match(/\.(mp4|webm|ogg|mov)$/i) || activeQuestion.media_url.includes('/video/upload/') ? (
+                    <video 
+                      src={activeQuestion.media_url} 
+                      controls 
+                      className="max-h-48 md:max-h-64 rounded-2xl border border-slate-200 shadow-sm"
+                    />
+                  ) : (
+                    <img 
+                      src={activeQuestion.media_url} 
+                      alt="Question Media" 
+                      className="max-h-48 md:max-h-64 object-contain rounded-2xl border border-slate-200 shadow-sm"
+                    />
+                  )}
+                </div>
+              )}
+
+              {activeQuestion.audio_url && (
+                <div className="w-full flex flex-col items-center gap-2 mb-4 bg-slate-50 p-3 rounded-2xl border border-slate-200/60">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Audio Track</span>
+                  <audio 
+                    src={activeQuestion.audio_url} 
+                    controls 
+                    className="w-full max-w-sm"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Live Chart Distribution */}
@@ -688,6 +788,98 @@ export const HostLiveReview: React.FC = () => {
         </div>
 
       </div>
+
+      {/* 3-Question Round Leaderboard Standings Modal */}
+      {showLeaderboardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border-2 border-primary/20 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+            {/* Modal Header */}
+            <div className="p-6 bg-gradient-to-r from-primary via-indigo-600 to-secondary text-white flex items-center justify-between flex-shrink-0">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
+                  Round {Math.floor(questionNumber / 3)} Standings
+                </span>
+                <h3 className="font-extrabold text-xl flex items-center gap-2 mt-1">
+                  <Award className="w-6 h-6 text-amber-300 fill-amber-300" /> Leaderboard Standings (Q{questionNumber})
+                </h3>
+                <p className="text-xs text-indigo-100 mt-0.5">Current top rankings after completing round</p>
+              </div>
+              {autoAdvance && (
+                <div className="bg-white/20 backdrop-blur-md px-3.5 py-1.5 rounded-2xl flex items-center gap-2 text-xs font-black">
+                  <Clock className="w-4 h-4 animate-spin-slow" />
+                  <span>Auto-next: {leaderboardTimeLeft}s</span>
+                </div>
+              )}
+            </div>
+
+            {/* Leaderboard Roster Body */}
+            <div className="p-6 overflow-y-auto flex-grow space-y-3">
+              {participants.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 font-bold text-xs italic">
+                  No player standings available.
+                </div>
+              ) : (
+                participants
+                  .slice()
+                  .sort((a, b) => b.score - a.score)
+                  .map((p, idx) => {
+                    let rankBadge = `${idx + 1}`
+                    let bgStyle = 'bg-surface-container-lowest border-outline-variant/30'
+                    let rankBg = 'bg-slate-200 text-slate-700'
+                    
+                    if (idx === 0) {
+                      rankBadge = '🥇 1st'
+                      bgStyle = 'bg-amber-50/70 border-amber-300 shadow-xs'
+                      rankBg = 'bg-amber-400 text-slate-900 font-black'
+                    } else if (idx === 1) {
+                      rankBadge = '🥈 2nd'
+                      bgStyle = 'bg-slate-50 border-slate-300'
+                      rankBg = 'bg-slate-300 text-slate-800 font-black'
+                    } else if (idx === 2) {
+                      rankBadge = '🥉 3rd'
+                      bgStyle = 'bg-amber-900/5 border-amber-700/30'
+                      rankBg = 'bg-amber-700 text-white font-black'
+                    }
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${bgStyle}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={`px-2.5 py-1 rounded-xl text-xs font-extrabold ${rankBg}`}>
+                            {rankBadge}
+                          </span>
+                          <span className="font-extrabold text-sm text-on-surface truncate max-w-[200px]">
+                            {p.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-black text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                            {p.score} pts
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center flex-shrink-0">
+              <span className="text-xs text-slate-500 font-bold">
+                Question {questionNumber} of {totalQuestions} completed
+              </span>
+              <button
+                onClick={proceedToNextQuestion}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary hover:opacity-90 text-white font-extrabold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              >
+                Continue to Question {questionNumber + 1} <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

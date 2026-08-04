@@ -70,6 +70,7 @@ class UserExamResponse(BaseModel):
     end_time: Optional[datetime]
     host_fullname: Optional[str]
     quiz_subject: Optional[str]
+    group_name: Optional[str] = None
     navigation_rule: Optional[str] = "FREE_NAV"
     results_published: Optional[bool] = False
 

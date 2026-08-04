@@ -370,12 +370,14 @@ def change_password(
 
 @router.get("/me", response_model=UserResponse, summary="Get profile of currently logged-in user")
 def read_user_me(
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """
-    Return user profile info using Bearer Token.
+    Return user profile info using Bearer Token, updating last_login and streak reset status.
     """
-    return current_user
+    updated_user = crud_user.update_last_login_and_streak(db, current_user)
+    return updated_user
 
 
 import urllib.request

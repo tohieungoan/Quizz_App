@@ -297,6 +297,7 @@ def read_my_exams(
             "end_time": exam.end_time,
             "host_fullname": exam.host.fullname if exam.host else None,
             "quiz_subject": exam.quiz.subject if exam.quiz else None,
+            "group_name": exam.group.name if exam.group else "Individual / General",
             "navigation_rule": exam.navigation_rule,
             "results_published": exam.results_published,
         })
@@ -643,6 +644,12 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
     db.add(assignee)
     db.commit()
     db.refresh(assignee)
+
+    if assignee.user:
+        from app.crud.crud_user import crud_user
+        earned_pts = 50 + int(assignee.score or 0)
+        crud_user.add_achievement_points(db, assignee.user, earned_pts)
+
     return assignee.score if assignee.score is not None else 0.0
 
 

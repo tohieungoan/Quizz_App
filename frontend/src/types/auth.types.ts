@@ -12,6 +12,8 @@ export interface UserProfile {
   role: string
   status: string
   auth_provider: string | null
+  study_streak?: number
+  achievement_points?: number
 }
 
 export interface StoredUser {

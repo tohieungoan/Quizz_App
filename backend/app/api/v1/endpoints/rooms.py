@@ -10,6 +10,7 @@ from app.api.deps import (
 )
 from app.crud.crud_quiz import crud_quiz
 from app.crud.crud_room import crud_room
+from app.crud.crud_user import crud_user
 from app.api.v1.websockets.room_manager import room_websocket_manager
 from app.schemas.room import (
     ParticipantJoin,
@@ -23,8 +24,75 @@ from app.schemas.room import (
     SubmitAnswerResponse,
 )
 
+import asyncio
 import logging
+from app.db.session import SessionLocal
+
 logger = logging.getLogger(__name__)
+
+_auto_advance_tasks = {}
+
+async def _auto_advance_room_task(room_id: int, expected_question_index: int, delay_seconds: int):
+    """
+    Server-side background task that waits for question time limit + delay,
+    then automatically advances the room to the next question if progression_mode is 'auto'.
+    """
+    await asyncio.sleep(delay_seconds)
+    
+    db = SessionLocal()
+    try:
+        room = crud_room.get(db=db, room_id=room_id)
+        if not room:
+            return
+            
+        if room.status == "PLAYING" and (room.progression_mode or "manual").lower() == "auto":
+            if room.current_question_index == expected_question_index:
+                updated_room = crud_room.next_question(db=db, room=room)
+                if updated_room.status == "ENDED":
+                    await room_websocket_manager.broadcast_to_room(
+                        room.room_code,
+                        {"type": "GAME_ENDED", "status": "ENDED"}
+                    )
+                else:
+                    await room_websocket_manager.broadcast_to_room(
+                        room.room_code,
+                        {
+                            "type": "NEXT_QUESTION",
+                            "current_question_index": updated_room.current_question_index,
+                            "status": updated_room.status
+                        }
+                    )
+                    # Schedule next question auto-advance recursively
+                    _trigger_auto_advance_if_enabled(db, updated_room)
+    except Exception as e:
+        logger.error(f"Error in _auto_advance_room_task for room {room_id}: {e}")
+    finally:
+        db.close()
+
+
+def _trigger_auto_advance_if_enabled(db: Session, room):
+    """
+    Schedules an asyncio background task if room.progression_mode == 'auto' and room.status == 'PLAYING'.
+    """
+    if not room or room.status != "PLAYING":
+        return
+    if (room.progression_mode or "manual").lower() != "auto":
+        return
+
+    time_limit = 20
+    if room.quiz and room.quiz.questions:
+        sorted_q = sorted(room.quiz.questions, key=lambda q: q.id)
+        if 1 <= room.current_question_index <= len(sorted_q):
+            time_limit = sorted_q[room.current_question_index - 1].time_limit or 20
+
+    delay_seconds = time_limit + 4
+
+    try:
+        loop = asyncio.get_running_loop()
+        task = loop.create_task(_auto_advance_room_task(room.id, room.current_question_index, delay_seconds))
+        _auto_advance_tasks[room.id] = task
+    except Exception as e:
+        logger.warning(f"Could not schedule auto advance task: {e}")
 
 def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str | None = None) -> None:
     """
@@ -121,6 +189,7 @@ def launch_room(
 
     try:
         room = crud_room.create_room(db=db, obj_in=room_in, host_id=current_user.id)
+        crud_user.add_achievement_points(db, current_user, 40)
         
         # Dispatch notifications if a specific group is targeted
         if room.group_id is not None:
@@ -171,6 +240,48 @@ def launch_room(
         )
 
 
+@router.get("/my-hosted-rooms", response_model=list[RoomResponse], summary="Get all live rooms hosted by current user (active and ended)")
+def get_my_hosted_rooms(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    """
+    Retrieve all rooms hosted by the currently authenticated user (including ended rooms).
+    """
+    from sqlalchemy import desc
+    from app.models.room import Room
+
+    rooms = db.query(Room).filter(
+        Room.host_id == current_user.id
+    ).order_by(desc(Room.created_at)).all()
+    return rooms
+
+
+@router.get("/my-participated-rooms", response_model=list[RoomResponse], summary="Get all live rooms joined by current user")
+def get_my_participated_rooms(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    """
+    Retrieve all live rooms joined by current user as a participant.
+    """
+    from sqlalchemy import desc
+    from app.models.room import Participant, Room
+
+    participated = db.query(Participant.room_id).filter(
+        Participant.user_id == current_user.id
+    ).distinct().all()
+
+    room_ids = [p[0] for p in participated if p[0] is not None]
+    if not room_ids:
+        return []
+
+    rooms = db.query(Room).filter(
+        Room.id.in_(room_ids)
+    ).order_by(desc(Room.created_at)).all()
+    return rooms
+
+
 @router.get("/my-active-rooms", response_model=list[RoomResponse], summary="Get all active live rooms hosted by current user")
 def get_my_active_rooms(
     db: Session = Depends(get_db),
@@ -214,7 +325,10 @@ def get_my_active_rooms(
                     "type": "SHORT_ANSWER" if is_short else "MULTIPLE_CHOICE",
                     "time_limit": q.time_limit,
                     "options": options_live if not is_short else [],
-                    "correct_option_key": None
+                    "correct_option_key": None,
+                    "audio_url": q.audio_url,
+                    "media_url": q.media_url,
+                    "audio_play_limit": q.audio_play_limit,
                 }
         room.active_question = active_q
     
@@ -262,7 +376,10 @@ def get_room_by_code(
                 "type": standardized_type,
                 "time_limit": q.time_limit,
                 "options": options_live if not is_short_answer else [],
-                "correct_option_key": None
+                "correct_option_key": None,
+                "audio_url": q.audio_url,
+                "media_url": q.media_url,
+                "audio_play_limit": q.audio_play_limit,
             }
 
     # Populate room fields dynamically
@@ -320,12 +437,7 @@ async def join_room_by_code(
             detail="Active room not found or has already ended."
         )
 
-    # 2. Check if registration is allowed (e.g. room status is WAITING)
-    if room.status not in ["WAITING", "PLAYING"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot join room because its current status is {room.status}."
-        )
+    # 2. Join room (crud_room.join_room enforces status==WAITING for new participants)
 
     try:
         user_id = current_user.id if current_user else None
@@ -346,6 +458,8 @@ async def join_room_by_code(
                 "players": active_nicknames
             }
         )
+        if current_user:
+            crud_user.add_achievement_points(db, current_user, 20)
         return participant
     except ValueError as e:
         raise HTTPException(
@@ -425,6 +539,7 @@ async def start_room(
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast game started to all websocket clients in room
     await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
+    _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
 
@@ -477,7 +592,10 @@ def get_live_session(
             "type": standardized_type,
             "time_limit": q.time_limit,
             "options": options_live,
-            "correct_option_key": correct_option_key
+            "correct_option_key": correct_option_key,
+            "audio_url": q.audio_url,
+            "media_url": q.media_url,
+            "audio_play_limit": q.audio_play_limit,
         }
 
     # 2. Participants and Answer Distribution
@@ -535,6 +653,9 @@ def get_live_session(
         "room_id": room.id,
         "room_code": room.room_code or "",
         "status": room.status or "",
+        "mode": room.mode or "CLASSIC",
+        "progression_mode": room.progression_mode or "manual",
+        "allow_show_rank": room.allow_show_rank,
         "current_question_index": room.current_question_index,
         "current_question_started_at": room.current_question_started_at,
         "quiz_title": room.quiz.title if room.quiz else "Quiz",
@@ -572,6 +693,7 @@ async def next_question(
             "status": updated_room.status
         }
     )
+    _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
 
@@ -632,6 +754,10 @@ async def submit_answer(
             }
         )
 
+        if participant.user:
+            pts = 15 if is_correct else 10
+            crud_user.add_achievement_points(db, participant.user, pts)
+
         return {
             "is_correct": is_correct,
             "score": score,
@@ -669,6 +795,8 @@ def update_room_settings(
         raise HTTPException(status_code=403, detail="You do not have permission to update settings for this room.")
 
     updated_room = crud_room.update_settings(db=db, room=room, obj_in=settings_in)
+    if (updated_room.progression_mode or "").lower() == "auto" and updated_room.status == "PLAYING":
+        _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
 
