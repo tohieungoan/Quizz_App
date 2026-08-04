@@ -105,7 +105,8 @@ const handleResponse = async <T>(res: Response): Promise<T> => {
     } else if (error.message) {
       errorMsg = error.message;
     }
-    throw new ApiError(errorMsg, fieldErrors)
+
+    throw new ApiError(errorMsg, fieldErrors);
   }
   return res.json()
 }

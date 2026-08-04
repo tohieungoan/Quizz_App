@@ -60,6 +60,7 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     rawDateStr += 'Z';
   }
   const createdDate = new Date(rawDateStr);
+
   const now = new Date();
   const diffMs = now.getTime() - createdDate.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -196,11 +197,33 @@ export const useNotifications = () => {
     }
   };
 
+  const deleteNotification = async (notificationId: number) => {
+    try {
+      await notificationService.deleteNotification(notificationId);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      window.dispatchEvent(new Event(EVENT_NAME));
+    } catch (err) {
+      console.error(`Failed to delete notification ${notificationId}:`, err);
+    }
+  };
+
+  const clearAllRead = async () => {
+    try {
+      await notificationService.clearAllRead();
+      setNotifications(prev => prev.filter(n => n.unread));
+      window.dispatchEvent(new Event(EVENT_NAME));
+    } catch (err) {
+      console.error('Failed to clear all read notifications:', err);
+    }
+  };
+
   return {
     notifications,
     unreadCount,
     fetchNotifications,
     markAllAsRead,
-    markAsRead
+    markAsRead,
+    deleteNotification,
+    clearAllRead
   };
 };

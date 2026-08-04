@@ -4,9 +4,20 @@ import { Dropdown } from '@/components/ui/Dropdown';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { Pagination } from '@/components/ui/Pagination';
-import { Quiz } from '@/data/mockDb';
 import { quizService } from '@/services/quizService';
 import { toast } from 'react-hot-toast';
+
+export interface Quiz {
+  id: string;
+  title: string;
+  status: string;
+  subject: string;
+  q: number;
+  diff: string;
+  author: string;
+  date: string;
+  time: string;
+}
 
 interface QuizzesProps {
   onCreateQuiz: () => void;
@@ -104,6 +115,7 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
       });
     } catch (error: any) {
       console.error("Failed to duplicate quiz:", error);
+      toast.error(error.message || "Failed to duplicate quiz.");
       setAlertState({
         isOpen: true,
         title: 'Error',
@@ -139,6 +151,7 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
         });
       } catch (error: any) {
         console.error("Failed to delete quiz:", error);
+        toast.error(error.message || "Failed to delete quiz.");
         setAlertState({
           isOpen: true,
           title: 'Error',

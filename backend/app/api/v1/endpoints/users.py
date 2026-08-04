@@ -6,13 +6,18 @@ from typing import List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, UploadFile, File
 import csv
 import io
-import openpyxl
+try:
+    import openpyxl
+except ImportError:
+    openpyxl = None
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
 from app.api.deps import get_db, get_current_active_user, get_current_active_admin
 from app.crud.crud_user import crud_user
 from app.models.user import User, UserSetting
+from app.models.exam import Exam, ExamAssignee
+from app.models.group import Group, GroupMember
 from app.schemas.user import (
     UserCreate,
     UserUpdate,
@@ -45,6 +50,8 @@ def process_import_background(valid_users: List[dict], admin_id: int, job_id: st
     try:
         # Import data using Upsert (ON CONFLICT DO NOTHING)
         imported_count = crud_user.bulk_create(db, users_in=valid_users)
+        logger.info(f"Background import job ({job_id}) finished successfully. Imported {imported_count} users.")
+        
         # Create Success Notification for the Admin
         notification = Notification(
             user_id=admin_id,
@@ -166,6 +173,11 @@ def import_users_file(
             }
             rows.append(clean_row)
     else:
+        if openpyxl is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Excel (.xlsx) support requires the openpyxl library. Please upload a .csv file."
+            )
         wb = openpyxl.load_workbook(file.file, data_only=True)
         sheet = wb.active
         headers = [str(cell.value).strip() if cell.value else "" for cell in sheet[1]] if sheet.max_row > 0 else []
@@ -402,3 +414,47 @@ async def request_notification_email_verification(
     )
     return {"message": "Verification email has been sent successfully."}
 
+
+@router.get("/{user_id}/assigned-exams", summary="Get all exams assigned to a specific user")
+def get_user_assigned_exams(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Retrieve all exams assigned to a specific user (via direct assignment or group membership).
+    """
+    if current_user.id != user_id and current_user.role not in ["SUPER_ADMIN", "ADMIN", "HOST", "TEACHER"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this user's exams.",
+        )
+
+    user = crud_user.get_by_id(db, user_id=user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User not found with ID {user_id}",
+        )
+
+    assignees = db.query(ExamAssignee).filter(ExamAssignee.user_id == user_id).all()
+    result = []
+    for assignee in assignees:
+        exam = assignee.exam
+        if not exam:
+            continue
+        result.append({
+            "id": exam.id,
+            "assignee_id": assignee.id,
+            "title": exam.title,
+            "subject": exam.quiz.subject if (exam.quiz and exam.quiz.subject) else (exam.group.name if exam.group else "General"),
+            "status": assignee.status,
+            "score": assignee.score,
+            "timer": exam.timer,
+            "start_time": exam.start_time,
+            "end_time": exam.end_time,
+            "group_name": exam.group.name if exam.group else None,
+            "quiz_title": exam.quiz.title if exam.quiz else None,
+            "submitted_at": assignee.submitted_at,
+        })
+    return result
