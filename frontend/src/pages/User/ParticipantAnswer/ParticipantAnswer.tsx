@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight } from 'lucide-react'
+import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award } from 'lucide-react'
 import { roomService } from '../../../services/roomService'
 
 interface Option {
@@ -15,6 +15,9 @@ interface ActiveQuestion {
   type: string // MULTIPLE_CHOICE, SHORT_ANSWER, TRUE_FALSE
   timeLimit: number
   options: Option[]
+  audio_url?: string | null
+  media_url?: string | null
+  audio_play_limit?: number | null
 }
 
 const AVATAR_COLORS = [
@@ -94,6 +97,7 @@ export const ParticipantAnswer: React.FC = () => {
   const [activeQuestion, setActiveQuestion] = useState<ActiveQuestion | null>(null)
   const [questionIndex, setQuestionIndex] = useState(1)
   const [timeLeft, setTimeLeft] = useState(20)
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null)
   const [isAnswered, setIsAnswered] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [showResult, setShowResult] = useState(false)
@@ -102,15 +106,46 @@ export const ParticipantAnswer: React.FC = () => {
   const [correctOptionKey, setCorrectOptionKey] = useState<string | null>(null)
   const [answerText, setAnswerText] = useState('')
   const [loading, setLoading] = useState(true)
+  const [audioPlayCount, setAudioPlayCount] = useState(0)
+  const [allowShowRank, setAllowShowRank] = useState(true)
+  const [leaderboardRoster, setLeaderboardRoster] = useState<any[]>([])
+
+  const activeQuestionIdRef = useRef<number | null>(null)
+  const resultTimeoutRef = useRef<any>(null)
+
+  useEffect(() => {
+    setAudioPlayCount(0)
+    activeQuestionIdRef.current = activeQuestion ? activeQuestion.id : null
+    return () => {
+      if (resultTimeoutRef.current) {
+        clearTimeout(resultTimeoutRef.current)
+      }
+    }
+  }, [activeQuestion])
+
+  const handleAudioPlay = (e: React.SyntheticEvent<HTMLAudioElement>) => {
+    if (activeQuestion?.audio_play_limit && activeQuestion.audio_play_limit > 0) {
+      if (audioPlayCount >= activeQuestion.audio_play_limit) {
+        e.currentTarget.pause()
+        alert(`You have reached the play limit of ${activeQuestion.audio_play_limit} times for this audio.`)
+        return
+      }
+      setAudioPlayCount(prev => prev + 1)
+    }
+  }
 
   // Fetch the active question from API
   const fetchRoomQuestion = async () => {
     if (!roomCode) return
+    setLoading(true)
     try {
       const roomData = await roomService.getRoom(roomCode)
       setQuestionIndex(roomData.current_question_index)
       if (roomData.mode) {
         setRoomMode(roomData.mode)
+      }
+      if (roomData.allow_show_rank !== undefined) {
+        setAllowShowRank(roomData.allow_show_rank)
       }
       
       if (roomData.status === 'ENDED') {
@@ -125,33 +160,68 @@ export const ParticipantAnswer: React.FC = () => {
           text: roomData.active_question.text || '',
           type: roomData.active_question.type || 'MULTIPLE_CHOICE',
           timeLimit: roomData.active_question.time_limit || 20,
-          options: roomData.active_question.options || []
+          options: roomData.active_question.options || [],
+          audio_url: roomData.active_question.audio_url,
+          media_url: roomData.active_question.media_url,
+          audio_play_limit: roomData.active_question.audio_play_limit
         })
         
         // Sync dynamic remaining time Left based on room question start timestamp
         if (roomData.current_question_started_at) {
           const startedAtStr = roomData.current_question_started_at
-          const startedAt = new Date(startedAtStr.endsWith('Z') ? startedAtStr : startedAtStr + 'Z').getTime()
-          const elapsed = (Date.now() - startedAt) / 1000
+          const ms = new Date(startedAtStr.endsWith('Z') ? startedAtStr : startedAtStr + 'Z').getTime()
+          setStartedAtMs(ms)
+          const elapsed = (Date.now() - ms) / 1000
           const limit = roomData.active_question.time_limit || 20
           const remaining = Math.max(0, Math.ceil(limit - elapsed))
           setTimeLeft(remaining)
-        } else {
-          setTimeLeft(roomData.active_question.time_limit || 20)
         }
       } else {
         setActiveQuestion(null)
       }
       setLoading(false)
     } catch (err) {
-      console.error("Failed to load active room question:", err)
+      console.error("Failed to fetch active question:", err)
       setLoading(false)
     }
   }
 
-  // Load initial question on mount (All subsequent updates occur 100% via WebSocket events)
+  // Fetch round leaderboard standings when showing result on 3-question milestone
+  useEffect(() => {
+    if (showResult && allowShowRank && questionIndex % 3 === 0 && (roomId || roomCode)) {
+      const fetchStandings = async () => {
+        try {
+          let list: any[] = []
+          if (roomId) {
+            list = await roomService.getParticipants(roomId)
+          } else if (roomCode) {
+            const roomData = await roomService.getRoom(roomCode)
+            list = roomData.participants || []
+          }
+          setLeaderboardRoster(list.sort((a, b) => b.score - a.score))
+        } catch (err) {
+          console.error("Failed to fetch round standings:", err)
+        }
+      }
+      fetchStandings()
+    }
+  }, [showResult, allowShowRank, questionIndex, roomId, roomCode])
+
+  // Load initial question on mount and when tab becomes active / window gets focus
   useEffect(() => {
     fetchRoomQuestion()
+
+    const handleFocus = () => {
+      fetchRoomQuestion()
+    }
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleFocus)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
   }, [roomCode])
 
   // Establish WebSocket connection to sync room next-question triggers
@@ -175,6 +245,9 @@ export const ParticipantAnswer: React.FC = () => {
         socket = new WebSocket(wsUrl)
 
         socket.onopen = () => {
+          // Fetch latest active question on connect/reconnect to keep client in sync
+          fetchRoomQuestion()
+
           // Send periodic PING to keep WebSocket connection alive
           pingTimer = setInterval(() => {
             if (socket && socket.readyState === WebSocket.OPEN) {
@@ -207,6 +280,13 @@ export const ParticipantAnswer: React.FC = () => {
                 return
               }
               
+              // Set loading and reset activeQuestion immediately to avoid race conditions
+              setLoading(true)
+              setActiveQuestion(null)
+              if (resultTimeoutRef.current) {
+                clearTimeout(resultTimeoutRef.current)
+              }
+
               // Reset gameplay states for the new question
               setIsAnswered(false)
               setSelectedKey(null)
@@ -271,41 +351,53 @@ export const ParticipantAnswer: React.FC = () => {
     }
   }, [roomCode, nickname, navigate])
 
-  // Timer Countdown Effect
+  // Timer Countdown Effect (Server timestamp synced, continues even after answer is submitted)
   useEffect(() => {
-    if (loading || !activeQuestion || isAnswered || timeLeft <= 0) {
-      if (timeLeft === 0 && !isAnswered) {
+    if (loading || !activeQuestion || !startedAtMs) return
+
+    const limit = activeQuestion.timeLimit || 20
+
+    const updateTimer = () => {
+      const elapsed = (Date.now() - startedAtMs) / 1000
+      const remaining = Math.max(0, Math.ceil(limit - elapsed))
+      setTimeLeft(remaining)
+
+      if (remaining === 0 && !isAnswered) {
         handleAnswerSubmit(null, null)
       }
-      return
     }
 
-    const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1)
-    }, 1000)
+    updateTimer()
+    const timer = setInterval(updateTimer, 250)
 
     return () => clearInterval(timer)
-  }, [timeLeft, isAnswered, loading, activeQuestion])
+  }, [loading, activeQuestion, startedAtMs, isAnswered])
 
   // Submit Answer to API
   const handleAnswerSubmit = async (optionId: number | null, keyOrText: string | null) => {
     if (isAnswered) return
     if (!activeQuestion) return
 
+    const submittedQuestionId = activeQuestion.id
+
     setIsAnswered(true)
     setSelectedKey(keyOrText)
-
-    // Allow timeout submissions to call API and retrieve correct answers
 
     try {
       const res = await roomService.submitAnswer(roomCode, {
         participant_id: participantId,
-        question_id: activeQuestion.id,
+        question_id: submittedQuestionId,
         selected_option_id: optionId as any,
         answer_text: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
         active_power_up: activePowerUp || undefined,
         streak: streak
       })
+
+      // If active question has transitioned during the network request, discard results
+      if (activeQuestionIdRef.current !== submittedQuestionId) {
+        console.log("Stale answer submission results discarded.")
+        return
+      }
 
       const isAnsCorrect = res.is_correct
       let pointsForThisQuestion = Math.round(res.score || 0)
@@ -332,18 +424,33 @@ export const ParticipantAnswer: React.FC = () => {
         location.state.streak = updatedStreak
       }
 
-      setTimeout(() => {
-        setShowResult(true)
+      if (resultTimeoutRef.current) {
+        clearTimeout(resultTimeoutRef.current)
+      }
+      resultTimeoutRef.current = setTimeout(() => {
+        if (activeQuestionIdRef.current === submittedQuestionId) {
+          setShowResult(true)
+        }
       }, 600)
     } catch (err) {
       console.error("Failed to submit answer:", err)
+      if (activeQuestionIdRef.current !== submittedQuestionId) return
+
       const updatedStreak = activePowerUp === 'shield' ? streak : 0
       setStreak(updatedStreak)
       sessionStorage.setItem('play_streak', String(updatedStreak))
       sessionStorage.setItem('play_final_streak', String(updatedStreak))
       setIsCorrect(false)
       setPointsEarned(0)
-      setShowResult(true)
+      
+      if (resultTimeoutRef.current) {
+        clearTimeout(resultTimeoutRef.current)
+      }
+      resultTimeoutRef.current = setTimeout(() => {
+        if (activeQuestionIdRef.current === submittedQuestionId) {
+          setShowResult(true)
+        }
+      }, 600)
     }
   }
 
@@ -471,9 +578,44 @@ export const ParticipantAnswer: React.FC = () => {
           <span className="text-[10px] font-black uppercase tracking-widest text-primary mb-2.5 block">
             {activeQuestion.type === 'SHORT_ANSWER' ? 'Short Answer Quiz' : 'Multiple Choice Quiz'}
           </span>
-          <h1 className="font-headline-md text-lg md:text-xl font-black text-on-surface leading-relaxed">
+          <h1 className="font-headline-md text-lg md:text-xl font-black text-on-surface leading-relaxed mb-4">
             {activeQuestion.text}
           </h1>
+
+          {activeQuestion.media_url && (
+            <div className="w-full flex justify-center mb-4">
+              {activeQuestion.media_url.match(/\.(mp4|webm|ogg|mov)$/i) || activeQuestion.media_url.includes('/video/upload/') ? (
+                <video 
+                  src={activeQuestion.media_url} 
+                  controls 
+                  className="max-h-48 md:max-h-64 rounded-2xl border border-slate-200 shadow-sm"
+                />
+              ) : (
+                <img 
+                  src={activeQuestion.media_url} 
+                  alt="Question Media" 
+                  className="max-h-48 md:max-h-64 object-contain rounded-2xl border border-slate-200 shadow-sm"
+                />
+              )}
+            </div>
+          )}
+
+          {activeQuestion.audio_url && (
+            <div className="w-full flex flex-col items-center gap-2 mb-4 bg-slate-50 p-3 rounded-2xl border border-slate-200/60">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Listen to Audio</span>
+              <audio 
+                src={activeQuestion.audio_url} 
+                controls 
+                onPlay={handleAudioPlay}
+                className="w-full max-w-sm"
+              />
+              {activeQuestion.audio_play_limit !== undefined && activeQuestion.audio_play_limit !== null && activeQuestion.audio_play_limit > 0 && (
+                <span className="text-[10px] font-black uppercase text-rose-600 mt-1">
+                  Plays: {audioPlayCount} / {activeQuestion.audio_play_limit}
+                </span>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Answer Selection Grid / Text Input */}
@@ -593,6 +735,61 @@ export const ParticipantAnswer: React.FC = () => {
                   </span>
                 </div>
               </div>
+
+              {/* Periodic Round Leaderboard Standings (Every 3 questions) */}
+              {allowShowRank && questionIndex % 3 === 0 && leaderboardRoster.length > 0 && (
+                <div className="mt-4 pt-4 border-t-2 border-slate-200 text-left mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-black text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <Award className="w-4 h-4 text-amber-500 fill-amber-400" />
+                      Round {Math.floor(questionIndex / 3)} Standings
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      Top Players
+                    </span>
+                  </div>
+
+                  {/* My Rank Banner */}
+                  {(() => {
+                    const myIndex = leaderboardRoster.findIndex(
+                      p => p.nickname?.trim().toLowerCase() === nickname.trim().toLowerCase()
+                    )
+                    if (myIndex === -1) return null
+                    return (
+                      <div className="mb-3 p-2.5 bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl flex items-center justify-between text-xs font-black">
+                        <span className="text-primary">Your Current Rank: #{myIndex + 1} of {leaderboardRoster.length}</span>
+                        <span className="text-secondary">{accumulatedScore} pts</span>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Roster List (Top 5) */}
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {leaderboardRoster.slice(0, 5).map((p, idx) => {
+                      const isMe = p.nickname?.trim().toLowerCase() === nickname.trim().toLowerCase()
+                      let rankBadge = `${idx + 1}`
+                      if (idx === 0) rankBadge = '🥇 1st'
+                      else if (idx === 1) rankBadge = '🥈 2nd'
+                      else if (idx === 2) rankBadge = '🥉 3rd'
+
+                      return (
+                        <div
+                          key={p.id || idx}
+                          className={`flex items-center justify-between p-2 rounded-xl text-xs ${
+                            isMe ? 'bg-primary text-white font-black shadow-xs' : 'bg-slate-100 text-slate-800 font-bold'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="text-[10px] font-black opacity-90">{rankBadge}</span>
+                            <span className="truncate">{p.nickname}</span>
+                          </div>
+                          <span className="font-black flex-shrink-0">{p.score} pts</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Waiting Indicator for Live Quiz */}
               <div className="w-full py-4 bg-slate-50 border-2 border-slate-200 text-slate-500 rounded-2xl font-button text-sm font-extrabold flex items-center justify-center gap-2.5">

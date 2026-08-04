@@ -1020,3 +1020,34 @@ def remove_member_from_group(
     db.commit()
     return {"message": "Member removed successfully from the group."}
 
+
+@router.post("/{group_id}/leave", summary="Leave a study group")
+def leave_study_group(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Leave a study group (removes current user's membership or join request from the group).
+    """
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Study group not found.",
+        )
+
+    member = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.user_id == current_user.id
+    ).first()
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="You are not a member of this study group.",
+        )
+
+    db.delete(member)
+    db.commit()
+    return {"message": f"Successfully left group '{group.name}'."}

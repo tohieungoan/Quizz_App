@@ -205,16 +205,28 @@ class CRUDRoom:
                 db.refresh(existing_user)
                 return existing_user
 
-        # 2. Check if nickname is already taken in this room
+        # 2. Check if nickname matches an existing participant in this room
         existing_nickname = db.query(Participant).filter(
             Participant.room_id == room.id,
             Participant.nickname.ilike(nickname)
         ).first()
         
         if existing_nickname:
-            raise ValueError(f"Nickname '{nickname}' is already taken in this room.")
+            # If guest participant is re-entering or room has already started
+            if room.status != "WAITING" or existing_nickname.user_id is None:
+                existing_nickname.status = "JOINED"
+                db.add(existing_nickname)
+                db.commit()
+                db.refresh(existing_nickname)
+                return existing_nickname
+            else:
+                raise ValueError(f"Nickname '{nickname}' is already taken in this room.")
 
-        # 3. Create new participant
+        # 3. If new participant is joining, verify room status is WAITING
+        if room.status != "WAITING":
+            raise ValueError(f"Cannot join room: The quiz session has already started or ended (status: {room.status}).")
+
+        # 4. Create new participant
         participant = Participant(
             room_id=room.id,
             user_id=user_id,

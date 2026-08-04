@@ -1,6 +1,7 @@
-import React from 'react';
-import { Award, Flame, CheckSquare, Play, TrendingUp, PieChart, BookOpen, Clock, Layers } from 'lucide-react';
-import { USER_RECENT_ACTIVITIES } from '@/data/userData';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Award, Flame, CheckSquare, Play, TrendingUp, PieChart, BookOpen, Clock, Sparkles } from 'lucide-react';
+import { quizService, roomService, authService } from '@/services';
+import { getDailyActivityDates } from '@/utils/streakTracker';
 
 interface OverviewTabProps {
   onStartExam: (exam: any) => void;
@@ -15,23 +16,241 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   assignedExams = [],
   isLoadingExams = false
 }) => {
-  const pendingExams = assignedExams.filter(e => e.status !== 'Submitted');
+  const [createdQuizzesCount, setCreatedQuizzesCount] = useState<number>(0);
+  const [hostedRoomsCount, setHostedRoomsCount] = useState<number>(0);
+  const [participatedRoomsCount, setParticipatedRoomsCount] = useState<number>(0);
+  const [userName, setUserName] = useState<string>('Student');
+  const [backendStreak, setBackendStreak] = useState<number | null>(null);
+  const [backendPoints, setBackendPoints] = useState<number | null>(null);
 
-  const quizDistribution = [
-    { label: 'Quizzes Participated', count: 28, percentage: 58, color: 'bg-primary', stroke: '#4f46e5' },
-    { label: 'Quizzes Created', count: 14, percentage: 29, color: 'bg-emerald-600', stroke: '#059669' },
-    { label: 'Live Rooms Hosted', count: 6, percentage: 13, color: 'bg-amber-500', stroke: '#d97706' },
-  ];
+  useEffect(() => {
+    // 0. Fetch profile directly from Backend User table (/auth/me)
+    authService.getProfile()
+      .then(p => {
+        if (p) {
+          if (p.fullname) setUserName(p.fullname);
+          if (typeof p.study_streak === 'number') setBackendStreak(p.study_streak);
+          if (typeof p.achievement_points === 'number') setBackendPoints(p.achievement_points);
+        }
+      })
+      .catch(err => console.error("Failed to fetch user profile:", err));
 
-  const totalActivities = quizDistribution.reduce((acc, curr) => acc + curr.count, 0);
+    // 1. Fetch user name from localStorage fallback
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+        setUserName(u.full_name || u.name || u.username || (u.email ? u.email.split('@')[0] : 'Student'));
+      } catch (e) {
+        console.error("Failed to parse user profile from localStorage:", e);
+      }
+    }
 
-  const subjectProficiency = [
-    { subject: 'Mathematics & Calculus', score: 96, level: 'Expert', color: 'bg-primary' },
-    { subject: 'Computer Science & Web', score: 95, level: 'Expert', color: 'bg-indigo-600' },
-    { subject: 'Physics & Mechanics', score: 92, level: 'Advanced', color: 'bg-secondary' },
-    { subject: 'Cellular Biology', score: 88, level: 'Proficient', color: 'bg-emerald-500' },
-    { subject: 'World History', score: 84, level: 'Good', color: 'bg-amber-500' },
-  ];
+    // 2. Fetch total quizzes created by the current user
+    quizService.getQuizzes({ limit: 100 })
+      .then(res => {
+        if (res && typeof res.total === 'number') {
+          setCreatedQuizzesCount(res.total);
+        } else if (res && Array.isArray(res.items)) {
+          setCreatedQuizzesCount(res.items.length);
+        } else if (Array.isArray(res)) {
+          setCreatedQuizzesCount(res.length);
+        }
+      })
+      .catch(err => console.error("Failed to fetch user quizzes count:", err));
+
+    // 3. Fetch total active & historical live rooms hosted by current user
+    roomService.getMyHostedRooms()
+      .then(res => {
+        if (Array.isArray(res)) {
+          setHostedRoomsCount(res.length);
+        }
+      })
+      .catch(err => console.error("Failed to fetch hosted rooms count:", err));
+
+    // 4. Fetch total live rooms joined as a participant by current user
+    roomService.getMyParticipatedRooms()
+      .then(res => {
+        if (Array.isArray(res)) {
+          setParticipatedRoomsCount(res.length);
+        }
+      })
+      .catch(err => console.error("Failed to fetch participated rooms count:", err));
+  }, []);
+
+  // Filter pending vs completed assigned exams
+  const pendingExams = useMemo(() => {
+    return assignedExams.filter(e => e.status !== 'Submitted');
+  }, [assignedExams]);
+
+  const completedExams = useMemo(() => {
+    return assignedExams.filter(e => e.status === 'Submitted');
+  }, [assignedExams]);
+
+  // Compute average score dynamically from submitted exams
+  const averageScoreFormatted = useMemo(() => {
+    const scored = completedExams.filter(e => typeof e.score === 'number' || (e.score && !isNaN(Number(e.score))));
+    if (scored.length === 0) return 'N/A';
+    const sum = scored.reduce((acc, curr) => acc + Number(curr.score), 0);
+    return `${(sum / scored.length).toFixed(1)}%`;
+  }, [completedExams]);
+
+  // Calculate total achievement points (EXP) from backend or dynamic calculation
+  const achievementPoints = useMemo(() => {
+    const examPoints = completedExams.reduce((acc, curr) => {
+      const scoreVal = typeof curr.score === 'number' ? curr.score : 0;
+      return acc + 50 + Math.round(scoreVal * 5);
+    }, 0);
+    const quizPoints = createdQuizzesCount * 30;
+    const roomPoints = hostedRoomsCount * 40;
+    const calculated = examPoints + quizPoints + roomPoints;
+
+    if (backendPoints !== null && backendPoints > 0) {
+      return Math.max(backendPoints, calculated);
+    }
+    return Math.max(backendPoints || 0, calculated);
+  }, [backendPoints, completedExams, createdQuizzesCount, hostedRoomsCount]);
+
+  // Calculate consecutive daily study streak (resets to 0 if a day is missed)
+  const studyStreakDays = useMemo(() => {
+    if (backendStreak !== null) {
+      return backendStreak;
+    }
+    const dates = new Set<string>();
+
+    // 1. Completed exams dates
+    completedExams.forEach(e => {
+      if (e.submittedAt) {
+        const dateStr = new Date(e.submittedAt).toISOString().split('T')[0];
+        dates.add(dateStr);
+      }
+    });
+
+    // 2. Local activity dates (joining rooms, 10-minute web session)
+    const localDates = getDailyActivityDates();
+    localDates.forEach(d => dates.add(d));
+
+    if (dates.size === 0) return 0;
+
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    // If no activity today or yesterday, streak is reset to 0
+    if (!dates.has(todayStr) && !dates.has(yesterdayStr)) {
+      return 0;
+    }
+
+    let streak = 0;
+    let checkDate = dates.has(todayStr) ? new Date(today) : new Date(yesterday);
+
+    while (true) {
+      const checkStr = checkDate.toISOString().split('T')[0];
+      if (dates.has(checkStr)) {
+        streak += 1;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  }, [backendStreak, completedExams]);
+
+  // Dynamic Quiz & Activity Distribution calculation (4 Categories)
+  const quizDistribution = useMemo(() => {
+    const completedExamsCount = completedExams.length;
+    const joinedLiveQuizzes = participatedRoomsCount;
+    const createdQuizzes = createdQuizzesCount;
+    const hostedRooms = hostedRoomsCount;
+    const total = completedExamsCount + joinedLiveQuizzes + createdQuizzes + hostedRooms;
+
+    if (total === 0) {
+      return [
+        { label: 'Exams Completed', count: 0, percentage: 0, color: 'bg-primary', stroke: '#4f46e5' },
+        { label: 'Live Quizzes Joined', count: 0, percentage: 0, color: 'bg-purple-600', stroke: '#9333ea' },
+        { label: 'Quizzes Created', count: 0, percentage: 0, color: 'bg-emerald-600', stroke: '#059669' },
+        { label: 'Live Rooms Hosted', count: 0, percentage: 0, color: 'bg-amber-500', stroke: '#d97706' },
+      ];
+    }
+
+    const p1 = Math.round((completedExamsCount / total) * 100);
+    const p2 = Math.round((joinedLiveQuizzes / total) * 100);
+    const p3 = Math.round((createdQuizzes / total) * 100);
+    const p4 = Math.max(0, 100 - p1 - p2 - p3);
+
+    return [
+      { label: 'Exams Completed', count: completedExamsCount, percentage: p1, color: 'bg-primary', stroke: '#4f46e5' },
+      { label: 'Live Quizzes Joined', count: joinedLiveQuizzes, percentage: p2, color: 'bg-purple-600', stroke: '#9333ea' },
+      { label: 'Quizzes Created', count: createdQuizzes, percentage: p3, color: 'bg-emerald-600', stroke: '#059669' },
+      { label: 'Live Rooms Hosted', count: hostedRooms, percentage: p4, color: 'bg-amber-500', stroke: '#d97706' },
+    ];
+  }, [completedExams.length, participatedRoomsCount, createdQuizzesCount, hostedRoomsCount]);
+
+  const totalActivities = useMemo(() => {
+    return quizDistribution.reduce((acc, curr) => acc + curr.count, 0);
+  }, [quizDistribution]);
+
+  // Subject proficiency calculated dynamically from assigned exams
+  const subjectProficiency = useMemo(() => {
+    if (assignedExams.length === 0) {
+      return [
+        { subject: 'Mathematics & Calculus', score: 90, level: 'Expert', color: 'bg-primary' },
+        { subject: 'Computer Science & Web', score: 85, level: 'Advanced', color: 'bg-indigo-600' },
+        { subject: 'General Knowledge', score: 75, level: 'Proficient', color: 'bg-emerald-500' },
+      ];
+    }
+
+    const map: Record<string, { totalScore: number; count: number; totalExams: number }> = {};
+    assignedExams.forEach(e => {
+      const sub = e.subject || 'General';
+      if (!map[sub]) {
+        map[sub] = { totalScore: 0, count: 0, totalExams: 0 };
+      }
+      map[sub].totalExams += 1;
+      if (e.status === 'Submitted' && typeof e.score === 'number') {
+        map[sub].totalScore += e.score;
+        map[sub].count += 1;
+      }
+    });
+
+    const colors = ['bg-primary', 'bg-indigo-600', 'bg-secondary', 'bg-emerald-500', 'bg-amber-500'];
+
+    return Object.entries(map).map(([subject, stat], i) => {
+      const score = stat.count > 0 ? Math.round(stat.totalScore / stat.count) : 70;
+      let level = 'Good';
+      if (score >= 90) level = 'Expert';
+      else if (score >= 80) level = 'Advanced';
+      else if (score >= 70) level = 'Proficient';
+      else level = 'Getting Started';
+
+      return {
+        subject,
+        score,
+        level,
+        color: colors[i % colors.length]
+      };
+    });
+  }, [assignedExams]);
+
+  // Recent activities mapped dynamically from assignedExams
+  const recentActivities = useMemo(() => {
+    if (assignedExams.length === 0) {
+      return [];
+    }
+
+    return [...assignedExams].slice(0, 5).map((ex) => ({
+      id: ex.id,
+      name: ex.title,
+      type: ex.subject || 'Exam',
+      date: ex.due !== 'No Deadline' ? new Date(ex.due).toLocaleDateString() : 'Assigned',
+      status: ex.status === 'Submitted' ? 'completed' : ex.status === 'In Progress' ? 'in_progress' : 'pending',
+      score: ex.status === 'Submitted' && ex.score != null ? `${ex.score}%` : ex.status,
+    }));
+  }, [assignedExams]);
 
   return (
     <div className="space-y-8 text-left">
@@ -43,7 +262,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </span>
 
           <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight">
-            Welcome back, Alex! 👋
+            Welcome back, {userName}! 👋
           </h1>
           <p className="text-indigo-100 text-sm leading-relaxed">
             {pendingExams.length > 0 
@@ -69,9 +288,35 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
           <div>
             <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Average Score</p>
-            <h3 className="text-2xl font-extrabold text-on-surface">94.5%</h3>
+            <h3 className="text-2xl font-extrabold text-on-surface">{averageScoreFormatted}</h3>
             <span className="text-[10px] font-bold text-green-600 flex items-center gap-0.5 mt-0.5">
-              <TrendingUp className="w-3 h-3" /> +3.2% vs last week
+              <TrendingUp className="w-3 h-3" /> Real-time average
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold shrink-0">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Achievement Points</p>
+            <h3 className="text-2xl font-extrabold text-on-surface">{achievementPoints.toLocaleString()} PTS</h3>
+            <span className="text-[10px] font-bold text-purple-600 mt-0.5 block">Earned EXP & Rewards</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-green-100 text-green-600 flex items-center justify-center font-bold shrink-0">
+            <CheckSquare className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Completed</p>
+            <h3 className="text-2xl font-extrabold text-on-surface">{completedExams.length} Exams</h3>
+            <span className="text-[10px] font-bold text-green-600 mt-0.5 block">
+              {assignedExams.length > 0 
+                ? `${Math.round((completedExams.length / assignedExams.length) * 100)}% Completion`
+                : '100% Clear'}
             </span>
           </div>
         </div>
@@ -82,32 +327,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
           <div>
             <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Study Streak</p>
-            <h3 className="text-2xl font-extrabold text-on-surface">12 Days</h3>
-            <span className="text-[10px] font-bold text-orange-600 flex items-center gap-0.5 mt-0.5">
-              <Flame className="w-3 h-3" /> Personal Best!
+            <h3 className="text-2xl font-extrabold text-on-surface">{studyStreakDays} Days</h3>
+            <span className={`text-[10px] font-bold flex items-center gap-0.5 mt-0.5 ${studyStreakDays > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
+              <Flame className="w-3 h-3" /> {studyStreakDays > 0 ? 'Consecutive Days' : 'Streak Reset'}
             </span>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-green-100 text-green-600 flex items-center justify-center font-bold shrink-0">
-            <CheckSquare className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Completed</p>
-            <h3 className="text-2xl font-extrabold text-on-surface">28 Quizzes</h3>
-            <span className="text-[10px] font-bold text-green-600 mt-0.5 block">100% Passed</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold shrink-0">
-            <Clock className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Study Time</p>
-            <h3 className="text-2xl font-extrabold text-on-surface">42.5 hrs</h3>
-            <span className="text-[10px] font-bold text-purple-600 mt-0.5 block">This Month</span>
           </div>
         </div>
       </div>
@@ -139,7 +362,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   <div className="min-w-0 flex-1">
                     <h4 className="font-bold text-sm text-on-surface truncate">{exam.title}</h4>
                     <p className="text-xs text-on-surface-variant mt-0.5 truncate">
-                      Due: <span className="font-medium text-error">{exam.due !== 'No Deadline' ? new Date(exam.due).toLocaleString('vi-VN') : 'No Deadline'}</span> • {exam.subject}
+                      Due: <span className="font-medium text-error">{exam.due !== 'No Deadline' ? new Date(exam.due).toLocaleString('vi-VN') : 'No Deadline'}</span> • {exam.subject} • Group: <span className="font-semibold text-secondary">{exam.groupName || 'Individual'}</span>
                     </p>
                   </div>
                   <button
@@ -161,33 +384,41 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
 
           <div className="space-y-3">
-            {USER_RECENT_ACTIVITIES.map((act) => (
-              <div
-                key={act.id}
-                className="p-4 rounded-xl border border-outline-variant/30 flex items-center justify-between gap-4 bg-surface-container-lowest"
-              >
-                <div>
-                  <h4 className="font-bold text-sm text-on-surface">{act.name}</h4>
-                  <p className="text-xs text-on-surface-variant mt-0.5">
-                    {act.type} • {act.date}
-                  </p>
-                </div>
-                <span
-                  className={`text-sm font-extrabold px-3 py-1 rounded-full ${
-                    act.status === 'completed'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-surface-container text-on-surface-variant'
-                  }`}
-                >
-                  {act.score}
-                </span>
+            {recentActivities.length === 0 ? (
+              <div className="py-10 text-center text-xs text-on-surface-variant">
+                No recent activity recorded yet.
               </div>
-            ))}
+            ) : (
+              recentActivities.map((act) => (
+                <div
+                  key={act.id}
+                  className="p-4 rounded-xl border border-outline-variant/30 flex items-center justify-between gap-4 bg-surface-container-lowest"
+                >
+                  <div>
+                    <h4 className="font-bold text-sm text-on-surface">{act.name}</h4>
+                    <p className="text-xs text-on-surface-variant mt-0.5">
+                      {act.type} • {act.date}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-sm font-extrabold px-3 py-1 rounded-full ${
+                      act.status === 'completed'
+                        ? 'bg-green-100 text-green-700'
+                        : act.status === 'in_progress'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-surface-container text-on-surface-variant'
+                    }`}
+                  >
+                    {act.score}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
 
-      {/* 4. BOTTOM SECTION: Charts & Activity Analytics (Moved to Bottom) */}
+      {/* 4. BOTTOM SECTION: Charts & Activity Analytics */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Donut Chart (Quiz & Activity Distribution) */}
         <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-6">
@@ -215,36 +446,26 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
-                {/* Segment 1: Participated (58%) */}
-                <path
-                  stroke="#4f46e5"
-                  strokeWidth="4"
-                  strokeDasharray="58, 100"
-                  strokeDashoffset="0"
-                  strokeLinecap="round"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                {/* Segment 2: Created (29%) */}
-                <path
-                  stroke="#059669"
-                  strokeWidth="4"
-                  strokeDasharray="29, 100"
-                  strokeDashoffset="-58"
-                  strokeLinecap="round"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-                {/* Segment 3: Hosted (13%) */}
-                <path
-                  stroke="#d97706"
-                  strokeWidth="4"
-                  strokeDasharray="13, 100"
-                  strokeDashoffset="-87"
-                  strokeLinecap="round"
-                  fill="none"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
+                {/* Dynamic Donut Chart Segments */}
+                {(() => {
+                  let accumulatedOffset = 0;
+                  return quizDistribution.map((item, idx) => {
+                    const offset = accumulatedOffset;
+                    accumulatedOffset += item.percentage;
+                    return (
+                      <path
+                        key={idx}
+                        stroke={item.stroke}
+                        strokeWidth="4"
+                        strokeDasharray={`${item.percentage}, 100`}
+                        strokeDashoffset={`-${offset}`}
+                        strokeLinecap="round"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                    );
+                  });
+                })()}
               </svg>
               {/* Inner Center Label */}
               <div className="absolute flex flex-col items-center justify-center text-center">

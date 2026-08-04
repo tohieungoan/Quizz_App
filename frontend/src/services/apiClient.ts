@@ -101,9 +101,7 @@ const handleResponse = async <T>(res: Response): Promise<T> => {
       });
       errorMsg = "Please check the highlighted fields for errors.";
     } else if (error.detail) {
-      errorMsg = typeof error.detail === 'string' 
-        ? error.detail 
-        : JSON.stringify(error.detail);
+      errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
     } else if (error.message) {
       errorMsg = error.message;
     }

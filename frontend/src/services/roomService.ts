@@ -50,6 +50,12 @@ export const roomService = {
   getMyActiveRooms: (): Promise<any> =>
     apiClient.get<any>('/rooms/my-active-rooms'),
 
+  getMyHostedRooms: (): Promise<any> =>
+    apiClient.get<any>('/rooms/my-hosted-rooms'),
+
+  getMyParticipatedRooms: (): Promise<any> =>
+    apiClient.get<any>('/rooms/my-participated-rooms'),
+
   leaveRoom: (participantId: number | string): Promise<any> =>
     apiClient.post<any>(`/rooms/participants/${participantId}/leave`, {}),
 
@@ -62,4 +68,7 @@ export const roomService = {
     streak?: number
   }): Promise<any> =>
     apiClient.post<any>(`/rooms/${roomCode}/submit-answer`, params),
+
+  updateSettings: (roomId: number | string, settings: { progression_mode?: 'manual' | 'auto'; allow_show_rank?: boolean }): Promise<any> =>
+    apiClient.patch<any>(`/rooms/${roomId}/settings`, settings),
 }

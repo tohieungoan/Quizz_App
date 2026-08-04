@@ -32,9 +32,10 @@ export interface ReportParticipant {
   status: string;
   joined_at?: string;
   score: number;
-  correct_answers: string;
-  accuracy: string;
-  rank: number;
+  time_taken?: string;
+  correct_answers?: string;
+  accuracy?: string;
+  rank?: number;
 }
 
 export interface ReportParticipantPageResponse {

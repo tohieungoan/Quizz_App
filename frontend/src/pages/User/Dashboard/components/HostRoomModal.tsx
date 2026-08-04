@@ -85,7 +85,8 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
           nickname: 'Host / Sarah Jenkins',
           isHost: true,
           quizTitle: roomData.title || 'Live Quiz Session',
-          progressionMode: roomData.progression_mode
+          progressionMode: roomData.progression_mode,
+          allowShowRank: roomData.allow_show_rank
         },
       });
     } catch (err: any) {

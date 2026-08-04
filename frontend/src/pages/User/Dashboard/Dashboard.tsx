@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, LogOut, LayoutDashboard, DoorOpen, ClipboardList, History, Trophy, SlidersHorizontal, Settings, Search } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard, DoorOpen, ClipboardList, History, Trophy, SlidersHorizontal, Settings, Search, Users } from 'lucide-react';
 import { DashboardHeader } from './components/DashboardHeader';
 import { DashboardSidebar } from './components/DashboardSidebar';
 import { OverviewTab } from './components/OverviewTab';
@@ -67,6 +67,7 @@ export const Dashboard: React.FC = () => {
   const [examSearch, setExamSearch] = useState('');
   const [examSubjectFilter, setExamSubjectFilter] = useState('All Subjects');
   const [examStatusFilter, setExamStatusFilter] = useState('All Status');
+  const [examGroupFilter, setExamGroupFilter] = useState('All Groups');
 
   const loadStudentExams = async () => {
     try {
@@ -80,9 +81,11 @@ export const Dashboard: React.FC = () => {
           title: e.exam_title || 'Untitled Exam',
           due: e.end_time || 'No Deadline',
           subject: e.quiz_subject || 'General',
+          groupName: e.group_name || 'Individual / General',
           duration: e.timer,
           status: e.status === 'COMPLETED' ? 'Submitted' : e.status === 'IN_PROGRESS' ? 'In Progress' : 'Not Started',
           score: e.score,
+          submittedAt: e.submitted_at,
           rule: 'Free Navigation',
         }));
         setStudentExams(mapped);
@@ -115,7 +118,10 @@ export const Dashboard: React.FC = () => {
     const matchesSubject =
       examSubjectFilter === 'All Subjects' || ex.subject === examSubjectFilter;
 
-    return matchesSearch && matchesStatus && matchesSubject;
+    const matchesGroup =
+      examGroupFilter === 'All Groups' || ex.groupName === examGroupFilter;
+
+    return matchesSearch && matchesStatus && matchesSubject && matchesGroup;
   });
 
   const totalStudentExamPages = Math.ceil(filteredStudentExams.length / STUDENT_EXAMS_PER_PAGE) || 1;
@@ -125,6 +131,7 @@ export const Dashboard: React.FC = () => {
   );
 
   const studentExamSubjects = ['All Subjects', ...Array.from(new Set(studentExams.map(e => e.subject).filter(Boolean)))];
+  const studentExamGroups = ['All Groups', ...Array.from(new Set(studentExams.map(e => e.groupName).filter(Boolean)))];
 
   const handleStartExam = (exam: any) => {
     sessionStorage.setItem('dashboard_active_tab', activeTab);
@@ -297,6 +304,15 @@ export const Dashboard: React.FC = () => {
                       <option key={sub}>{sub}</option>
                     ))}
                   </select>
+                  <select
+                    value={examGroupFilter}
+                    onChange={(e) => setExamGroupFilter(e.target.value)}
+                    className="px-3.5 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none cursor-pointer min-w-[130px]"
+                  >
+                    {studentExamGroups.map(grp => (
+                      <option key={grp}>{grp}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -329,7 +345,10 @@ export const Dashboard: React.FC = () => {
                             </span>
                           </div>
                           <h3 className="text-lg font-bold text-on-surface mt-1">{exam.title}</h3>
-                          <p className="text-xs text-on-surface-variant mt-2">
+                          <p className="text-xs font-semibold text-secondary flex items-center gap-1 mt-1">
+                            <Users className="w-3.5 h-3.5 shrink-0" /> Group: {exam.groupName}
+                          </p>
+                          <p className="text-xs text-on-surface-variant mt-1.5">
                             Due Date: <span className="font-semibold text-error">{exam.due !== 'No Deadline' ? new Date(exam.due).toLocaleString('vi-VN') : 'No Deadline'}</span>
                           </p>
                           <p className="text-xs text-on-surface-variant">Duration: {exam.duration} minutes</p>

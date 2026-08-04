@@ -114,7 +114,7 @@ class CRUDQuiz:
         import re
         
         # Determine base title and find existing copies
-        base_title = re.sub(r'\s*\(Copy( \d+)?\)$', '', original_quiz.title)
+        base_title = re.sub(r'\s*\(Copy( \d+)?\)$', '', original_quiz.title or "")
         
         existing_copies = db.query(Quiz.title).filter(
             Quiz.user_id == user_id,
@@ -123,6 +123,8 @@ class CRUDQuiz:
         
         max_copy = 0
         for (t,) in existing_copies:
+            if not t:
+                continue
             if t == f"{base_title} (Copy)":
                 max_copy = max(max_copy, 1)
             else:

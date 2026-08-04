@@ -6,6 +6,8 @@ from app.crud.crud_quiz import crud_quiz
 from app.schemas.quiz import QuizCreate, QuizUpdate, QuizResponse, QuizPageResponse
 from app.utils.cloudinary_utils import delete_cloudinary_asset_bg
 
+from app.crud.crud_user import crud_user
+
 router = APIRouter()
 
 
@@ -21,6 +23,7 @@ def create_quiz(
     Requires an active user. The quiz will be linked to the creator.
     """
     quiz = crud_quiz.create_with_user(db=db, obj_in=quiz_in, user_id=current_user.id)
+    crud_user.add_achievement_points(db, current_user, 30)
     return quiz
 
 

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Search, Users, Eye, FileText, MonitorPlay } from 'lucide-react';
+import { Search, Users, Eye, FileText, MonitorPlay, Loader2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Pagination } from '@/components/ui/Pagination';
 import { RoomDetailsModal } from '@/components/ui/RoomDetailsModal';
+import { Room } from '@/data/mockDb';
 import { roomService } from '@/services/roomService';
-import { Loader2 } from 'lucide-react';
 
 export interface RoomItem {
   id: string | number;

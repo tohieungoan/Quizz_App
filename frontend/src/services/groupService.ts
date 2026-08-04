@@ -142,5 +142,9 @@ export const groupService = {
       all_invitations: false,
       group_ids: [Number(groupId)]
     });
+  },
+
+  leaveGroup: async (groupId: number | string): Promise<{ message: string }> => {
+    return apiClient.post<{ message: string }>(`/groups/${groupId}/leave`, {});
   }
 };
