@@ -510,8 +510,7 @@ export function Achievements() {
                           options={[
                             { value: 'STREAK', label: 'Daily Streak' },
                             { value: 'QUIZ_COUNT', label: 'Quiz Count' },
-                            { value: 'PERFECT_SCORE', label: 'Perfect Score' },
-                            { value: 'TOTAL_POINTS', label: 'Total Points' }
+                            { value: 'PERFECT_SCORE', label: 'Perfect Score' }
                           ]}
                         />
                       </div>
