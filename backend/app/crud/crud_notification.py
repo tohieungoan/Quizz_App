@@ -183,18 +183,13 @@ class CRUDNotification:
         # 1. Delete personal notifications that are read
         personal_read = db.query(Notification).filter(
             Notification.user_id == user_id,
-            Notification.id.in_(
-                db.query(NotificationRead.notification_id).filter(
-                    NotificationRead.user_id == user_id,
-                    NotificationRead.is_read == True
-                )
-            )
+            Notification.is_read == True
         ).all()
         for n in personal_read:
             db.delete(n)
             count += 1
         
-        # 2. Mark global broadcast notifications as deleted
+        # 2. Mark global broadcast notifications as deleted if they were read
         global_read = db.query(NotificationRead).filter(
             NotificationRead.user_id == user_id,
             NotificationRead.is_read == True,
@@ -204,6 +199,44 @@ class CRUDNotification:
             nr.is_deleted = True
             count += 1
         
+        db.commit()
+        return count
+
+    def delete_all(self, db: Session, user_id: int) -> int:
+        """Delete/hide all notifications (personal and global, read and unread) for a user"""
+        count = 0
+        
+        # 1. Delete all personal notifications
+        personal_notifs = db.query(Notification).filter(
+            Notification.user_id == user_id
+        ).all()
+        for n in personal_notifs:
+            db.delete(n)
+            count += 1
+            
+        # 2. Mark all global broadcast notifications as deleted for this user
+        global_notifs = db.query(Notification).filter(
+            Notification.target_type == "ALL_USERS",
+            Notification.user_id.is_(None)
+        ).all()
+        
+        for gn in global_notifs:
+            notif_read = db.query(NotificationRead).filter(
+                NotificationRead.user_id == user_id,
+                NotificationRead.notification_id == gn.id
+            ).first()
+            if not notif_read:
+                notif_read = NotificationRead(
+                    user_id=user_id,
+                    notification_id=gn.id,
+                    is_read=True,
+                    is_deleted=True
+                )
+            else:
+                notif_read.is_deleted = True
+            db.add(notif_read)
+            count += 1
+            
         db.commit()
         return count
 

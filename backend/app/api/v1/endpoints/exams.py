@@ -562,8 +562,20 @@ def delete_exam(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to delete this exam.",
         )
+    exam_title = (exam.quiz.title if exam.quiz else f"Exam #{exam.id}")
+    exam_id_val = exam.id
     db.delete(exam)
     db.commit()
+
+    # Trigger admin notification for critical data deletion
+    try:
+        from app.services.admin_notification_service import admin_notification_service
+        admin_notification_service.notify_critical_data_deletion(
+            db, item_type="Assigned Exam", item_title=exam_title, item_id=exam_id_val, deleted_by=current_user
+        )
+    except Exception:
+        pass
+
     return {"message": "Exam assignment deleted successfully.", "exam_id": exam_id}
 
 

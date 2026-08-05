@@ -319,8 +319,20 @@ def delete_group(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to delete this group.",
         )
+    group_name = group.name
+    group_id_val = group.id
     db.delete(group)
     db.commit()
+
+    # Trigger admin notification for critical data deletion
+    try:
+        from app.services.admin_notification_service import admin_notification_service
+        admin_notification_service.notify_critical_data_deletion(
+            db, item_type="Study Group", item_title=group_name, item_id=group_id_val, deleted_by=current_user
+        )
+    except Exception:
+        pass
+
     return group
 
 

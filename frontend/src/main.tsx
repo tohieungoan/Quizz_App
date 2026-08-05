@@ -7,7 +7,7 @@ import { AuthProvider } from './store/AuthContext'
 import { Toaster } from 'react-hot-toast'
 import { initSecurityGuard } from './utils/securityGuard'
 import { initTimeTracker } from './utils/streakTracker'
-import { Toaster } from 'react-hot-toast'
+
 
 // Initialize Anti-F12, Anti-DevTools & Right-Click protection globally
 initSecurityGuard()

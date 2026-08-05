@@ -25,6 +25,8 @@ try:
         conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS progression_mode VARCHAR DEFAULT 'manual';"))
         conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS current_question_index INTEGER DEFAULT 0;"))
         conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS current_question_started_at TIMESTAMP;"))
+        conn.execute(text("ALTER TABLE admin_settings ADD COLUMN IF NOT EXISTS lifecycle_user_imported_inapp BOOLEAN DEFAULT TRUE;"))
+        conn.execute(text("ALTER TABLE admin_settings ADD COLUMN IF NOT EXISTS lifecycle_user_imported_email BOOLEAN DEFAULT TRUE;"))
         try:
             if settings.DATABASE_URL.startswith("sqlite"):
                 conn.execute(text("ALTER TABLE participants ADD COLUMN streak INTEGER DEFAULT 0;"))

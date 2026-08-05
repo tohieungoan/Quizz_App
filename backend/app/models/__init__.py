@@ -8,6 +8,7 @@ from app.models.notification import Notification
 from app.models.badge import Badge, UserBadge
 from app.models.export import Export
 from app.models.broadcast import BroadcastLog
+from app.models.admin_setting import AdminSetting
 
 __all__ = [
     "Base",
@@ -35,4 +36,6 @@ __all__ = [
     "Badge",
     "UserBadge",
     "Export",
+    "BroadcastLog",
+    "AdminSetting",
 ]
