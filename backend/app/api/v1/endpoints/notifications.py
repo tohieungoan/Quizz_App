@@ -65,6 +65,25 @@ def mark_all_notifications_as_read(
     count = crud_notification.mark_all_as_read(db, current_user.id)
     return {"success": True, "marked_count": count}
 
+@router.delete("/all", summary="Delete all notifications")
+def delete_all_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete/hide all notifications (read and unread) for the current user."""
+    count = crud_notification.delete_all(db, current_user.id)
+    return {"success": True, "deleted_count": count}
+
+@router.delete("/read", summary="Clear all read notifications")
+@router.delete("/", summary="Clear all read notifications")
+def clear_all_read_notifications(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete all read notifications for the current user."""
+    count = crud_notification.clear_all_read(db, current_user.id)
+    return {"success": True, "cleared_count": count}
+
 @router.delete("/{notification_id}", summary="Delete a notification")
 def delete_notification(
     notification_id: int,
@@ -76,15 +95,6 @@ def delete_notification(
     if not success:
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"success": True}
-
-@router.delete("/", summary="Clear all read notifications")
-def clear_all_read_notifications(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Delete all read notifications for the current user."""
-    count = crud_notification.clear_all_read(db, current_user.id)
-    return {"success": True, "cleared_count": count}
 
 
 # -----------------------------------------
@@ -290,34 +300,51 @@ async def send_broadcast(
         job_id=job_id
     )
 
-@router.delete("/broadcast/{job_id}", summary="Cancel a scheduled broadcast")
+@router.delete("/broadcast/{job_id}", summary="Cancel/Delete a scheduled broadcast")
 def cancel_broadcast(
     job_id: str,
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_active_admin)
 ):
-    log = db.query(BroadcastLog).filter(BroadcastLog.job_id == job_id, BroadcastLog.status == "PENDING").first()
-    if not log:
-        raise HTTPException(status_code=404, detail="Scheduled broadcast not found or already executed")
+    log = db.query(BroadcastLog).filter(BroadcastLog.job_id == job_id).first()
+    if not log and job_id.isdigit():
+        log = db.query(BroadcastLog).filter(BroadcastLog.id == int(job_id)).first()
         
+    if not log:
+        raise HTTPException(status_code=404, detail="Scheduled broadcast not found")
+        
+    # Remove from APScheduler if job exists
+    target_job_id = log.job_id or job_id
     try:
-        scheduler.remove_job(job_id)
+        scheduler.remove_job(target_job_id)
     except Exception:
-        pass # Ignore if job is not found in scheduler, we still update DB
-
-    log.status = "CANCELLED"
+        pass # Ignore if job is not in memory or already fired
+        
+    db.delete(log)
     db.commit()
     
-    return {"success": True, "message": "Scheduled broadcast cancelled successfully."}
+    return {"success": True, "message": "Scheduled broadcast deleted and cancelled successfully."}
 
 @router.get("/broadcast/history", response_model=BroadcastHistoryResponse, summary="Get broadcast history")
 def get_broadcast_history(
     skip: int = Query(0, description="Skip N records"),
     limit: int = Query(20, description="Limit records"),
+    status: Optional[str] = Query(None, description="Filter by status (PENDING, SENT, CANCELLED)"),
+    is_scheduled: Optional[bool] = Query(None, description="Filter by is_scheduled"),
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_active_admin)
 ):
-    query = db.query(BroadcastLog).order_by(BroadcastLog.created_at.desc())
+    query = db.query(BroadcastLog)
+    if status:
+        query = query.filter(BroadcastLog.status == status)
+    if is_scheduled is not None:
+        query = query.filter(BroadcastLog.is_scheduled == is_scheduled)
+        
+    if status == "PENDING":
+        query = query.order_by(BroadcastLog.scheduled_at.asc(), BroadcastLog.created_at.desc())
+    else:
+        query = query.order_by(BroadcastLog.created_at.desc())
+        
     total = query.count()
     data = query.offset(skip).limit(limit).all()
     

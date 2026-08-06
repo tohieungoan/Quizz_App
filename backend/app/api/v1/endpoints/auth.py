@@ -153,6 +153,13 @@ async def register_user(
         verify_url = f"{settings.FRONTEND_URL}/verify-email?token={verify_token}"
         background_tasks.add_task(send_verification_email, email_to=user.email, verify_url=verify_url)
 
+    # Notify Super Admins if enabled in admin_settings
+    try:
+        from app.services.admin_notification_service import admin_notification_service
+        admin_notification_service.notify_user_registered(db, registered_user=user)
+    except Exception:
+        pass
+
     return user
 
 

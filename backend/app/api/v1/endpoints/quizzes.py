@@ -191,8 +191,19 @@ def delete_quiz(
             if opt.audio_url:
                 media_urls_to_delete.add(opt.audio_url)
             
+    quiz_title = quiz.title
+    quiz_id_val = quiz.id
     quiz = crud_quiz.delete(db=db, quiz_id=quiz_id)
     
+    # Trigger admin notification for critical data deletion
+    try:
+        from app.services.admin_notification_service import admin_notification_service
+        admin_notification_service.notify_critical_data_deletion(
+            db, item_type="Quiz Template", item_title=quiz_title, item_id=quiz_id_val, deleted_by=current_user
+        )
+    except Exception:
+        pass
+
     # Trigger background tasks to delete all associated media ONLY IF they are not used elsewhere
     from app.crud.crud_question import crud_question
     for url in media_urls_to_delete:

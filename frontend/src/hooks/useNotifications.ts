@@ -1,5 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertCircle, CheckCircle2, MessageSquare, Bell, Megaphone, Info, UserPlus } from 'lucide-react';
+import { 
+  AlertCircle, 
+  CheckCircle2, 
+  MessageSquare, 
+  Bell, 
+  Megaphone, 
+  Info, 
+  UserPlus, 
+  ShieldAlert, 
+  UserCheck, 
+  Trash2, 
+  GraduationCap, 
+  Layers, 
+  Sparkles,
+  Server
+} from 'lucide-react';
 import { notificationService, NotificationResponse } from '@/services/notificationService';
 
 export interface NotificationItem {
@@ -11,46 +26,71 @@ export interface NotificationItem {
   icon: any;
   color: string;
   bg: string;
+  category: 'security' | 'lifecycle' | 'system' | 'academic' | 'general';
   unread: boolean;
   action_url?: string | null;
   type?: string | null;
   targetGroupId?: number | null;
+  created_at?: string;
 }
 
 const EVENT_NAME = 'quizzapp_notifications_updated';
 
 const mapBackendNotification = (item: NotificationResponse): NotificationItem => {
-  // 1. Map Icon, colors, bg
+  // 1. Map Icon, colors, bg, and category
   let IconComponent = Bell;
   let color = 'text-primary';
   let bg = 'bg-primary/10';
+  let category: NotificationItem['category'] = 'general';
 
-  const typeUpper = item.type?.toUpperCase();
+  const typeUpper = (item.type || '').toUpperCase();
+  const titleUpper = (item.title || '').toUpperCase();
 
-  if (typeUpper === 'SYSTEM' || typeUpper === 'WARNING') {
-    IconComponent = AlertCircle;
-    color = 'text-error';
-    bg = 'bg-error-container';
+  if (typeUpper.includes('SECURITY') || titleUpper.includes('SECURITY') || titleUpper.includes('PERMISSION') || titleUpper.includes('ROLE CHANGED')) {
+    IconComponent = ShieldAlert;
+    color = 'text-amber-600';
+    bg = 'bg-amber-100 dark:bg-amber-950/40';
+    category = 'security';
+  } else if (typeUpper.includes('DELETION') || titleUpper.includes('DELETED') || titleUpper.includes('CRITICAL')) {
+    IconComponent = Trash2;
+    color = 'text-rose-600';
+    bg = 'bg-rose-100 dark:bg-rose-950/40';
+    category = 'security';
+  } else if (typeUpper.includes('LIFECYCLE') || typeUpper.includes('IMPORT') || titleUpper.includes('REGISTERED') || titleUpper.includes('IMPORTED') || titleUpper.includes('USER')) {
+    IconComponent = UserCheck;
+    color = 'text-emerald-600';
+    bg = 'bg-emerald-100 dark:bg-emerald-950/40';
+    category = 'lifecycle';
+  } else if (typeUpper.includes('EXAM') || typeUpper.includes('QUIZ') || titleUpper.includes('EXAM') || titleUpper.includes('QUIZ') || titleUpper.includes('GRADE')) {
+    IconComponent = GraduationCap;
+    color = 'text-indigo-600';
+    bg = 'bg-indigo-100 dark:bg-indigo-950/40';
+    category = 'academic';
+  } else if (typeUpper.includes('GROUP') || typeUpper.includes('INVITE') || titleUpper.includes('GROUP')) {
+    IconComponent = UserPlus;
+    color = 'text-cyan-600';
+    bg = 'bg-cyan-100 dark:bg-cyan-950/40';
+    category = 'academic';
+  } else if (typeUpper === 'SYSTEM' || typeUpper === 'WARNING' || titleUpper.includes('SYSTEM')) {
+    IconComponent = Server;
+    color = 'text-blue-600';
+    bg = 'bg-blue-100 dark:bg-blue-950/40';
+    category = 'system';
+  } else if (typeUpper === 'BROADCAST') {
+    IconComponent = Megaphone;
+    color = 'text-purple-600';
+    bg = 'bg-purple-100 dark:bg-purple-950/40';
+    category = 'general';
   } else if (typeUpper === 'SUCCESS' || typeUpper === 'COMPLETED') {
     IconComponent = CheckCircle2;
-    color = 'text-green-600';
-    bg = 'bg-green-100';
+    color = 'text-emerald-600';
+    bg = 'bg-emerald-100 dark:bg-emerald-950/40';
+    category = 'general';
   } else if (typeUpper === 'MESSAGE' || typeUpper === 'FEEDBACK') {
     IconComponent = MessageSquare;
     color = 'text-primary';
     bg = 'bg-primary/10';
-  } else if (typeUpper === 'INFO') {
-    IconComponent = Info;
-    color = 'text-blue-600';
-    bg = 'bg-blue-100';
-  } else if (typeUpper === 'BROADCAST') {
-    IconComponent = Megaphone;
-    color = 'text-orange-600';
-    bg = 'bg-orange-100';
-  } else if (typeUpper === 'GROUP_INVITE') {
-    IconComponent = UserPlus;
-    color = 'text-indigo-600';
-    bg = 'bg-indigo-100';
+    category = 'general';
   }
 
   // 2. Map Time & Date from created_at (Ensure UTC 'Z' timezone indicator)
@@ -100,10 +140,12 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     icon: IconComponent,
     color: color,
     bg: bg,
+    category: category,
     unread: !item.is_read,
     action_url: item.action_url,
     type: item.type,
-    targetGroupId: item.target_group_id
+    targetGroupId: item.target_group_id,
+    created_at: item.created_at
   };
 };
 
@@ -217,6 +259,17 @@ export const useNotifications = () => {
     }
   };
 
+  const deleteAll = async () => {
+    try {
+      await notificationService.deleteAll();
+      setNotifications([]);
+      setUnreadCount(0);
+      window.dispatchEvent(new Event(EVENT_NAME));
+    } catch (err) {
+      console.error('Failed to delete all notifications:', err);
+    }
+  };
+
   return {
     notifications,
     unreadCount,
@@ -224,6 +277,7 @@ export const useNotifications = () => {
     markAllAsRead,
     markAsRead,
     deleteNotification,
-    clearAllRead
+    clearAllRead,
+    deleteAll
   };
 };
