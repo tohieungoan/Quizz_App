@@ -364,22 +364,28 @@ def get_room_by_code(
             KEYS = ["A", "B", "C", "D"]
             sorted_opts = sorted(q.options, key=lambda o: o.id)
             options_live = []
+            correct_option_key = None
             for idx, opt in enumerate(sorted_opts):
+                key = KEYS[idx] if idx < len(KEYS) else "A"
                 options_live.append({
                     "id": opt.id,
-                    "key": KEYS[idx] if idx < len(KEYS) else "A",
+                    "key": key,
                     "label": opt.content or ""
                 })
+                if opt.is_correct:
+                    correct_option_key = key
+
             raw_type = (q.type or "multiple_choice").lower().strip()
             is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
             standardized_type = "SHORT_ANSWER" if is_short_answer else "MULTIPLE_CHOICE"
+
             active_q = {
                 "id": q.id,
                 "text": q.content or "",
                 "type": standardized_type,
                 "time_limit": q.time_limit,
                 "options": options_live if not is_short_answer else [],
-                "correct_option_key": None,
+                "correct_option_key": correct_option_key,
                 "audio_url": q.audio_url,
                 "media_url": q.media_url,
                 "audio_play_limit": q.audio_play_limit,
@@ -487,9 +493,26 @@ def get_room_participants(
             detail="Room not found."
         )
     
+    from app.models.badge import UserBadge, Badge
+
     result = []
     for p in room.participants:
         avatar_url = p.user.avatar if p.user and p.user.avatar else None
+        # Resolve equipped title from the database for this participant
+        equipped_title = None
+        if p.user_id:
+            title_badge = (
+                db.query(Badge.name)
+                .join(UserBadge, UserBadge.badge_id == Badge.id)
+                .filter(
+                    UserBadge.user_id == p.user_id,
+                    UserBadge.is_equipped == True,
+                    Badge.category == "TITLE"
+                )
+                .first()
+            )
+            if title_badge:
+                equipped_title = title_badge[0]
         result.append({
             "id": p.id,
             "room_id": p.room_id,
@@ -500,6 +523,7 @@ def get_room_participants(
             "status": p.status,
             "joined_at": p.joined_at,
             "score": p.score,
+            "equipped_title": equipped_title,
         })
     return result
 
@@ -589,6 +613,7 @@ def get_live_session(
         raw_type = (q.type or "multiple_choice").lower().strip()
         is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
         standardized_type = "SHORT_ANSWER" if is_short_answer else "MULTIPLE_CHOICE"
+
         active_question = {
             "id": q.id,
             "text": q.content or "",
@@ -604,14 +629,31 @@ def get_live_session(
     # 2. Participants and Answer Distribution
     participants_live = []
     distribution = {}
-    
+
     from app.models.room import ParticipantAnswer
-    
+    from app.models.badge import UserBadge, Badge
+
+    def _get_equipped_title(user_id):
+        """Resolve the currently equipped TITLE badge name for a given user."""
+        if not user_id:
+            return None
+        title_row = (
+            db.query(Badge.name)
+            .join(UserBadge, UserBadge.badge_id == Badge.id)
+            .filter(
+                UserBadge.user_id == user_id,
+                UserBadge.is_equipped == True,
+                Badge.category == "TITLE"
+            )
+            .first()
+        )
+        return title_row[0] if title_row else None
+
     is_short_ans = False
     if active_question:
         raw_type = (q.type or "multiple_choice").lower().strip()
         is_short_ans = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
-        
+
     if is_short_ans and active_question:
         for p in room.participants:
             answered = False
@@ -629,7 +671,8 @@ def get_live_session(
                 "id": p.id,
                 "nickname": p.nickname or "",
                 "score": p.score,
-                "answered": answered
+                "answered": answered,
+                "equipped_title": _get_equipped_title(p.user_id),
             })
     else:
         distribution = {"A": 0, "B": 0, "C": 0, "D": 0}
@@ -649,7 +692,8 @@ def get_live_session(
                 "id": p.id,
                 "nickname": p.nickname or "",
                 "score": p.score,
-                "answered": answered
+                "answered": answered,
+                "equipped_title": _get_equipped_title(p.user_id),
             })
 
     return {

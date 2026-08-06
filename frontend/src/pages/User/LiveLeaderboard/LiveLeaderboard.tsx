@@ -15,6 +15,7 @@ import {
   Star,
 } from 'lucide-react';
 import { roomService } from '@/services';
+import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper';
 
 interface LeaderboardPlayer {
   id: string;
@@ -29,6 +30,7 @@ interface LeaderboardPlayer {
   oldRank: number;
   newRank: number;
   pointsToAdd: number;
+  equipped_title?: string | null;
 }
 
 // Custom Confetti Component
@@ -190,6 +192,7 @@ export const LiveLeaderboard: React.FC = () => {
             oldRank: 1,
             newRank: 1,
             pointsToAdd: 0,
+            equipped_title: p.equipped_title ?? null,
           };
         });
 
@@ -344,7 +347,12 @@ export const LiveLeaderboard: React.FC = () => {
               <p className="text-2xl font-black text-white transition-all">
                 {mePlayer.displayScore.toFixed(0)} <span className="text-sm text-indigo-200 font-bold">pts</span>
               </p>
-              <p className="text-[10px] text-indigo-200 font-bold mt-0.5">Rank #{mePlayer.newRank} of {players.length}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] text-indigo-200 font-bold">Rank #{mePlayer.newRank} of {players.length}</span>
+                <span className={`text-[9px] font-black px-2 py-0.2 rounded-full border ${getBadgeStyle(getPlayerBadge(mePlayer.name, mePlayer.equipped_title))}`}>
+                  🏆 {getPlayerBadge(mePlayer.name, mePlayer.equipped_title)}
+                </span>
+              </div>
             </div>
             <div className="flex flex-col items-center gap-1">
               <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform overflow-hidden">
@@ -388,7 +396,10 @@ export const LiveLeaderboard: React.FC = () => {
                     )}
                   </div>
                   <span className={`text-[11px] font-bold truncate max-w-[75px] mt-1 ${top2.isMe ? 'text-indigo-300 font-black' : 'text-slate-300'}`}>{top2.name}</span>
-                  <span className="text-[10px] text-slate-400 font-extrabold">{top2.displayScore.toFixed(0)} Pts</span>
+                  <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-full border border-slate-400/30 bg-slate-500/20 text-slate-200 mt-0.5`}>
+                    🏆 {getPlayerBadge(top2.name, top2.equipped_title)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-extrabold mt-0.5">{top2.displayScore.toFixed(0)} Pts</span>
                 </div>
               ) : <div className="flex-1" />}
               <div className={`w-full bg-gradient-to-t from-slate-600 to-slate-500 border-t-2 border-slate-400 rounded-t-2xl flex items-center justify-center shadow-xl transition-all duration-700 delay-100 ${phase === 'podium_reveal' ? 'h-16' : 'h-0'}`}>
@@ -417,7 +428,10 @@ export const LiveLeaderboard: React.FC = () => {
                     )}
                   </div>
                   <span className={`text-[11px] font-bold truncate max-w-[85px] mt-1 ${top1.isMe ? 'text-indigo-300 font-black' : 'text-white font-black'}`}>{top1.name}</span>
-                  <span className="text-[10px] text-amber-400 font-black">{top1.displayScore.toFixed(0)} Pts</span>
+                  <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-full border border-amber-300/40 bg-amber-400/20 text-amber-200 mt-0.5`}>
+                    🏆 {getPlayerBadge(top1.name, top1.equipped_title)}
+                  </span>
+                  <span className="text-[10px] text-amber-400 font-black mt-0.5">{top1.displayScore.toFixed(0)} Pts</span>
                   <span className="text-amber-300 font-black text-[11px] drop-shadow-sm mt-0.5 flex items-center gap-0.5">
                     1st <Crown className="w-3 h-3 fill-amber-300 text-amber-300" />
                   </span>
@@ -443,7 +457,10 @@ export const LiveLeaderboard: React.FC = () => {
                     )}
                   </div>
                   <span className={`text-[11px] font-bold truncate max-w-[75px] mt-1 ${top3.isMe ? 'text-indigo-300 font-black' : 'text-slate-300'}`}>{top3.name}</span>
-                  <span className="text-[10px] text-amber-600 font-extrabold">{top3.displayScore.toFixed(0)} Pts</span>
+                  <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-full border border-amber-600/40 bg-amber-700/20 text-amber-300 mt-0.5`}>
+                    🏆 {getPlayerBadge(top3.name, top3.equipped_title)}
+                  </span>
+                  <span className="text-[10px] text-amber-600 font-extrabold mt-0.5">{top3.displayScore.toFixed(0)} Pts</span>
                 </div>
               ) : <div className="flex-1" />}
               <div className={`w-full bg-gradient-to-t from-amber-900 via-amber-800 to-amber-700 border-t-2 border-amber-600 rounded-t-2xl flex items-center justify-center shadow-xl transition-all duration-700 delay-200 ${phase === 'podium_reveal' ? 'h-10' : 'h-0'}`}>
@@ -500,8 +517,11 @@ export const LiveLeaderboard: React.FC = () => {
                       </div>
                     )}
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs truncate max-w-[120px] ${isMe ? 'font-black text-white' : 'font-bold'}`}>
+                      <span className={`text-xs truncate max-w-[100px] ${isMe ? 'font-black text-white' : 'font-bold'}`}>
                         {player.name} {isMe && <span className="text-[9px] text-indigo-200 font-bold">(You)</span>}
+                      </span>
+                      <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-full border ${getBadgeStyle(getPlayerBadge(player.name, player.equipped_title))}`}>
+                        🏆 {getPlayerBadge(player.name, player.equipped_title)}
                       </span>
                       {player.streak > 0 && (
                         <span className="text-[9px] text-amber-300 bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-black flex items-center gap-0.5">

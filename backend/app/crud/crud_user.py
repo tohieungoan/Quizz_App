@@ -176,8 +176,66 @@ class CRUDUser:
         # On conflict (email), do nothing
         stmt = stmt.on_conflict_do_nothing(index_elements=['email'])
         
+    def recalculate_user_achievement_points(self, db: Session, user: User) -> int:
+        """
+        Recalculate achievement points (EXP) based on actual activity in DB:
+        - Quizzes created (+30 per quiz)
+        - Live Rooms hosted (+40 per room)
+        - Live Rooms joined (+20 per room joined)
+        - Live answers (+15 if correct, +10 if incorrect)
+        - Assigned Exams completed (+50 base + exam score)
+        """
+        try:
+            from app.models.quiz import Quiz
+            from app.models.room import Room, Participant, ParticipantAnswer
+            from app.models.exam import ExamAssignee
+            from sqlalchemy import func
+
+            # 1. Quizzes created
+            quiz_count = db.query(func.count(Quiz.id)).filter(Quiz.user_id == user.id).scalar() or 0
+            quiz_pts = quiz_count * 30
+
+            # 2. Live Rooms hosted
+            hosted_count = db.query(func.count(Room.id)).filter(Room.host_id == user.id).scalar() or 0
+            hosted_pts = hosted_count * 40
+
+            # 3. Live Rooms joined
+            participants = db.query(Participant).filter(Participant.user_id == user.id).all()
+            joined_pts = len(participants) * 20
+
+            # 4. Answers submitted in live rooms
+            participant_ids = [p.id for p in participants]
+            answer_pts = 0
+            if participant_ids:
+                answers = db.query(ParticipantAnswer).filter(ParticipantAnswer.participant_id.in_(participant_ids)).all()
+                for ans in answers:
+                    answer_pts += 15 if ans.is_correct else 10
+
+            # 5. Assigned Exams completed
+            completed_exams = db.query(ExamAssignee).filter(
+                ExamAssignee.user_id == user.id,
+                ExamAssignee.submitted_at.isnot(None)
+            ).all()
+            exam_pts = sum(50 + int(e.score or 0) for e in completed_exams)
+
+            total_calculated = quiz_pts + hosted_pts + joined_pts + answer_pts + exam_pts
+
+            # Ensure user points are updated to match or exceed calculated points
+            current_points = user.achievement_points or 0
+            if total_calculated > current_points:
+                user.achievement_points = total_calculated
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+
+            return user.achievement_points or 0
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Error recalculating points for user {user.id}: {e}")
+            return user.achievement_points or 0
+
     def update_last_login_and_streak(self, db: Session, user: User) -> User:
-        """Update last_login and reset study_streak to 0 if last_login was > 1 day ago."""
+        """Update last_login, recalculate achievement points, and reset study_streak to 0 if last_login was > 1 day ago."""
         now = datetime.utcnow()
         today = now.date()
 
@@ -191,6 +249,10 @@ class CRUDUser:
         db.add(user)
         db.commit()
         db.refresh(user)
+
+        # Audit & sync achievement points on login
+        self.recalculate_user_achievement_points(db, user)
+
         return user
 
     def increment_study_streak(self, db: Session, user: User) -> User:

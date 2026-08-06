@@ -85,8 +85,15 @@ class TakeQuestionOptionResponse(BaseModel):
     id: int
     option_text: str
     order: int
+    media_url: Optional[str] = None
+    audio_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserAnswerDetailResponse(BaseModel):
+    selected_option_id: Optional[int] = None
+    answer_text: Optional[str] = None
 
 
 class TakeQuestionResponse(BaseModel):
@@ -95,6 +102,10 @@ class TakeQuestionResponse(BaseModel):
     question_type: str
     order: int
     points: float
+    media_url: Optional[str] = None
+    audio_url: Optional[str] = None
+    audio_play_limit: Optional[int] = 0
+    user_answer: Optional[UserAnswerDetailResponse] = None
     options: List[TakeQuestionOptionResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

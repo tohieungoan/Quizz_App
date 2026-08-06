@@ -374,7 +374,7 @@ class CRUDRoom:
             if active_power_up == 'double':
                 raw_score *= 2.0
 
-            score = round(raw_score, 2)
+            score = float(round(raw_score))
         else:
             if active_power_up == 'shield':
                 participant.streak = current_streak
@@ -394,7 +394,7 @@ class CRUDRoom:
         db.add(db_answer)
 
         # 6. Aggregate score to Participant
-        participant.score += score
+        participant.score = float(round(participant.score + score))
         db.add(participant)
 
         db.commit()

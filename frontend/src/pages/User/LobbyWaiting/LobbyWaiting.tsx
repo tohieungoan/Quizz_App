@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 import { roomService } from '@/services'
+import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Player {
@@ -12,6 +13,12 @@ interface Player {
   avatarText: string
   isMe?: boolean
   animDelay?: number
+  equipped_title?: string | null
+}
+
+interface HostMember {
+  nickname: string
+  equipped_title?: string | null
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -26,24 +33,6 @@ const AVATAR_COLORS: { bg: string; text: string }[] = [
   { bg: 'bg-error-container', text: 'text-on-error-container' },
 ]
 
-const MOCK_PLAYERS_INITIAL = [
-  'SarahM', 'JohnDoe', 'Lara Croft', 'BigKev', 'MiaZ', 'River_V', 'PixelCat',
-]
-
-const MOCK_NEW_PLAYERS = [
-  'CodeNinja', 'DevPro', 'ReactMaster', 'UI_Goddess', 'FlexboxKing',
-  'BugHunter', 'AlphaWolf', 'QuizChamp',
-]
-
-const HOST_MOCK_PLAYERS_INITIAL = [
-  'Alex Johnson', 'Maria Garcia', 'Liam Smith', 'Sarah Jenkins',
-  'Minh Nguyen', 'Chloe Chen', 'James Wilson', 'Emma Davis'
-]
-
-const HOST_MOCK_PLAYERS_MORE = [
-  'Michael Scott', 'Jim Halpert', 'Pam Beesly', 'Dwight Schrute',
-  'Stanley Hudson', 'Angela Martin', 'Kevin Malone', 'Oscar Martinez'
-]
 
 const GRADIENTS = [
   'from-primary/20 to-secondary/20',
@@ -64,30 +53,6 @@ const getInitials = (name: string): string => {
 const getAvatarColor = (id: string) => {
   const index = id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
   return AVATAR_COLORS[index % AVATAR_COLORS.length]
-}
-
-const BADGES = ['Scholar', 'Speedy', 'Rookie', 'Brainy', 'Champion', 'Challenger', 'Guru', 'Strategist']
-const getPlayerBadge = (name: string): string => {
-  if (!name) return 'Scholar'
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  const index = Math.abs(hash) % BADGES.length
-  return BADGES[index]
-}
-
-const getBadgeStyle = (badge: string): string => {
-  switch (badge) {
-    case 'Champion': return 'bg-amber-100 text-amber-800 border-amber-200'
-    case 'Scholar': return 'bg-blue-100 text-blue-800 border-blue-200'
-    case 'Speedy': return 'bg-rose-100 text-rose-800 border-rose-200'
-    case 'Brainy': return 'bg-purple-100 text-purple-800 border-purple-200'
-    case 'Challenger': return 'bg-teal-100 text-teal-800 border-teal-200'
-    case 'Guru': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
-    case 'Strategist': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-    default: return 'bg-slate-100 text-slate-800 border-slate-200'
-  }
 }
 
 const formatRoomCode = (code: string): string => {
@@ -135,7 +100,7 @@ export const LobbyWaiting: React.FC = () => {
   // Host specific states
   const [countdown, setCountdown] = useState(900) // 15 minutes (900 seconds)
   const [showAllMembers, setShowAllMembers] = useState(false)
-  const [hostMembers, setHostMembers] = useState<string[]>([])
+  const [hostMembers, setHostMembers] = useState<HostMember[]>([])
   const [createdAt, setCreatedAt] = useState<string>('')
   const [qrCodeUrl, setQrCodeUrl] = useState<string>((location.state as any)?.qrCodeUrl || '')
 
@@ -235,9 +200,12 @@ export const LobbyWaiting: React.FC = () => {
       try {
         const res = await roomService.getParticipants(targetRoomId)
         if (isHost) {
-          setHostMembers(res.map((p: any) => p.nickname || 'Guest'))
+          setHostMembers(res.map((p: any): HostMember => ({
+            nickname: p.nickname || 'Guest',
+            equipped_title: p.equipped_title ?? null,
+          })))
         } else {
-          const mapped: Player[] = res.map((p: any, idx: number): Player => {
+          const mapped: Player[] = res.map((p: any): Player => {
             const nick = p.nickname || 'Guest'
             const isMe = nick === nickname
             const color = getAvatarColor(String(p.id) + nick)
@@ -247,7 +215,8 @@ export const LobbyWaiting: React.FC = () => {
               initials: getInitials(nick),
               avatarBg: isMe ? 'bg-primary' : color.bg,
               avatarText: isMe ? 'text-on-primary' : color.text,
-              isMe
+              isMe,
+              equipped_title: p.equipped_title ?? null,
             }
           })
           setPlayers(mapped)
@@ -323,23 +292,35 @@ export const LobbyWaiting: React.FC = () => {
             if (data.type === "PONG") return
 
             if (data.type === "PLAYER_JOINED" || data.type === "PLAYER_LEFT") {
-              const playerNicknames: string[] = data.players || []
-              if (isHost) {
-                setHostMembers(playerNicknames)
-              } else {
-                const mapped: Player[] = playerNicknames.map((name: string, idx: number): Player => {
-                  const isMe = name === nickname
-                  const color = getAvatarColor(String(idx) + name)
-                  return {
-                    id: `p-${idx}`,
-                    name,
-                    initials: getInitials(name),
-                    avatarBg: isMe ? 'bg-primary' : color.bg,
-                    avatarText: isMe ? 'text-on-primary' : color.text,
-                    isMe
-                  }
-                })
-                setPlayers(mapped)
+              // Re-fetch full participant data (including equipped_title) from API
+              const targetRoomId = roomId || state?.roomId
+              if (targetRoomId) {
+                roomService.getParticipants(targetRoomId)
+                  .then((res: any[]) => {
+                    if (isHost) {
+                      setHostMembers(res.map((p: any): HostMember => ({
+                        nickname: p.nickname || 'Guest',
+                        equipped_title: p.equipped_title ?? null,
+                      })))
+                    } else {
+                      const mapped: Player[] = res.map((p: any): Player => {
+                        const nick = p.nickname || 'Guest'
+                        const isMe = nick === nickname
+                        const color = getAvatarColor(String(p.id) + nick)
+                        return {
+                          id: String(p.id),
+                          name: nick,
+                          initials: getInitials(nick),
+                          avatarBg: isMe ? 'bg-primary' : color.bg,
+                          avatarText: isMe ? 'text-on-primary' : color.text,
+                          isMe,
+                          equipped_title: p.equipped_title ?? null,
+                        }
+                      })
+                      setPlayers(mapped)
+                    }
+                  })
+                  .catch((err: any) => console.error("Failed to refresh participants:", err))
               }
             } else if (data.type === "GAME_STARTED") {
               if (!isHost) {
@@ -586,7 +567,7 @@ export const LobbyWaiting: React.FC = () => {
               <div className="flex -space-x-3">
                 {hostMembers.slice(0, 6).map((member, i) => (
                   <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-surface-container-highest shadow-sm flex items-center justify-center text-[10px] font-bold text-on-surface-variant">
-                    {getInitials(member)}
+                    {getInitials(member.nickname)}
                   </div>
                 ))}
                 {hostMembers.length > 6 && (
@@ -600,16 +581,16 @@ export const LobbyWaiting: React.FC = () => {
             {/* Members Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
               {(showAllMembers ? hostMembers : hostMembers.slice(0, 8)).map((member, idx) => {
-                const color = getAvatarColor(String(idx) + member)
-                const badge = getPlayerBadge(member)
+                const color = getAvatarColor(String(idx) + member.nickname)
+                const badge = getPlayerBadge(member.nickname, member.equipped_title)
                 return (
                   <div key={idx} className="bg-white/90 p-4 rounded-2xl border border-white/80 shadow-md hover:shadow-xl hover:scale-103 hover:border-primary/20 transition-all duration-300 flex items-center gap-4 cursor-default group relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-full blur-xl group-hover:bg-primary/10 transition-colors" />
                     <div className={`w-12 h-12 rounded-full ${color.bg} flex items-center justify-center ${color.text} group-hover:scale-110 transition-transform font-black text-sm shadow-inner flex-shrink-0`}>
-                      {getInitials(member)}
+                      {getInitials(member.nickname)}
                     </div>
                     <div className="flex flex-col text-left truncate flex-grow">
-                      <span className="font-bold text-on-surface truncate text-base mb-1">{member}</span>
+                      <span className="font-bold text-on-surface truncate text-base mb-1">{member.nickname}</span>
                       <div className="flex">
                         <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${getBadgeStyle(badge)}`}>
                           {badge}
@@ -660,7 +641,7 @@ export const LobbyWaiting: React.FC = () => {
       </div>
 
       {/* Content Wrapper */}
-      <div className="relative z-10 flex flex-col min-h-screen max-w-lg mx-auto w-full">
+      <div className="relative z-10 flex flex-col min-h-screen max-w-3xl mx-auto w-full">
         {/* Header */}
         <header className="flex justify-between items-center h-20 px-4 md:px-10 flex-shrink-0">
           <button
@@ -737,42 +718,42 @@ export const LobbyWaiting: React.FC = () => {
               </span>
             </div>
 
-            {/* Player grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {/* Player grid - wide horizontal bar layout */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* "Me" chip — highlighted */}
-              <div className="bg-primary/5 border-2 border-primary ring-4 ring-primary/15 p-3.5 rounded-xl flex items-center gap-3 shadow-md relative overflow-hidden transition-all duration-300 animate-pulse">
-                <div className="absolute -top-6 -right-6 w-16 h-16 bg-primary/10 rounded-full blur-lg" />
-                <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-on-primary font-black text-sm flex-shrink-0 shadow-md">
-                  {myPlayer.initials}
+              <div className="bg-primary/5 border-2 border-primary ring-2 ring-primary/20 px-5 py-3.5 rounded-2xl flex items-center justify-between gap-4 shadow-sm relative overflow-hidden transition-all duration-300 animate-pulse">
+                <div className="flex items-center gap-3.5 min-w-0 flex-grow">
+                  <div className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-on-primary font-black text-sm flex-shrink-0 shadow-md">
+                    {myPlayer.initials}
+                  </div>
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="font-extrabold text-on-surface text-base truncate">{nickname}</span>
+                    <span className="text-[9px] bg-primary text-on-primary px-2 py-0.5 rounded-md font-black uppercase flex-shrink-0">You</span>
+                  </div>
                 </div>
-                <div className="flex flex-col text-left truncate flex-grow">
-                  <span className="font-bold text-on-surface truncate text-sm flex items-center gap-1">
-                    {nickname} <span className="text-[9px] bg-primary text-on-primary px-1.5 py-0.2 rounded font-black uppercase">You</span>
-                  </span>
-                  <span className={`text-[9px] font-black px-1.5 py-0.2 rounded border w-fit mt-0.5 ${getBadgeStyle(getPlayerBadge(nickname))}`}>
-                    {getPlayerBadge(nickname)}
-                  </span>
-                </div>
+                <span className={`text-xs font-black px-3 py-1 rounded-full border flex-shrink-0 shadow-xs ${getBadgeStyle(getPlayerBadge(nickname))}`}>
+                  🏆 {getPlayerBadge(nickname)}
+                </span>
               </div>
 
               {/* Other players */}
               {players.filter(p => !p.isMe).map((player, index) => {
-                const badge = getPlayerBadge(player.name)
+                const badge = getPlayerBadge(player.name, player.equipped_title)
                 return (
                   <div
                     key={player.id}
-                    className="bg-white/80 border border-outline-variant/60 p-3.5 rounded-xl flex items-center gap-3 shadow-sm hover:shadow-md hover:bg-white transition-all duration-300 fade-in-up"
+                    className="bg-white/90 border border-outline-variant/60 px-5 py-3.5 rounded-2xl flex items-center justify-between gap-4 shadow-sm hover:shadow-md hover:bg-white transition-all duration-300 fade-in-up"
                     style={{ animationDelay: `${(player.animDelay ?? 0) || index * 0.05}s` }}
                   >
-                    <div className={`w-10 h-10 rounded-full ${player.avatarBg} flex items-center justify-center ${player.avatarText} text-sm font-black flex-shrink-0 shadow-inner`}>
-                      {player.initials}
+                    <div className="flex items-center gap-3.5 min-w-0 flex-grow">
+                      <div className={`w-11 h-11 rounded-full ${player.avatarBg} flex items-center justify-center ${player.avatarText} text-sm font-black flex-shrink-0 shadow-inner`}>
+                        {player.initials}
+                      </div>
+                      <span className="font-extrabold text-on-surface text-base truncate">{player.name}</span>
                     </div>
-                    <div className="flex flex-col text-left truncate flex-grow">
-                      <span className="font-bold text-on-surface truncate text-sm">{player.name}</span>
-                      <span className={`text-[9px] font-black px-1.5 py-0.2 rounded border w-fit mt-0.5 ${getBadgeStyle(badge)}`}>
-                        {badge}
-                      </span>
-                    </div>
+                    <span className={`text-xs font-black px-3 py-1 rounded-full border flex-shrink-0 shadow-xs ${getBadgeStyle(badge)}`}>
+                      🏆 {badge}
+                    </span>
                   </div>
                 )
               })}

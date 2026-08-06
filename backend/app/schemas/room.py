@@ -97,6 +97,7 @@ class ParticipantResponse(BaseModel):
     joined_at: datetime
     score: float
     streak: int = 0
+    equipped_title: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -107,6 +108,7 @@ class ParticipantLive(BaseModel):
     score: float
     streak: int = 0
     answered: bool
+    equipped_title: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

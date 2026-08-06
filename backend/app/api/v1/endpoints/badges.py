@@ -5,11 +5,35 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_active_admin
+from app.api.deps import get_db, get_current_active_admin, get_current_active_user
 from app.crud.crud_badge import crud_badge
-from app.schemas.badge import BadgeCreate, BadgeUpdate, BadgeResponse, BadgePageResponse, BadgeUserResponse
+from app.schemas.badge import BadgeCreate, BadgeUpdate, BadgeResponse, BadgePageResponse, BadgeUserResponse, UserBadgeDetailResponse
 
 router = APIRouter()
+
+
+@router.get("/me", response_model=List[UserBadgeDetailResponse], summary="Get my user achievements & badges")
+def read_user_badges(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """
+    Retrieve all badges with current user's progress & unlocked status.
+    """
+    return crud_badge.get_user_badges(db, current_user)
+
+
+@router.post("/{badge_id}/equip", response_model=UserBadgeDetailResponse, summary="Equip or unequip a title/badge")
+def equip_user_badge(
+    badge_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """
+    Equip or unequip a title/badge for current user.
+    """
+    return crud_badge.equip_badge(db, current_user, badge_id)
+
 
 
 @router.get("", response_model=BadgePageResponse, summary="Get all badges with pagination")

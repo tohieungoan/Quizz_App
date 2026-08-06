@@ -130,6 +130,7 @@ export const saveUserProfile = (profile: UserProfile): void => {
     email: profile.email,
     avatar: profile.avatar,
     role: profile.role,
+    equipped_title: profile.equipped_title || null,
   }
   localStorage.setItem('user', JSON.stringify(stored))
 }

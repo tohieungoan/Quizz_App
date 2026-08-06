@@ -14,6 +14,7 @@ export interface UserProfile {
   auth_provider: string | null
   study_streak?: number
   achievement_points?: number
+  equipped_title?: string | null
 }
 
 export interface StoredUser {
@@ -21,6 +22,7 @@ export interface StoredUser {
   email: string
   avatar: string | null
   role: string
+  equipped_title?: string | null
 }
 
 export interface UserSetting {

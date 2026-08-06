@@ -1,29 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Mail, User, Lock, ShieldCheck, Flame, Trophy, Calendar, CheckCircle2, AlertCircle, Save } from 'lucide-react';
-
-// Mock current logged-in user data
-const MOCK_CURRENT_USER = {
-  id: 'U-001',
-  fullname: 'Fleya Nguyen',
-  email: 'fleya.nguyen@enterprise.com',
-  password: 'hashed_password_123',
-  avatar: '',
-  study_streak: 14,
-  auth_provider: 'LOCAL' as 'LOCAL' | 'GOOGLE' | 'MICROSOFT',
-  provider_id: null,
-  role: 'SUPER_ADMIN',
-  status: 'ACTIVE',
-  email_verified: true,
-  achievement_points: 2450,
-  last_login: '2026-07-21T08:00:00Z',
-  created_at: '2025-01-15T10:30:00Z',
-};
+import { authService, saveUserProfile } from '@/services/authService';
 
 export const Profile: React.FC = () => {
-  const [userData, setUserData] = useState(MOCK_CURRENT_USER);
+  const [userData, setUserData] = useState<any>({
+    id: '',
+    fullname: '',
+    email: '',
+    avatar: '',
+    study_streak: 0,
+    achievement_points: 0,
+    role: 'USER',
+    email_verified: true,
+  });
+
   const [formData, setFormData] = useState({
-    fullname: MOCK_CURRENT_USER.fullname,
-    email: MOCK_CURRENT_USER.email,
+    fullname: '',
+    email: '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -33,6 +26,49 @@ export const Profile: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Load actual profile from API or localStorage on mount
+  useEffect(() => {
+    authService.getProfile()
+      .then((profile) => {
+        if (profile) {
+          setUserData({
+            id: profile.id,
+            fullname: profile.fullname || profile.email,
+            email: profile.email,
+            avatar: profile.avatar || '',
+            study_streak: profile.study_streak || 0,
+            achievement_points: profile.achievement_points || 0,
+            role: profile.role || 'USER',
+            email_verified: true,
+          });
+          setFormData((prev) => ({
+            ...prev,
+            fullname: profile.fullname || profile.email,
+            email: profile.email,
+          }));
+        }
+      })
+      .catch(() => {
+        const stored = localStorage.getItem('user');
+        if (stored) {
+          try {
+            const u = JSON.parse(stored);
+            setUserData((prev: any) => ({
+              ...prev,
+              fullname: u.name || u.email,
+              email: u.email,
+              avatar: u.avatar || '',
+            }));
+            setFormData((prev) => ({
+              ...prev,
+              fullname: u.name || u.email,
+              email: u.email,
+            }));
+          } catch (e) {}
+        }
+      });
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -41,11 +77,17 @@ export const Profile: React.FC = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.onchange = (e: any) => {
+    input.onchange = async (e: any) => {
       const file = e.target.files[0];
       if (file) {
-        // Mock avatar upload by setting a random URL or using a dummy icon
-        setUserData({ ...userData, avatar: URL.createObjectURL(file) });
+        const localUrl = URL.createObjectURL(file);
+        setUserData({ ...userData, avatar: localUrl });
+        if (userData.id) {
+          try {
+            const updated = await authService.updateProfile(userData.id, { avatar: localUrl });
+            saveUserProfile(updated);
+          } catch (err) {}
+        }
         setSuccessMsg('Avatar updated successfully!');
         setTimeout(() => setSuccessMsg(''), 3000);
       }
@@ -53,7 +95,7 @@ export const Profile: React.FC = () => {
     input.click();
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     setErrorMsg('');
     if (!formData.fullname.trim() || !formData.email.trim()) {
       setErrorMsg('Fullname and Email are required.');
@@ -72,11 +114,18 @@ export const Profile: React.FC = () => {
     }
 
     setIsSaving(true);
-    setTimeout(() => {
+    try {
+      if (userData.id) {
+        const updated = await authService.updateProfile(userData.id, { fullname: formData.fullname });
+        saveUserProfile(updated);
+      }
+      if (formData.newPassword && formData.currentPassword) {
+        await authService.changePassword(formData.currentPassword, formData.newPassword);
+      }
+
       setUserData({
         ...userData,
         fullname: formData.fullname,
-        email: formData.email,
       });
       setFormData({
         ...formData,
@@ -84,10 +133,14 @@ export const Profile: React.FC = () => {
         newPassword: '',
         confirmPassword: '',
       });
-      setIsSaving(false);
       setSuccessMsg('Profile updated successfully!');
       setTimeout(() => setSuccessMsg(''), 3000);
-    }, 1000);
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Failed to save profile';
+      setErrorMsg(msg);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

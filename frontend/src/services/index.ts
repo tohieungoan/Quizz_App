@@ -7,3 +7,5 @@ export * from './groupService'
 export * from './notificationService'
 export * from './questionService'
 export * from './examService'
+export * from './achievementService'
+

@@ -83,3 +83,11 @@ class BadgeUserResponse(BaseModel):
     user_email: str
     
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserBadgeDetailResponse(BadgeResponse):
+    is_unlocked: bool = False
+    is_equipped: bool = False
+    current_progress: int = 0
+    unlocked_at: Optional[datetime] = None
+

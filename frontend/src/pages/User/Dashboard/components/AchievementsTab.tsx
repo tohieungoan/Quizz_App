@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Trophy,
   Zap,
@@ -15,9 +15,10 @@ import {
   Crown,
   Target,
   BookOpen,
+  Loader2,
 } from 'lucide-react';
-import { USER_ACHIEVEMENTS } from '@/data/userData';
 import { Pagination } from '@/components/ui/Pagination';
+import { achievementService, AchievementBadge } from '@/services/achievementService';
 
 interface AchievementsTabProps {
   activeTitle: string | null;
@@ -30,6 +31,9 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
   activeTitle,
   setActiveTitle,
 }) => {
+  const [achievements, setAchievements] = useState<AchievementBadge[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [selectedTier, setSelectedTier] = useState<RarityType>('All');
   const [badgeFilter, setBadgeFilter] = useState<'All' | 'Unlocked' | 'Locked'>('All');
 
@@ -40,8 +44,77 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
   const [badgePage, setBadgePage] = useState(1);
   const BADGES_PER_PAGE = 6;
 
+  // Load user badges from API
+  useEffect(() => {
+    let isMounted = true;
+    const fetchUserBadges = async () => {
+      try {
+        setIsLoading(true);
+        const data = await achievementService.getMyBadges();
+        if (isMounted && data && data.length > 0) {
+          setAchievements(data);
+          const equippedTitle = data.find((b) => b.category === 'TITLE' && b.is_equipped);
+          if (equippedTitle) {
+            setActiveTitle(equippedTitle.name);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch achievements from API', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    fetchUserBadges();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleEquipTitle = async (title: AchievementBadge) => {
+    if (!title.is_unlocked) return;
+
+    const isCurrentlyEquipped = activeTitle === title.name;
+    const nextTitleState = isCurrentlyEquipped ? null : title.name;
+    setActiveTitle(nextTitleState);
+
+    // Sync equipped title to localStorage user object and storage keys
+    const stored = localStorage.getItem('user');
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        u.equipped_title = nextTitleState;
+        localStorage.setItem('user', JSON.stringify(u));
+      } catch (e) {}
+    }
+    if (nextTitleState) {
+      localStorage.setItem('equipped_title', nextTitleState);
+      sessionStorage.setItem('equipped_title', nextTitleState);
+    } else {
+      localStorage.removeItem('equipped_title');
+      sessionStorage.removeItem('equipped_title');
+    }
+
+    try {
+      const updated = await achievementService.equipBadge(title.id);
+      setAchievements((prev) =>
+        prev.map((item) => {
+          if (item.category === 'TITLE') {
+            return {
+              ...item,
+              is_equipped: item.id === title.id ? updated.is_equipped : false,
+            };
+          }
+          return item;
+        })
+      );
+    } catch (err) {
+      console.error('Failed to equip title', err);
+    }
+  };
+
   // Filter Titles by Category === 'TITLE' and Tier
-  const titlesList = USER_ACHIEVEMENTS.filter((a) => a.category === 'TITLE');
+  const titlesList = achievements.filter((a) => a.category === 'TITLE');
   const filteredTitles = titlesList.filter((t) => {
     if (selectedTier === 'All') return true;
     return t.tier === selectedTier;
@@ -53,7 +126,7 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
   const paginatedTitles = filteredTitles.slice(titleStartIndex, titleStartIndex + TITLES_PER_PAGE);
 
   // Filter Badges by Category === 'BADGE' and Status
-  const badgesList = USER_ACHIEVEMENTS.filter((a) => a.category === 'BADGE');
+  const badgesList = achievements.filter((a) => a.category === 'BADGE');
   const filteredBadges = badgesList.filter((b) => {
     if (badgeFilter === 'Unlocked') return b.is_unlocked;
     if (badgeFilter === 'Locked') return !b.is_unlocked;
@@ -205,11 +278,7 @@ export const AchievementsTab: React.FC<AchievementsTabProps> = ({
               return (
                 <div
                   key={title.id}
-                  onClick={() => {
-                    if (title.is_unlocked) {
-                      setActiveTitle(isEquipped ? null : title.name);
-                    }
-                  }}
+                  onClick={() => handleEquipTitle(title)}
                   className={`p-5 rounded-2xl border-2 transition-all flex flex-col justify-between relative ${
                     !title.is_unlocked
                       ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'

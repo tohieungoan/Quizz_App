@@ -71,10 +71,13 @@ export const SubmitExamModal: React.FC<SubmitExamModalProps> = ({
               Your exam for <strong className="text-on-surface">{subject}</strong> has been received.
               {score !== null ? (
                 <span className="block mt-4">
-                  Your score: <span className="font-black text-2xl text-emerald-600">{score}%</span>
+                  Your score: <span className="font-black text-2xl text-emerald-600">{typeof score === 'number' ? `${score}%` : score}</span>
                 </span>
               ) : (
-                " Your grade will be published after the review period."
+                <span className="block mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200/60 text-amber-800 text-xs font-semibold flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-amber-600 text-lg flex-shrink-0">lock_clock</span>
+                  <span>Results have not been published yet. Please check back later.</span>
+                </span>
               )}
             </p>
             <div className="flex flex-col gap-3">

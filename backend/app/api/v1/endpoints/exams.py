@@ -238,7 +238,7 @@ def read_assigned_exams(
     Get a list of exams assigned (created) by the logged-in host/teacher.
     Includes aggregated stats for total assignees and submitted answers.
     """
-    exams = db.query(Exam).filter(Exam.host_id == current_user.id).all()
+    exams = db.query(Exam).filter(Exam.host_id == current_user.id).order_by(Exam.created_at.desc(), Exam.id.desc()).all()
     
     result = []
     for exam in exams:
@@ -277,7 +277,13 @@ def read_my_exams(
     """
     Get a list of exams assigned to the logged-in user.
     """
-    assignees = db.query(ExamAssignee).filter(ExamAssignee.user_id == current_user.id).all()
+    assignees = (
+        db.query(ExamAssignee)
+        .join(Exam, ExamAssignee.exam_id == Exam.id)
+        .filter(ExamAssignee.user_id == current_user.id)
+        .order_by(Exam.created_at.desc(), ExamAssignee.id.desc())
+        .all()
+    )
     
     result = []
     for assignee in assignees:
@@ -532,12 +538,40 @@ def update_exam(
                 detail="An active exam with the exact same details and schedule already exists for this group.",
             )
 
+    was_published = bool(exam.results_published)
+    is_now_publishing = "results_published" in update_data and bool(update_data["results_published"]) and not was_published
+
     for field, value in update_data.items():
         setattr(exam, field, value)
         
     db.add(exam)
     db.commit()
     db.refresh(exam)
+
+    if is_now_publishing:
+        assignees = db.query(ExamAssignee).filter(ExamAssignee.exam_id == exam.id).all()
+        for assignee in assignees:
+            user_pref = getattr(assignee.user, "notify_results_published", True) if assignee.user else True
+            if user_pref is not False:
+                notification = Notification(
+                    user_id=assignee.user_id,
+                    sender_id=current_user.id,
+                    target_type="PERSONAL",
+                    target_group_id=exam.group_id,
+                    title="RESULTS PUBLISHED",
+                    content=f"Results for your exam '{exam.title}' have been published by the host. You can now view your score and detailed results.",
+                    type="RESULTS_PUBLISHED",
+                    action_url="/dashboard",
+                )
+                db.add(notification)
+                _send_sync_ws_notification(
+                    user_id=assignee.user_id,
+                    title="RESULTS PUBLISHED",
+                    content=f"Results for your exam '{exam.title}' have been published by the host. You can now view your score and detailed results.",
+                    action_url="/dashboard"
+                )
+        db.commit()
+
     return exam
 
 
@@ -663,26 +697,51 @@ def start_exam(
     Start the assigned exam. Change status to IN_PROGRESS and log start time.
     Strictly: each user can only start once.
     """
+    # 1. Fetch exam details first
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Exam not found.",
+        )
+
+    # 2. Check assignee record or auto-create if user is a member of the target group
     assignee = db.query(ExamAssignee).filter(
         ExamAssignee.exam_id == exam_id,
         ExamAssignee.user_id == current_user.id
     ).first()
     
+    if not assignee and exam.group_id:
+        group_member = db.query(GroupMember).filter(
+            GroupMember.group_id == exam.group_id,
+            GroupMember.user_id == current_user.id
+        ).first()
+        if group_member:
+            assignee = ExamAssignee(
+                exam_id=exam_id,
+                user_id=current_user.id,
+                status="PENDING",
+            )
+            db.add(assignee)
+            db.commit()
+            db.refresh(assignee)
+
     if not assignee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="You are not assigned to this exam.",
         )
         
-    exam = assignee.exam
-    if not exam or exam.status != "ACTIVE":
+    if exam.status and exam.status.upper() in ["CLOSED", "ARCHIVED", "INACTIVE", "DRAFT"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This exam is not active.",
+            detail="This exam is currently not active or has been closed by the host.",
         )
         
     now = datetime.utcnow()
-    if exam.end_time and now > exam.end_time:
+    from datetime import timedelta
+    is_valid_deadline = exam.end_time and (exam.start_time is None or exam.end_time > (exam.start_time + timedelta(seconds=60)))
+    if is_valid_deadline and now > exam.end_time:
         assignee.status = "COMPLETED"
         db.add(assignee)
         db.commit()
@@ -698,9 +757,8 @@ def start_exam(
         )
         
     if assignee.status == "IN_PROGRESS":
-        from datetime import timedelta
         time_elapsed = now - assignee.started_at
-        allowed_duration = timedelta(minutes=exam.timer)
+        allowed_duration = timedelta(minutes=exam.timer or 60)
         if time_elapsed > allowed_duration:
             score = _helper_submit_exam(db, assignee)
             raise HTTPException(
@@ -728,27 +786,49 @@ def take_exam(
     Get exam metadata and questions list. Hides is_correct for safety.
     Auto-submits if time limit has passed.
     """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Exam not found.",
+        )
+
     assignee = db.query(ExamAssignee).filter(
         ExamAssignee.exam_id == exam_id,
         ExamAssignee.user_id == current_user.id
     ).first()
     
+    if not assignee and exam.group_id:
+        group_member = db.query(GroupMember).filter(
+            GroupMember.group_id == exam.group_id,
+            GroupMember.user_id == current_user.id
+        ).first()
+        if group_member:
+            assignee = ExamAssignee(
+                exam_id=exam_id,
+                user_id=current_user.id,
+                status="PENDING",
+            )
+            db.add(assignee)
+            db.commit()
+            db.refresh(assignee)
+
     if not assignee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="You are not assigned to this exam.",
         )
         
-    exam = assignee.exam
-    if not exam or exam.status != "ACTIVE":
+    if exam.status and exam.status.upper() in ["CLOSED", "ARCHIVED", "INACTIVE", "DRAFT"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This exam is not active.",
+            detail="This exam is currently not active or has been closed by the host.",
         )
 
     now = datetime.utcnow()
     from datetime import timedelta
-    if exam.end_time and now > exam.end_time:
+    is_valid_deadline = exam.end_time and (exam.start_time is None or exam.end_time > (exam.start_time + timedelta(seconds=60)))
+    if is_valid_deadline and now > exam.end_time:
         if assignee.status != "COMPLETED":
             _helper_submit_exam(db, assignee)
         raise HTTPException(
@@ -782,6 +862,9 @@ def take_exam(
     quiz = exam.quiz
     questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.id.asc()).all()
 
+    existing_answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
+    user_answer_map = {ans.question_id: ans for ans in existing_answers}
+
     formatted_questions = []
     for q in questions:
         options = db.query(QuestionOption).filter(QuestionOption.question_id == q.id).order_by(QuestionOption.id.asc()).all()
@@ -790,15 +873,29 @@ def take_exam(
             formatted_options.append({
                 "id": opt.id,
                 "option_text": opt.content or "",
-                "order": idx + 1
+                "order": idx + 1,
+                "media_url": opt.media_url,
+                "audio_url": opt.audio_url,
             })
             
+        user_ans = user_answer_map.get(q.id)
+        user_ans_dict = None
+        if user_ans:
+            user_ans_dict = {
+                "selected_option_id": user_ans.selected_option_id,
+                "answer_text": user_ans.answer_text,
+            }
+
         formatted_questions.append({
             "id": q.id,
             "question_text": q.content or "",
             "question_type": q.type or "MULTIPLE_CHOICE",
             "order": len(formatted_questions) + 1,
             "points": q.time_limit or 1.0,
+            "media_url": q.media_url,
+            "audio_url": q.audio_url,
+            "audio_play_limit": q.audio_play_limit or 0,
+            "user_answer": user_ans_dict,
             "options": formatted_options
         })
 
@@ -950,7 +1047,12 @@ def submit_exam(
         )
 
     score = _helper_submit_exam(db, assignee)
-    return {"message": "Exam submitted successfully.", "score": f"{score}%"}
+    is_published = assignee.exam.results_published if (assignee.exam and assignee.exam.results_published is not None) else False
+    return {
+        "message": "Exam submitted successfully.",
+        "score": f"{score}%" if is_published else None,
+        "results_published": is_published
+    }
 
 
 @router.post("/{exam_id}/abandon", summary="Abandon/exit the exam (marked as completed with current answers)")
@@ -974,8 +1076,14 @@ def abandon_exam(
             detail="You are not assigned to this exam.",
         )
         
+    is_published = assignee.exam.results_published if (assignee.exam and assignee.exam.results_published is not None) else False
+
     if assignee.status == "COMPLETED":
-        return {"message": "Exam was already completed.", "score": f"{assignee.score}%"}
+        return {
+            "message": "Exam was already completed.",
+            "score": f"{assignee.score}%" if is_published else None,
+            "results_published": is_published
+        }
 
     if assignee.status == "PENDING":
         assignee.status = "COMPLETED"
@@ -983,10 +1091,18 @@ def abandon_exam(
         assignee.submitted_at = datetime.utcnow()
         db.add(assignee)
         db.commit()
-        return {"message": "Exam abandoned and locked.", "score": "0%"}
+        return {
+            "message": "Exam abandoned and locked.",
+            "score": "0%" if is_published else None,
+            "results_published": is_published
+        }
 
     score = _helper_submit_exam(db, assignee)
-    return {"message": "Exam abandoned (exited). Locked from re-taking.", "score": f"{score}%"}
+    return {
+        "message": "Exam abandoned (exited). Locked from re-taking.",
+        "score": f"{score}%" if is_published else None,
+        "results_published": is_published
+    }
 
 
 @router.get("/{exam_id}/missed-questions", summary="Get most missed questions in this exam")
