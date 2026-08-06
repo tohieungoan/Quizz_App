@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Award, Flame, CheckSquare, Play, TrendingUp, PieChart, BookOpen, Clock, Sparkles } from 'lucide-react';
+import { Award, Flame, CheckSquare, Play, TrendingUp, PieChart, BookOpen, Clock, Sparkles, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
 import { quizService, roomService, authService } from '@/services';
 import { getDailyActivityDates } from '@/utils/streakTracker';
 
 interface OverviewTabProps {
   onStartExam: (exam: any) => void;
   onJoinRoom: () => void;
+  onViewAllExams?: () => void;
+  onViewHistory?: () => void;
   assignedExams?: any[];
   isLoadingExams?: boolean;
 }
@@ -13,6 +15,8 @@ interface OverviewTabProps {
 export const OverviewTab: React.FC<OverviewTabProps> = ({ 
   onStartExam, 
   onJoinRoom,
+  onViewAllExams,
+  onViewHistory,
   assignedExams = [],
   isLoadingExams = false
 }) => {
@@ -22,6 +26,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const [userName, setUserName] = useState<string>('Student');
   const [backendStreak, setBackendStreak] = useState<number | null>(null);
   const [backendPoints, setBackendPoints] = useState<number | null>(null);
+  const [showAllPending, setShowAllPending] = useState<boolean>(false);
+  const [showAllRecent, setShowAllRecent] = useState<boolean>(false);
 
   useEffect(() => {
     // 0. Fetch profile directly from Backend User table (/auth/me)
@@ -197,11 +203,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   // Subject proficiency calculated dynamically from assigned exams
   const subjectProficiency = useMemo(() => {
     if (assignedExams.length === 0) {
-      return [
-        { subject: 'Mathematics & Calculus', score: 90, level: 'Expert', color: 'bg-primary' },
-        { subject: 'Computer Science & Web', score: 85, level: 'Advanced', color: 'bg-indigo-600' },
-        { subject: 'General Knowledge', score: 75, level: 'Proficient', color: 'bg-emerald-500' },
-      ];
+      return [];
     }
 
     const map: Record<string, { totalScore: number; count: number; totalExams: number }> = {};
@@ -242,7 +244,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       return [];
     }
 
-    return [...assignedExams].slice(0, 5).map((ex) => ({
+    return [...assignedExams].map((ex) => ({
       id: ex.id,
       name: ex.title,
       type: ex.subject || 'Exam',
@@ -354,7 +356,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 No pending assigned exams. All clear!
               </div>
             ) : (
-              pendingExams.map((exam) => (
+              (showAllPending ? pendingExams : pendingExams.slice(0, 4)).map((exam) => (
                 <div
                   key={exam.id}
                   className="p-4 rounded-xl border border-outline-variant/40 hover:border-primary/40 transition-all flex items-center justify-between gap-4 bg-surface-container-lowest"
@@ -374,6 +376,33 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </div>
               ))
             )}
+
+            {pendingExams.length > 4 && (
+              <button
+                onClick={() => {
+                  if (onViewAllExams) {
+                    onViewAllExams();
+                  } else {
+                    setShowAllPending((prev) => !prev);
+                  }
+                }}
+                className="w-full py-2 text-xs font-bold text-primary hover:bg-primary/5 rounded-xl transition-all flex items-center justify-center gap-1 border border-dashed border-primary/30 mt-2"
+              >
+                {onViewAllExams ? (
+                  <>
+                    View More ({pendingExams.length - 4} more) <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                ) : showAllPending ? (
+                  <>
+                    Show Less <ChevronUp className="w-3.5 h-3.5" />
+                  </>
+                ) : (
+                  <>
+                    View More ({pendingExams.length - 4} more) <ChevronDown className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -389,7 +418,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 No recent activity recorded yet.
               </div>
             ) : (
-              recentActivities.map((act) => (
+              (showAllRecent ? recentActivities : recentActivities.slice(0, 4)).map((act) => (
                 <div
                   key={act.id}
                   className="p-4 rounded-xl border border-outline-variant/30 flex items-center justify-between gap-4 bg-surface-container-lowest"
@@ -413,6 +442,33 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   </span>
                 </div>
               ))
+            )}
+
+            {recentActivities.length > 4 && (
+              <button
+                onClick={() => {
+                  if (onViewHistory) {
+                    onViewHistory();
+                  } else {
+                    setShowAllRecent((prev) => !prev);
+                  }
+                }}
+                className="w-full py-2 text-xs font-bold text-primary hover:bg-primary/5 rounded-xl transition-all flex items-center justify-center gap-1 border border-dashed border-primary/30 mt-2"
+              >
+                {onViewHistory ? (
+                  <>
+                    View More ({recentActivities.length - 4} more) <ArrowRight className="w-3.5 h-3.5" />
+                  </>
+                ) : showAllRecent ? (
+                  <>
+                    Show Less <ChevronUp className="w-3.5 h-3.5" />
+                  </>
+                ) : (
+                  <>
+                    View More ({recentActivities.length - 4} more) <ChevronDown className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
             )}
           </div>
         </div>
@@ -502,25 +558,31 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
 
           <div className="space-y-4">
-            {subjectProficiency.map((sub, i) => (
-              <div key={i} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-on-surface">{sub.subject}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
-                      {sub.level}
-                    </span>
-                    <span className="font-extrabold text-on-surface">{sub.score}%</span>
+            {subjectProficiency.length === 0 ? (
+              <div className="py-8 text-center text-xs text-on-surface-variant italic">
+                No subject proficiency data available yet.
+              </div>
+            ) : (
+              subjectProficiency.map((sub, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-on-surface">{sub.subject}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
+                        {sub.level}
+                      </span>
+                      <span className="font-extrabold text-on-surface">{sub.score}%</span>
+                    </div>
+                  </div>
+                  <div className="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${sub.color}`}
+                      style={{ width: `${sub.score}%` }}
+                    />
                   </div>
                 </div>
-                <div className="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${sub.color}`}
-                    style={{ width: `${sub.score}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

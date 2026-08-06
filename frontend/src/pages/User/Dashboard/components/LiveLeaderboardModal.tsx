@@ -105,7 +105,7 @@ export const LiveLeaderboardModal: React.FC<LiveLeaderboardModalProps> = ({
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center font-bold text-purple-700">{row.score} pts</td>
+                      <td className="px-4 py-3 text-center font-bold text-purple-700">{Math.round(Number(row.score || 0))} pts</td>
                       <td className="px-4 py-3 text-right font-semibold text-green-700">{row.accuracy}</td>
                     </tr>
                   ))}

@@ -93,6 +93,7 @@ export const Profile: React.FC = () => {
 
     if (!file.type.startsWith('image/')) {
       toast.error('Please select a valid image file (PNG, JPG, WEBP).');
+>>>>>>> origin/main
       return;
     }
 

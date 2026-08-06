@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award } from 'lucide-react'
 import { roomService } from '../../../services/roomService'
+import { useAuth } from '../../../hooks/useAuth'
+import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
 
 interface Option {
   id: number
@@ -28,33 +30,10 @@ const AVATAR_COLORS = [
   { bg: 'bg-[#ffebee]', text: 'text-[#c62828]' },
 ]
 
-const BADGES = ['Scholar', 'Speedy', 'Rookie', 'Brainy', 'Champion', 'Challenger', 'Guru', 'Strategist']
-const getPlayerBadge = (name: string): string => {
-  if (!name) return 'Scholar'
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  const index = Math.abs(hash) % BADGES.length
-  return BADGES[index]
-}
-
-const getBadgeStyle = (badge: string): string => {
-  switch (badge) {
-    case 'Champion': return 'bg-amber-100 text-amber-800 border-amber-200'
-    case 'Scholar': return 'bg-blue-100 text-blue-800 border-blue-200'
-    case 'Speedy': return 'bg-rose-100 text-rose-800 border-rose-200'
-    case 'Brainy': return 'bg-purple-100 text-purple-800 border-purple-200'
-    case 'Challenger': return 'bg-teal-100 text-teal-800 border-teal-200'
-    case 'Guru': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
-    case 'Strategist': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-    default: return 'bg-slate-100 text-slate-800 border-slate-200'
-  }
-}
-
 export const ParticipantAnswer: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { status } = useAuth()
 
   const state = location.state as { 
     nickname?: string 
@@ -92,6 +71,18 @@ export const ParticipantAnswer: React.FC = () => {
     sessionStorage.setItem('play_streak', String(streak))
     sessionStorage.setItem('play_accumulated_score', String(accumulatedScore))
   }, [roomCode, nickname, participantId, roomId, roomMode, streak, accumulatedScore])
+
+  // Redirect if user has not joined a room before accessing /play
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!roomCode) {
+      if (status === 'authenticated') {
+        navigate('/dashboard', { replace: true })
+      } else {
+        navigate('/', { replace: true })
+      }
+    }
+  }, [roomCode, status, navigate])
 
   // Dynamic Gameplay States
   const [activeQuestion, setActiveQuestion] = useState<ActiveQuestion | null>(null)
@@ -134,6 +125,17 @@ export const ParticipantAnswer: React.FC = () => {
     }
   }
 
+  // Clear play session storage helper
+  const clearPlaySession = () => {
+    sessionStorage.removeItem('play_room_code')
+    sessionStorage.removeItem('play_participant_id')
+    sessionStorage.removeItem('play_room_id')
+    sessionStorage.removeItem('play_nickname')
+    sessionStorage.removeItem('play_streak')
+    sessionStorage.removeItem('play_accumulated_score')
+    sessionStorage.removeItem('play_room_mode')
+  }
+
   // Fetch the active question from API
   const fetchRoomQuestion = async () => {
     if (!roomCode) return
@@ -150,7 +152,8 @@ export const ParticipantAnswer: React.FC = () => {
       
       if (roomData.status === 'ENDED') {
         alert("The quiz session has been ended.")
-        navigate(localStorage.getItem('token') ? '/dashboard' : '/')
+        clearPlaySession()
+        navigate(status === 'authenticated' ? '/dashboard' : '/', { replace: true })
         return
       }
 
@@ -165,6 +168,9 @@ export const ParticipantAnswer: React.FC = () => {
           media_url: roomData.active_question.media_url,
           audio_play_limit: roomData.active_question.audio_play_limit
         })
+        if (roomData.active_question.correct_option_key) {
+          setCorrectOptionKey(roomData.active_question.correct_option_key)
+        }
         
         // Sync dynamic remaining time Left based on room question start timestamp
         if (roomData.current_question_started_at) {
@@ -182,7 +188,9 @@ export const ParticipantAnswer: React.FC = () => {
       setLoading(false)
     } catch (err) {
       console.error("Failed to fetch active question:", err)
+      clearPlaySession()
       setLoading(false)
+      navigate(status === 'authenticated' ? '/dashboard' : '/', { replace: true })
     }
   }
 
@@ -295,6 +303,9 @@ export const ParticipantAnswer: React.FC = () => {
               setPointsEarned(0)
               setCorrectOptionKey(null)
               setAnswerText('')
+              if (location.state) {
+                location.state.activePowerUp = null
+              }
               
               // Fetch details of the next question
               fetchRoomQuestion()
@@ -400,11 +411,7 @@ export const ParticipantAnswer: React.FC = () => {
       }
 
       const isAnsCorrect = res.is_correct
-      let pointsForThisQuestion = Math.round(res.score || 0)
-
-      if (isAnsCorrect && activePowerUp === 'double') {
-        pointsForThisQuestion = pointsForThisQuestion * 2
-      }
+      const pointsForThisQuestion = Math.round(res.score || 0)
 
       const totalNewScore = res.total_score !== undefined && res.total_score !== null ? res.total_score : accumulatedScore + (isAnsCorrect ? pointsForThisQuestion : 0)
       const updatedStreak = isAnsCorrect ? streak + 1 : (activePowerUp === 'shield' ? streak : 0)
@@ -422,6 +429,7 @@ export const ParticipantAnswer: React.FC = () => {
       if (location.state) {
         location.state.score = totalNewScore
         location.state.streak = updatedStreak
+        location.state.activePowerUp = null
       }
 
       if (resultTimeoutRef.current) {
@@ -514,6 +522,9 @@ export const ParticipantAnswer: React.FC = () => {
     )
   }
 
+  const myBadge = getPlayerBadge(nickname)
+  const myBadgeStyle = getBadgeStyle(myBadge)
+
   return (
     <div className="w-full min-h-screen bg-[#f9f9ff] text-on-surface font-body-md relative overflow-hidden flex flex-col">
       {/* Background Dots */}
@@ -530,23 +541,39 @@ export const ParticipantAnswer: React.FC = () => {
         
         {/* Header Dashboard */}
         <header className="flex flex-col gap-3">
-          <div className="flex justify-between items-center bg-white px-4 py-3.5 rounded-2xl border-2 border-outline-variant/30 shadow-md">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black text-slate-800">Question {questionIndex}</span>
-              {roomMode === 'EXAM' && (
-                <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded-full">
-                  Exam Mode
-                </span>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-secondary-container bg-[#005236] border border-secondary px-3 py-1 rounded-full text-xs font-black">
-                <Flame className="w-4 h-4 fill-current text-secondary-container animate-bounce" />
-                <span>{streak} Streak</span>
+          {/* Player Badge & Score Bar */}
+          <div className="flex items-center justify-between bg-white px-4 py-2.5 rounded-2xl border-2 border-outline-variant/30 shadow-md">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-black text-xs border border-primary/20">
+                {nickname.slice(0, 2).toUpperCase()}
               </div>
-              <span className="text-sm font-extrabold text-primary">{accumulatedScore} Pts</span>
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-black text-slate-800 leading-tight truncate max-w-[120px]">{nickname}</span>
+                <span className={`text-[9px] font-black px-2 py-0.2 rounded-full border w-fit mt-0.5 ${myBadgeStyle}`}>
+                  🏆 {myBadge}
+                </span>
+              </div>
             </div>
+
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs font-black">
+                <Flame className="w-3.5 h-3.5 fill-current text-amber-500 animate-bounce" />
+                <span>{streak}</span>
+              </div>
+              <span className="text-xs font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-full">
+                {Math.round(accumulatedScore)} Pts
+              </span>
+            </div>
+          </div>
+
+          {/* Question Index Bar */}
+          <div className="flex justify-between items-center bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">
+            <span>Question {questionIndex}</span>
+            {roomMode === 'EXAM' && (
+              <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded-full">
+                Exam Mode
+              </span>
+            )}
           </div>
 
           {/* Time Countdown Progress Bar */}
@@ -645,36 +672,55 @@ export const ParticipantAnswer: React.FC = () => {
           </div>
         ) : (
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            {(activeQuestion.options || []).map((opt) => {
-              // Apply 50:50 power-up logic (disabled in EXAM mode)
-              const isFiftyFiftyHidden = effectivePowerUp === 'fifty' && (opt.key === 'A' || opt.key === 'D')
-              if (isFiftyFiftyHidden && !isAnswered) {
-                return (
-                  <div 
-                    key={opt.key}
-                    className="p-5 rounded-2xl border-2 border-dashed border-outline-variant bg-[#eaeaff]/30 opacity-30 flex items-center justify-center h-full min-h-[72px]"
-                  >
-                    <span className="text-xs font-bold italic text-slate-500">Option eliminated (50:50)</span>
-                  </div>
-                )
+            {(() => {
+              // Dynamically determine 2 incorrect options to eliminate when 50:50 power-up is active
+              const options = activeQuestion.options || []
+              let eliminatedKeys: string[] = []
+              if (effectivePowerUp === 'fifty' && options.length > 2) {
+                const correctKey = correctOptionKey || (activeQuestion as any).correct_option_key
+                const incorrectOptions = options.filter(o => o.key !== correctKey)
+                
+                // Shuffle incorrect options randomly using question id seed
+                const seed = (activeQuestion.id || 1) * 37 + nickname.length
+                const shuffled = [...incorrectOptions].sort((a, b) => {
+                  const hashA = (a.key.charCodeAt(0) * seed) % 17
+                  const hashB = (b.key.charCodeAt(0) * seed) % 17
+                  return hashA - hashB
+                })
+                
+                eliminatedKeys = shuffled.slice(0, 2).map(o => o.key)
               }
 
-              return (
-                <button
-                  key={opt.key}
-                  disabled={isAnswered}
-                  onClick={() => handleAnswerSubmit(opt.id, opt.key)}
-                  className={`w-full p-5 rounded-2xl border-2 text-left transition-all duration-200 flex items-center gap-4 relative overflow-hidden shadow-md active:scale-98 cursor-pointer ${getOptionStyle(opt.key)}`}
-                >
-                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm ${getLetterBgColor(opt.key)} shadow-md flex-shrink-0`}>
-                    {opt.key}
-                  </span>
-                  <span className="font-headline-md text-sm font-extrabold leading-tight">
-                    {opt.label}
-                  </span>
-                </button>
-              )
-            })}
+              return options.map((opt) => {
+                const isFiftyFiftyHidden = effectivePowerUp === 'fifty' && eliminatedKeys.includes(opt.key)
+                if (isFiftyFiftyHidden && !isAnswered) {
+                  return (
+                    <div 
+                      key={opt.key}
+                      className="p-5 rounded-2xl border-2 border-dashed border-outline-variant bg-[#eaeaff]/30 opacity-30 flex items-center justify-center h-full min-h-[72px]"
+                    >
+                      <span className="text-xs font-bold italic text-slate-500">Option eliminated (50:50)</span>
+                    </div>
+                  )
+                }
+
+                return (
+                  <button
+                    key={opt.key}
+                    disabled={isAnswered}
+                    onClick={() => handleAnswerSubmit(opt.id, opt.key)}
+                    className={`w-full p-5 rounded-2xl border-2 text-left transition-all duration-200 flex items-center gap-4 relative overflow-hidden shadow-md active:scale-98 cursor-pointer ${getOptionStyle(opt.key)}`}
+                  >
+                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm ${getLetterBgColor(opt.key)} shadow-md flex-shrink-0`}>
+                      {opt.key}
+                    </span>
+                    <span className="font-headline-md text-sm font-extrabold leading-tight">
+                      {opt.label}
+                    </span>
+                  </button>
+                )
+              })
+            })()}
           </section>
         )}
 
@@ -757,8 +803,13 @@ export const ParticipantAnswer: React.FC = () => {
                     if (myIndex === -1) return null
                     return (
                       <div className="mb-3 p-2.5 bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl flex items-center justify-between text-xs font-black">
-                        <span className="text-primary">Your Current Rank: #{myIndex + 1} of {leaderboardRoster.length}</span>
-                        <span className="text-secondary">{accumulatedScore} pts</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-primary">Your Current Rank: #{myIndex + 1} of {leaderboardRoster.length}</span>
+                          <span className={`text-[9px] font-black px-2 py-0.2 rounded-full border ${getBadgeStyle(getPlayerBadge(nickname))}`}>
+                            🏆 {getPlayerBadge(nickname)}
+                          </span>
+                        </div>
+                        <span className="text-secondary">{Math.round(accumulatedScore)} pts</span>
                       </div>
                     )
                   })()}
@@ -771,6 +822,7 @@ export const ParticipantAnswer: React.FC = () => {
                       if (idx === 0) rankBadge = '🥇 1st'
                       else if (idx === 1) rankBadge = '🥈 2nd'
                       else if (idx === 2) rankBadge = '🥉 3rd'
+                      const pBadge = getPlayerBadge(p.nickname, p.equipped_title)
 
                       return (
                         <div
@@ -782,8 +834,11 @@ export const ParticipantAnswer: React.FC = () => {
                           <div className="flex items-center gap-2 truncate">
                             <span className="text-[10px] font-black opacity-90">{rankBadge}</span>
                             <span className="truncate">{p.nickname}</span>
+                            <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-full border ${getBadgeStyle(pBadge)}`}>
+                              🏆 {pBadge}
+                            </span>
                           </div>
-                          <span className="font-black flex-shrink-0">{p.score} pts</span>
+                          <span className="font-black flex-shrink-0">{Math.round(p.score)} pts</span>
                         </div>
                       )
                     })}

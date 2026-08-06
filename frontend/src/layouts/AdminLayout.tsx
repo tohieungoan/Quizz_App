@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header as AdminHeader } from './AdminHeader';
 import { ViewState } from '../types';
@@ -8,6 +8,15 @@ export function AdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Role guard: Only ADMIN and SUPER_ADMIN can access admin routes
+  const storedUser = localStorage.getItem('user');
+  const user = storedUser ? JSON.parse(storedUser) : null;
+  const isAdmin = user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN');
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleNavigate = (view: ViewState, context?: any) => {
     if (view === 'quiz-creator') {

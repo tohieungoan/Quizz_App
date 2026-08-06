@@ -54,8 +54,8 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
   const validScores = participants
     .map(p => p.score)
     .filter(s => s !== undefined && s !== null && typeof s === 'number');
-  const averageScore = validScores.length > 0 ? (validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(1) : '0';
-  const highestScore = validScores.length > 0 ? Math.max(...validScores) : 0;
+  const averageScore = validScores.length > 0 ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : '0';
+  const highestScore = validScores.length > 0 ? Math.round(Math.max(...validScores)) : 0;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -214,7 +214,7 @@ export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProp
                             {formatJoinedTime(p.joined_at)}
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <span className="font-mono font-bold text-primary">{p.score ?? 0}</span>
+                            <span className="font-mono font-bold text-primary">{Math.round(p.score ?? 0)}</span>
                           </td>
                         </tr>
                       ))

@@ -16,6 +16,7 @@ export interface UserProfile {
   email_verified?: boolean
   study_streak?: number
   achievement_points?: number
+  equipped_title?: string | null
   last_login?: string | null
   created_at?: string
   updated_at?: string
@@ -26,6 +27,7 @@ export interface StoredUser {
   email: string
   avatar: string | null
   role: string
+  equipped_title?: string | null
 }
 
 export interface UserSetting {

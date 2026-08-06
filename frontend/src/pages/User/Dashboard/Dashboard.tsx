@@ -12,7 +12,7 @@ import { SettingsTab } from './components/SettingsTab';
 import { HostRoomModal } from './components/HostRoomModal';
 import { USER_ASSIGNED_EXAMS } from '@/data/userData';
 import { useLogout } from '@/hooks/useLogout';
-import { examService } from '@/services';
+import { examService, achievementService } from '@/services';
 
 type TabType = 'overview' | 'join_room' | 'assigned_exams' | 'history' | 'achievements' | 'host_studio' | 'settings';
 
@@ -54,7 +54,54 @@ export const Dashboard: React.FC = () => {
     sessionStorage.setItem('dashboard_active_tab', tab);
   };
 
-  const [activeTitle, setActiveTitle] = useState<string | null>('Perfect Score');
+  const [activeTitle, setActiveTitle] = useState<string | null>(null);
+
+  // Load equipped title from database on mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchEquippedTitle = async () => {
+      try {
+        const badges = await achievementService.getMyBadges();
+        if (isMounted && badges) {
+          const equipped = badges.find((b) => b.category === 'TITLE' && b.is_equipped);
+          if (equipped) {
+            setActiveTitle(equipped.name);
+            localStorage.setItem('equipped_title', equipped.name);
+            sessionStorage.setItem('equipped_title', equipped.name);
+            const stored = localStorage.getItem('user');
+            if (stored) {
+              try {
+                const u = JSON.parse(stored);
+                u.equipped_title = equipped.name;
+                localStorage.setItem('user', JSON.stringify(u));
+              } catch (e) {}
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load equipped title', err);
+      }
+      
+      // Fallback: check stored user in localStorage
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (isMounted && parsed?.equipped_title) {
+            setActiveTitle(parsed.equipped_title);
+          }
+        } catch {
+          // ignore JSON parse error
+        }
+      }
+    };
+
+    fetchEquippedTitle();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const [hostRoomModalOpen, setHostRoomModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -135,7 +182,8 @@ export const Dashboard: React.FC = () => {
 
   const handleStartExam = (exam: any) => {
     sessionStorage.setItem('dashboard_active_tab', activeTab);
-    navigate('/exam', { state: { ...exam, activeTab } });
+    const realExamId = exam.exam_id || exam.id;
+    navigate('/exam', { state: { ...exam, exam_id: realExamId, id: realExamId, activeTab } });
   };
 
   const handleCreateQuiz = () => {
@@ -258,6 +306,8 @@ export const Dashboard: React.FC = () => {
             <OverviewTab
               onStartExam={handleStartExam}
               onJoinRoom={() => setActiveTab('join_room')}
+              onViewAllExams={() => setActiveTab('assigned_exams')}
+              onViewHistory={() => setActiveTab('history')}
               assignedExams={studentExams}
               isLoadingExams={isLoadingExams}
             />

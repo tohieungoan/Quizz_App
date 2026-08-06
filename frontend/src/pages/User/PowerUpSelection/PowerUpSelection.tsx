@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Zap, Clock, Shield, Flame, HelpCircle, ArrowLeft, Check, Sparkles } from 'lucide-react'
+import { Zap, Clock, Shield, HelpCircle, ArrowLeft, Check, Sparkles, Flame } from 'lucide-react'
 
 interface PowerUp {
   id: string
@@ -13,61 +13,93 @@ interface PowerUp {
   unlocked: boolean
 }
 
+const BASE_POWERUPS = [
+  {
+    id: 'double',
+    name: 'Double Points (x2)',
+    description: 'Double the score you receive on the next correct answer.',
+    icon: <Zap className="w-6 h-6 fill-current" />,
+    color: 'text-amber-650 border-amber-400 bg-amber-50',
+    bgLight: 'from-amber-100 to-amber-200/40 border-amber-350 hover:bg-amber-200/60',
+  },
+  {
+    id: 'fifty',
+    name: '50:50 Split',
+    description: 'Eliminate two incorrect options for the current question.',
+    icon: <HelpCircle className="w-6 h-6" />,
+    color: 'text-blue-650 border-blue-400 bg-blue-50',
+    bgLight: 'from-blue-100 to-blue-200/40 border-blue-350 hover:bg-blue-200/60',
+  },
+  {
+    id: 'shield',
+    name: 'Streak Shield',
+    description: 'Protects your active streak even if you answer incorrectly.',
+    icon: <Shield className="w-6 h-6 fill-current" />,
+    color: 'text-indigo-650 border-indigo-400 bg-indigo-50',
+    bgLight: 'from-indigo-100 to-indigo-200/40 border-indigo-350 hover:bg-indigo-200/60',
+  }
+]
+
 export const PowerUpSelection: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  
+
   // State variables passed in React Router state
   const state = location.state as { nickname?: string; roomCode?: string; score?: number; streak?: number } | null
   const nickname = state?.nickname || 'Guest'
-  const roomCode = state?.roomCode || '823914'
-  const currentScore = state?.score ?? 3450
-  const currentStreak = state?.streak ?? 3
+  const roomCode = state?.roomCode || 'ROOM'
+  const currentScore = state?.score ?? 0
+  const currentStreak = state?.streak ?? 0
 
-  const [powerUps, setPowerUps] = useState<PowerUp[]>([
-    {
-      id: 'double',
-      name: 'Double Points (x2)',
-      description: 'Double the score you receive on the next correct answer.',
-      icon: <Zap className="w-6 h-6 fill-current" />,
-      color: 'text-amber-650 border-amber-400 bg-amber-50',
-      bgLight: 'from-amber-100 to-amber-200/40 border-amber-350 hover:bg-amber-200/60',
-      count: 2,
-      unlocked: true
-    },
-    {
-      id: 'fifty',
-      name: '50:50 Split',
-      description: 'Eliminate two incorrect options for the current question.',
-      icon: <HelpCircle className="w-6 h-6" />,
-      color: 'text-blue-650 border-blue-400 bg-blue-50',
-      bgLight: 'from-blue-100 to-blue-200/40 border-blue-350 hover:bg-blue-200/60',
-      count: 1,
-      unlocked: true
-    },
-    {
-      id: 'freeze',
-      name: 'Time Freeze',
-      description: 'Stop the countdown clock for 10 seconds to read the question.',
-      icon: <Clock className="w-6 h-6" />,
-      color: 'text-cyan-650 border-cyan-400 bg-cyan-50',
-      bgLight: 'from-cyan-100 to-cyan-200/40 border-cyan-350 hover:bg-cyan-200/60',
-      count: 3,
-      unlocked: true
-    },
-    {
-      id: 'shield',
-      name: 'Streak Shield',
-      description: 'Protects your active streak even if you answer incorrectly.',
-      icon: <Shield className="w-6 h-6 fill-current" />,
-      color: 'text-indigo-650 border-indigo-400 bg-indigo-50',
-      bgLight: 'from-indigo-100 to-indigo-200/40 border-indigo-350 hover:bg-indigo-200/60',
-      count: 1,
-      unlocked: true
-    }
-  ])
-
+  const [powerUps, setPowerUps] = useState<PowerUp[]>([])
   const [selectedPowerUpId, setSelectedPowerUpId] = useState<string | null>(null)
+
+  // Initialize randomized power-up inventory for the participant in this session
+  useEffect(() => {
+    const storageKey = `powerups_${roomCode}_${nickname}`
+    const saved = sessionStorage.getItem(storageKey)
+
+    if (saved) {
+      try {
+        const parsed: Record<string, number> = JSON.parse(saved)
+        const initialized = BASE_POWERUPS.map(bp => ({
+          ...bp,
+          count: parsed[bp.id] ?? 0,
+          unlocked: true
+        }))
+        setPowerUps(initialized)
+        return
+      } catch (_) {}
+    }
+
+    // Generate randomized item counts for this player (1-2 uses per item max, reduced totals)
+    let hash = 0
+    const str = `${roomCode}_${nickname}`
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i)
+      hash |= 0
+    }
+
+    const randomCounts: Record<string, number> = {
+      double: Math.abs(hash) % 3 === 0 ? 2 : (Math.abs(hash) % 2 === 0 ? 1 : 0),
+      fifty: Math.abs(hash >> 2) % 2 === 0 ? 1 : 0,
+      shield: Math.abs(hash >> 6) % 2 === 0 ? 1 : 0,
+    }
+
+    // Ensure total available items is non-zero (1 to 3 items total per user)
+    const totalCount = Object.values(randomCounts).reduce((a, b) => a + b, 0)
+    if (totalCount === 0) {
+      randomCounts.double = 1
+      randomCounts.shield = 1
+    }
+
+    sessionStorage.setItem(storageKey, JSON.stringify(randomCounts))
+    setPowerUps(BASE_POWERUPS.map(bp => ({
+      ...bp,
+      count: randomCounts[bp.id] ?? 0,
+      unlocked: true
+    })))
+  }, [roomCode, nickname])
 
   const handleSelect = (id: string) => {
     const target = powerUps.find(p => p.id === id)
@@ -77,12 +109,29 @@ export const PowerUpSelection: React.FC = () => {
   }
 
   const handleApply = () => {
-    // Navigate back to the answer screen with the selected power-up
-    navigate('/play', { 
-      state: { 
-        ...state, 
-        activePowerUp: selectedPowerUpId 
-      } 
+    if (!selectedPowerUpId) return
+
+    // Decrement item count in sessionStorage upon equipping
+    const storageKey = `powerups_${roomCode}_${nickname}`
+    const saved = sessionStorage.getItem(storageKey)
+    if (saved) {
+      try {
+        const counts: Record<string, number> = JSON.parse(saved)
+        if (counts[selectedPowerUpId]) {
+          counts[selectedPowerUpId] = Math.max(0, counts[selectedPowerUpId] - 1)
+          sessionStorage.setItem(storageKey, JSON.stringify(counts))
+        }
+      } catch (_) {}
+    }
+
+
+
+    // Return to gameplay screen with active booster
+    navigate('/play', {
+      state: {
+        ...state,
+        activePowerUp: selectedPowerUpId
+      }
     })
   }
 
@@ -100,7 +149,7 @@ export const PowerUpSelection: React.FC = () => {
 
       {/* Fullscreen Wrapper */}
       <div className="relative z-10 flex-grow flex flex-col max-w-lg mx-auto w-full px-4 py-6">
-        
+
         {/* Header */}
         <header className="flex items-center justify-between mb-8">
           <button
@@ -109,11 +158,11 @@ export const PowerUpSelection: React.FC = () => {
           >
             <ArrowLeft className="w-4 h-4" /> Back to Game
           </button>
-          
+
           <div className="text-right">
             <span className="font-label-bold text-[10px] tracking-widest text-outline uppercase font-bold">Player Stats</span>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="font-headline-md text-base font-extrabold text-primary">{currentScore} pts</span>
+              <span className="font-headline-md text-base font-extrabold text-primary">{Math.round(currentScore)} pts</span>
               <div className="flex items-center gap-1 text-secondary bg-secondary-container px-3 py-1 rounded-full text-xs font-bold border border-secondary">
                 <Flame className="w-3.5 h-3.5 fill-current text-on-secondary-container animate-pulse" /> {currentStreak}
               </div>
@@ -128,7 +177,7 @@ export const PowerUpSelection: React.FC = () => {
           </div>
           <h1 className="font-headline-md text-3xl font-extrabold text-on-surface">Select a Power-Up</h1>
           <p className="font-body-md text-xs text-slate-800 mt-2 leading-relaxed font-medium">
-            Equip one booster before answering the next question to maximize your score output.
+            Equip a randomized booster before answering the question to enhance your score or time.
           </p>
         </div>
 
@@ -143,9 +192,9 @@ export const PowerUpSelection: React.FC = () => {
                 key={pw.id}
                 onClick={() => !isOutOfStock && handleSelect(pw.id)}
                 className={`flex items-start gap-4 p-5 rounded-2xl border-2 transition-all duration-200 cursor-pointer shadow-md relative overflow-hidden bg-gradient-to-br ${pw.bgLight} ${
-                  isSelected 
-                    ? 'border-primary ring-4 ring-primary/20 scale-[1.01]' 
-                    : isOutOfStock 
+                  isSelected
+                    ? 'border-primary ring-4 ring-primary/20 scale-[1.01]'
+                    : isOutOfStock
                     ? 'opacity-35 border-outline-variant bg-[#eaeaff]/30 cursor-not-allowed'
                     : 'border-outline-variant hover:border-primary/50'
                 }`}
@@ -160,11 +209,11 @@ export const PowerUpSelection: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <h3 className="font-headline-md text-sm font-extrabold text-on-surface">{pw.name}</h3>
                     <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border ${
-                      isOutOfStock 
-                        ? 'bg-red-100 text-red-700 border-red-300' 
+                      isOutOfStock
+                        ? 'bg-red-100 text-red-700 border-red-300'
                         : 'bg-white text-slate-700 border-outline-variant shadow-sm'
                     }`}>
-                      {isOutOfStock ? 'Empty' : `${pw.count} Left`}
+                      {isOutOfStock ? '0 Left' : `${pw.count} Left`}
                     </span>
                   </div>
                   <p className="font-body-md text-xs text-slate-850 mt-2 leading-relaxed font-semibold">

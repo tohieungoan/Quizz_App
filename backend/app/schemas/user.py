@@ -70,6 +70,7 @@ class UserResponse(UserBase):
     provider_id: Optional[str] = None
     email_verified: bool = False
     achievement_points: int = 0
+    equipped_title: Optional[str] = None
     last_login: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

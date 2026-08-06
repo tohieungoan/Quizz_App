@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, BarChart2, LogOut, Flame, ArrowLeft } from 'lucide-react'
 import { roomService } from '@/services'
+import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
 
 interface ParticipantAnswerState {
   id: string
@@ -10,6 +11,7 @@ interface ParticipantAnswerState {
   answerKey: string | null
   streak: number
   score: number
+  equipped_title?: string | null
 }
 
 interface QuestionDetails {
@@ -21,42 +23,6 @@ interface QuestionDetails {
   correctKey: string
   audio_url?: string | null
   media_url?: string | null
-}
-
-const MOCK_QUESTIONS: Record<number, QuestionDetails> = {
-  1: {
-    id: 1,
-    text: 'Which hook should you use to optimize performance by caching the result of a calculation between re-renders?',
-    options: [
-      { key: 'A', label: 'useEffect' },
-      { key: 'B', label: 'useMemo' },
-      { key: 'C', label: 'useCallback' },
-      { key: 'D', label: 'useRef' }
-    ],
-    correctKey: 'B'
-  },
-  2: {
-    id: 2,
-    text: 'Which HTML5 tag is used to natively embed video player files in a web page?',
-    options: [
-      { key: 'A', label: '<media>' },
-      { key: 'B', label: '<embed>' },
-      { key: 'C', label: '<video>' },
-      { key: 'D', label: '<play>' }
-    ],
-    correctKey: 'C'
-  },
-  3: {
-    id: 3,
-    text: 'What is the default main axis direction of items in a CSS Flexbox container?',
-    options: [
-      { key: 'A', label: 'column' },
-      { key: 'B', label: 'row' },
-      { key: 'C', label: 'grid' },
-      { key: 'D', label: 'align-items' }
-    ],
-    correctKey: 'B'
-  }
 }
 
 export const HostLiveReview: React.FC = () => {
@@ -96,39 +62,23 @@ export const HostLiveReview: React.FC = () => {
     }
   }
 
-  // Host Control States
-  const isDemoMode = false
-  
-  const DUMMY_PARTICIPANTS = [
-    { id: '1', name: 'SpeedRunner', answered: false, answerKey: null, streak: 4, score: 3200 },
-    { id: '2', name: 'SarahM', answered: false, answerKey: null, streak: 2, score: 2800 },
-    { id: '3', name: 'Alex Johnson', answered: false, answerKey: null, streak: 3, score: 2400 },
-    { id: '4', name: 'DevPro', score: 2200, streak: 1, answered: false, answerKey: null },
-    { id: '5', name: 'Lara Croft', score: 1950, streak: 0, answered: false, answerKey: null },
-    { id: '6', name: 'BugHunter', score: 1800, streak: 1, answered: false, answerKey: null },
-    { id: '7', name: 'FlexboxKing', score: 1500, streak: 0, answered: false, answerKey: null }
-  ]
-
   const [questionNumber, setQuestionNumber] = useState(1)
   const [totalQuestions, setTotalQuestions] = useState(3)
   const [timeLeft, setTimeLeft] = useState(20)
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null)
   const [revealAnswer, setRevealAnswer] = useState(false)
-  const [participants, setParticipants] = useState<ParticipantAnswerState[]>(isDemoMode ? DUMMY_PARTICIPANTS : [])
+  const [participants, setParticipants] = useState<ParticipantAnswerState[]>([])
   const [distribution, setDistribution] = useState<Record<string, number>>({ A: 0, B: 0, C: 0, D: 0 })
-  const [activeQuestion, setActiveQuestion] = useState<QuestionDetails>(
-    isDemoMode ? MOCK_QUESTIONS[1] : {
-      id: 0,
-      text: 'Loading active question...',
-      type: 'MULTIPLE_CHOICE',
-      options: [],
-      correctKey: ''
-    }
-  )
+  const [activeQuestion, setActiveQuestion] = useState<QuestionDetails>({
+    id: 0,
+    text: 'Loading active question...',
+    type: 'MULTIPLE_CHOICE',
+    options: [],
+    correctKey: ''
+  })
 
   // Real-time updates via WebSocket + 10s polling fallback for Host Panel
   useEffect(() => {
-    if (isDemoMode) return
     const token = localStorage.getItem('token')
     const activeRoomId = roomId || state?.roomId
     if (!activeRoomId || !token) return
@@ -161,7 +111,8 @@ export const HostLiveReview: React.FC = () => {
             answered: p.answered,
             answerKey: null,
             streak: 0,
-            score: p.score
+            score: p.score,
+            equipped_title: p.equipped_title ?? null,
           })))
 
           // Map active question
@@ -267,50 +218,11 @@ export const HostLiveReview: React.FC = () => {
       if (reconnectTimer) clearTimeout(reconnectTimer)
       if (socket) socket.close()
     }
-  }, [state?.roomId, roomCode, navigate, isDemoMode])
-
-  // Demo Mode: Simulate participant responses
-  useEffect(() => {
-    if (!isDemoMode) return
-    
-    // Reset answers
-    setParticipants(prev => prev.map(s => ({ ...s, answered: false, answerKey: null })))
-    setTimeLeft(20)
-    setRevealAnswer(false)
-
-    let answeredCount = 0
-    const interval = setInterval(() => {
-      setParticipants(prev => {
-        const thinkingParticipants = prev.filter(s => !s.answered)
-        if (thinkingParticipants.length === 0) {
-          clearInterval(interval)
-          return prev
-        }
-
-        const randomParticipant = thinkingParticipants[Math.floor(Math.random() * thinkingParticipants.length)]
-        const randomKeys = ['A', 'B', 'C', 'D']
-        const chosenKey = Math.random() < 0.7 ? activeQuestion.correctKey : randomKeys[Math.floor(Math.random() * 4)]
-
-        return prev.map(s => {
-          if (s.id === randomParticipant.id) {
-            return { ...s, answered: true, answerKey: chosenKey }
-          }
-          return s
-        })
-      })
-
-      answeredCount++
-      if (answeredCount >= DUMMY_PARTICIPANTS.length) {
-        clearInterval(interval)
-      }
-    }, 1500)
-
-    return () => clearInterval(interval)
-  }, [questionNumber, isDemoMode, activeQuestion.correctKey])
+  }, [state?.roomId, roomCode, navigate])
 
   // Host Countdown Timer Effect (Synced with server timestamp)
   useEffect(() => {
-    if (showLeaderboardModal || !startedAtMs || isDemoMode) {
+    if (showLeaderboardModal || !startedAtMs) {
       if (timeLeft <= 0) {
         setRevealAnswer(true)
       }
@@ -332,19 +244,7 @@ export const HostLiveReview: React.FC = () => {
     const timer = setInterval(updateHostTimer, 250)
 
     return () => clearInterval(timer)
-  }, [startedAtMs, showLeaderboardModal, isDemoMode, activeQuestion])
-
-  // Demo Mode: Dynamic answer distribution computation
-  useEffect(() => {
-    if (!isDemoMode) return
-    const counts = { A: 0, B: 0, C: 0, D: 0 }
-    participants.forEach(s => {
-      if (s.answered && s.answerKey) {
-        counts[s.answerKey as keyof typeof counts]++
-      }
-    })
-    setDistribution(counts)
-  }, [participants, isDemoMode])
+  }, [startedAtMs, showLeaderboardModal, activeQuestion])
 
   // Leaderboard Modal 5s Auto-advance countdown
   useEffect(() => {
@@ -380,15 +280,6 @@ export const HostLiveReview: React.FC = () => {
 
   const proceedToNextQuestion = async () => {
     setShowLeaderboardModal(false)
-    if (isDemoMode) {
-      if (questionNumber >= totalQuestions) {
-        // End local demo
-        navigate('/dashboard')
-      } else {
-        setQuestionNumber(prev => prev + 1)
-      }
-      return
-    }
 
     const token = localStorage.getItem('token')
     const activeRoomId = roomId || state?.roomId
@@ -418,10 +309,6 @@ export const HostLiveReview: React.FC = () => {
   }
 
   const handleEndSession = async () => {
-    if (isDemoMode) {
-      navigate('/dashboard')
-      return
-    }
     const token = localStorage.getItem('token')
     const activeRoomId = roomId || state?.roomId
     if (!activeRoomId || !token) return
@@ -753,7 +640,7 @@ export const HostLiveReview: React.FC = () => {
                     </span>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-600 font-extrabold">{p.score} pts</span>
+                      <span className="text-[10px] text-slate-600 font-extrabold">{Math.round(p.score)} pts</span>
                       {p.answered ? (
                         <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
@@ -850,13 +737,16 @@ export const HostLiveReview: React.FC = () => {
                           <span className={`px-2.5 py-1 rounded-xl text-xs font-extrabold ${rankBg}`}>
                             {rankBadge}
                           </span>
-                          <span className="font-extrabold text-sm text-on-surface truncate max-w-[200px]">
+                          <span className="font-extrabold text-sm text-on-surface truncate max-w-[150px]">
                             {p.name}
+                          </span>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${getBadgeStyle(getPlayerBadge(p.name, p.equipped_title))}`}>
+                            🏆 {getPlayerBadge(p.name, p.equipped_title)}
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-xs font-black text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-                            {p.score} pts
+                            {Math.round(p.score)} pts
                           </span>
                         </div>
                       </div>

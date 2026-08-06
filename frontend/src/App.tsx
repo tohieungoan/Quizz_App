@@ -102,6 +102,30 @@ const App: React.FC = () => {
     return <Navigate to="/login" replace />;
   }
 
+  // ── Guard: authenticated non-admin visiting /admin -> /dashboard ──────────────
+  if (status === 'authenticated' && matchesRoute(location.pathname, ['/admin'])) {
+    const storedUser = localStorage.getItem('user');
+    const user = storedUser ? JSON.parse(storedUser) : null;
+    const isAdmin = user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN');
+    if (!isAdmin) {
+      return <Navigate to="/dashboard" replace />;
+    }
+  }
+
+  // ── Guard: visiting /play without prior room participation ──────────
+  if (matchesRoute(location.pathname, ['/play'])) {
+    const hasRoomCode =
+      (location.state as any)?.roomCode ||
+      sessionStorage.getItem('play_room_code');
+    if (!hasRoomCode) {
+      if (status === 'authenticated') {
+        return <Navigate to="/dashboard" replace />;
+      } else {
+        return <Navigate to="/" replace />;
+      }
+    }
+  }
+
   const handleGetStarted = () => navigate('/register');
 
   // ── Routes without Header/Footer (auth / game / admin) ─────────────────
@@ -141,6 +165,7 @@ const App: React.FC = () => {
         />
         <Route path="/lobby" element={<LobbyWaiting />} />
         <Route path="/exam" element={<FormalExam />} />
+        <Route path="/exam/:examId" element={<FormalExam />} />
         <Route path="/play" element={<ParticipantAnswer />} />
         <Route path="/leaderboard" element={<LiveLeaderboard />} />
         <Route path="/powerups" element={<PowerUpSelection />} />

@@ -8,7 +8,6 @@ import { Toaster } from 'react-hot-toast'
 import { initSecurityGuard } from './utils/securityGuard'
 import { initTimeTracker } from './utils/streakTracker'
 
-
 // Initialize Anti-F12, Anti-DevTools & Right-Click protection globally
 initSecurityGuard()
 // Initialize 10-minute web session activity tracker globally

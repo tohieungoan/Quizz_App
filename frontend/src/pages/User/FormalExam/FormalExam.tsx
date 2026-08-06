@@ -1,19 +1,62 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ExamHeader } from './components/ExamHeader';
 import { QuestionCard } from './components/QuestionCard';
 import { QuestionPalette } from './components/QuestionPalette';
 import { SubmitExamModal } from './components/SubmitExamModal';
 import { examService } from '@/services';
 
+const DEMO_QUESTIONS = [
+  {
+    id: 901,
+    text: "Identify the anatomical structure highlighted in the diagram below.",
+    points: 2.0,
+    type: "MULTIPLE_CHOICE",
+    mediaUrl: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop&q=80",
+    audioUrl: null,
+    options: [
+      { key: "A", label: "Frontal Lobe", desc: "A" },
+      { key: "B", label: "Cerebellum", desc: "B" },
+      { key: "C", label: "Temporal Lobe", desc: "C" },
+      { key: "D", label: "Occipital Lobe", desc: "D" },
+    ],
+  },
+  {
+    id: 902,
+    text: "Listen to the audio clip and determine if the statement regarding rhythmic cadence is True or False.",
+    points: 2.0,
+    type: "TRUE_FALSE",
+    mediaUrl: null,
+    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    audioPlayLimit: 3,
+    options: [
+      { key: "True", label: "True", desc: "A" },
+      { key: "False", label: "False", desc: "B" },
+    ],
+  },
+  {
+    id: 903,
+    text: "Describe the function of the organ shown in the image below in detail.",
+    points: 5.0,
+    type: "SHORT_ANSWER",
+    mediaUrl: "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?w=800&auto=format&fit=crop&q=80",
+    audioUrl: null,
+    options: [],
+  },
+];
+
 export const FormalExam: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { examId: paramExamId } = useParams<{ examId?: string }>();
+  const [searchParams] = useSearchParams();
 
   const examData = (location.state as any) || {};
-  const examId = examData.id || examData.exam_id;
-  const examTitle = examData.title || examData.exam_title || 'Midterm Examination';
-  const subject = examData.subject || examData.quiz_subject || 'General Subject';
+  const queryExamId = searchParams.get('exam_id') || searchParams.get('id');
+  const targetExamId = examData.exam_id || examData.id || paramExamId || queryExamId;
+
+  const [examTitle, setExamTitle] = useState<string>(examData.title || examData.exam_title || 'Formal Examination');
+  const [subject, setSubject] = useState<string>(examData.subject || examData.quiz_subject || 'General Subject');
 
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -26,41 +69,88 @@ export const FormalExam: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [finalScore, setFinalScore] = useState<number | null>(null);
   const [navigationRule, setNavigationRule] = useState<'FREE_NAV' | 'FIXED_NAV'>('FREE_NAV');
+  const [activeExamId, setActiveExamId] = useState<any>(targetExamId);
 
   // 1. Initial Load: Start Exam and Get Questions
   useEffect(() => {
-    if (!examId) {
-      setErrorMsg("No exam details found. Please launch the exam from your Dashboard.");
-      setIsLoading(false);
-      return;
-    }
-
     const initExam = async () => {
       try {
         setIsLoading(true);
         setErrorMsg(null);
 
+        let currentExamId = targetExamId;
+
+        // If no exam ID passed, try auto-fetching user's assigned active/pending exams
+        if (!currentExamId) {
+          try {
+            const myExams = await examService.getMyExams();
+            if (Array.isArray(myExams) && myExams.length > 0) {
+              const pendingExam = myExams.find((e: any) => e.status === 'PENDING' || e.status === 'IN_PROGRESS');
+              if (pendingExam) {
+                currentExamId = pendingExam.exam_id || pendingExam.id;
+                if (pendingExam.exam_title) setExamTitle(pendingExam.exam_title);
+                if (pendingExam.quiz_subject) setSubject(pendingExam.quiz_subject);
+              }
+            }
+          } catch (e) {
+            console.warn("Could not auto-fetch assigned exams:", e);
+          }
+        }
+
+        // If still no exam ID, load demonstration exam with image & audio
+        if (!currentExamId) {
+          setQuestions(DEMO_QUESTIONS);
+          setTimeLeft(3600);
+          setExamTitle("Demonstration Exam (Image & Audio)");
+          setSubject("General Knowledge");
+          setIsLoading(false);
+          return;
+        }
+
+        setActiveExamId(currentExamId);
+
         // Notify server that user is starting/continuing the exam
-        await examService.startExam(examId);
+        await examService.startExam(currentExamId);
 
         // Fetch questions and remaining time
-        const takeRes = await examService.takeExam(examId);
+        const takeRes = await examService.takeExam(currentExamId);
         if (takeRes) {
           setTimeLeft(takeRes.remaining_seconds || 0);
           setNavigationRule(takeRes.exam?.navigation_rule || 'FREE_NAV');
 
+          if (takeRes.exam) {
+            if (takeRes.exam.title) setExamTitle(takeRes.exam.title);
+            if (takeRes.exam.quiz_subject || takeRes.exam.quiz?.subject) {
+              setSubject(takeRes.exam.quiz_subject || takeRes.exam.quiz?.subject);
+            }
+          }
+
           const mapped = (takeRes.questions || []).map((q: any) => {
-            const qType = (q.question_type || '').trim().toLowerCase();
-            const isSelection = qType === 'multiple_choice' || qType === 'true_false' || qType === 'true/false';
+            const rawType = String(q.question_type || q.type || '').trim().toUpperCase();
+
+            let qKind: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER' = 'MULTIPLE_CHOICE';
+            if (rawType.includes('TRUE') || rawType.includes('FALSE')) {
+              qKind = 'TRUE_FALSE';
+            } else if (rawType.includes('SHORT') || rawType.includes('ESSAY') || rawType.includes('TEXT') || rawType.includes('FILL')) {
+              qKind = 'SHORT_ANSWER';
+            } else {
+              qKind = 'MULTIPLE_CHOICE';
+            }
+
             return {
               id: q.id,
-              text: q.question_text || '',
+              text: q.question_text || q.content || q.text || '',
               points: q.points || 1.0,
-              type: isSelection ? 'radio' : 'essay',
+              type: qKind,
+              mediaUrl: q.media_url || q.mediaUrl || q.image_url || q.imageUrl || null,
+              audioUrl: q.audio_url || q.audioUrl || null,
+              audioPlayLimit: q.audio_play_limit || 0,
               options: (q.options || []).map((o: any, idx: number) => ({
-                key: String(o.id), // option_id
-                label: o.option_text || '',
+                key: String(o.id || idx + 1), // option_id
+                label: o.option_text || o.content || o.label || '',
                 desc: String.fromCharCode(65 + idx), // 'A', 'B', 'C', 'D'
+                mediaUrl: o.media_url || o.mediaUrl || o.image_url || null,
+                audioUrl: o.audio_url || o.audioUrl || null,
               })),
             };
           });
@@ -79,14 +169,24 @@ export const FormalExam: React.FC = () => {
         }
       } catch (err: any) {
         console.error("Failed to load exam:", err);
-        setErrorMsg(err?.response?.data?.detail || "This exam is either not active, completed, or you are not authorized to take it.");
+        const detailedMsg = err?.message || err?.response?.data?.detail || "Unable to start exam.";
+        if (!targetExamId) {
+          // Fallback to Demonstration Exam when accessing /exam directly without exam ID
+          setQuestions(DEMO_QUESTIONS);
+          setTimeLeft(3600);
+          setExamTitle("Demonstration Exam (Image & Audio)");
+          setSubject("General Knowledge");
+          setErrorMsg(null);
+        } else {
+          setErrorMsg(detailedMsg);
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     initExam();
-  }, [examId]);
+  }, [targetExamId]);
 
   // 2. Timer countdown logic
   useEffect(() => {
@@ -121,8 +221,9 @@ export const FormalExam: React.FC = () => {
   // 4. Handle MCQ selection
   const handleOptionSelect = async (qId: number, optionIdStr: string) => {
     setAnswers((prev) => ({ ...prev, [qId]: optionIdStr }));
+    if (!activeExamId) return;
     try {
-      await examService.saveAnswer(examId, {
+      await examService.saveAnswer(activeExamId, {
         question_id: qId,
         selected_option_id: Number(optionIdStr),
       });
@@ -134,8 +235,9 @@ export const FormalExam: React.FC = () => {
   // 5. Handle Essay text change
   const handleTextChange = async (qId: number, val: string) => {
     setAnswers((prev) => ({ ...prev, [qId]: val }));
+    if (!activeExamId) return;
     try {
-      await examService.saveAnswer(examId, {
+      await examService.saveAnswer(activeExamId, {
         question_id: qId,
         answer_text: val,
       });
@@ -157,9 +259,17 @@ export const FormalExam: React.FC = () => {
     try {
       setIsLoading(true);
       setSubmitModalOpen(false);
-      const res = await examService.submitExam(examId);
-      if (res) {
-        setFinalScore(res.score);
+      if (activeExamId) {
+        const res = await examService.submitExam(activeExamId);
+        if (res) {
+          if (res.results_published === false || res.score === null) {
+            setFinalScore(null);
+          } else {
+            setFinalScore(res.score);
+          }
+        }
+      } else {
+        setFinalScore(85);
       }
       setSuccessOverlayOpen(true);
     } catch (err: any) {
@@ -173,9 +283,17 @@ export const FormalExam: React.FC = () => {
   const handleAutoSubmit = async () => {
     try {
       setIsLoading(true);
-      const res = await examService.submitExam(examId);
-      if (res) {
-        setFinalScore(res.score);
+      if (activeExamId) {
+        const res = await examService.submitExam(activeExamId);
+        if (res) {
+          if (res.results_published === false || res.score === null) {
+            setFinalScore(null);
+          } else {
+            setFinalScore(res.score);
+          }
+        }
+      } else {
+        setFinalScore(85);
       }
       setSuccessOverlayOpen(true);
     } catch (err) {
@@ -204,8 +322,11 @@ export const FormalExam: React.FC = () => {
           <h2 className="text-lg font-bold mb-2">Access Blocked</h2>
           <p className="text-xs text-on-surface-variant mb-6 leading-relaxed">{errorMsg}</p>
           <button
-            onClick={() => navigate('/dashboard')}
-            className="w-full py-2.5 bg-primary text-white rounded-xl font-bold text-xs hover:bg-primary/95 transition-all shadow-sm"
+            onClick={() => {
+              const returnTab = examData.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'assigned_exams';
+              navigate('/dashboard', { state: { activeTab: returnTab } });
+            }}
+            className="w-full py-2.5 bg-primary text-white rounded-xl font-bold text-xs hover:bg-primary/95 transition-all shadow-sm cursor-pointer"
           >
             Return to Dashboard
           </button>

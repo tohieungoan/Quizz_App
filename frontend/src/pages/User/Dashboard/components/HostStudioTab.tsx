@@ -41,7 +41,7 @@ import {
   GraduationCap,
   Eye
 } from 'lucide-react';
-import { HOST_GROUPS_LIST, HostGroup, GroupMember, USER_ASSIGNED_EXAMS, AssignedExam } from '@/data/userData';
+import { HostGroup, GroupMember, AssignedExam } from '@/data/userData';
 import { groupService, quizService, examService, roomService } from '@/services';
 
 const GROUP_ICONS = {
@@ -1132,7 +1132,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           group_id: rawGroupId,
           title: finalTitle,
           start_time: new Date().toISOString(),
-          end_time: examDue ? new Date(examDue).toISOString() : new Date().toISOString(),
+          end_time: examDue ? new Date(examDue).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           timer: examDuration,
           navigation_rule: navigationRule,
           results_published: resultsPublished,

@@ -384,7 +384,17 @@ def read_user_me(
     Return user profile info using Bearer Token, updating last_login and streak reset status.
     """
     updated_user = crud_user.update_last_login_and_streak(db, current_user)
+    
+    from app.models.badge import UserBadge, Badge
+    equipped = (
+        db.query(Badge.name)
+        .join(UserBadge, UserBadge.badge_id == Badge.id)
+        .filter(UserBadge.user_id == current_user.id, UserBadge.is_equipped == True, Badge.category == "TITLE")
+        .first()
+    )
+    setattr(updated_user, "equipped_title", equipped[0] if equipped else None)
     return updated_user
+
 
 
 import urllib.request

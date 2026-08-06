@@ -29,6 +29,8 @@ api_router.include_router(users.router, prefix="/users", tags=["Users"])
 api_router.include_router(groups.router, prefix="/groups", tags=["Groups"])
 api_router.include_router(upload.router, prefix="/upload", tags=["Upload"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+api_router.include_router(badges.router, prefix="/badges", tags=["Badges"])
+
 
 # Quiz & Question Endpoints
 api_router.include_router(quizzes.router, tags=["Quizzes"])

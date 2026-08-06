@@ -4,7 +4,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Pagination } from '@/components/ui/Pagination';
 import { RoomDetailsModal } from '@/components/ui/RoomDetailsModal';
-import { Room } from '@/data/mockDb';
 import { roomService } from '@/services/roomService';
 
 export interface RoomItem {
