@@ -1,35 +1,64 @@
-import React, { useState } from 'react';
-import { Send, Megaphone, AlertCircle, Info, CheckCircle2, Radio, Smartphone, Monitor, Link as LinkIcon, Users, UsersRound, User, CalendarClock } from 'lucide-react';
-import { notificationService } from '@/services/notificationService';
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Send, 
+  Megaphone, 
+  AlertCircle, 
+  Info, 
+  Smartphone, 
+  Monitor, 
+  Link as LinkIcon, 
+  CalendarClock, 
+  Trash2, 
+  RefreshCw, 
+  Clock, 
+  Loader2 
+} from 'lucide-react';
+import { notificationService, ScheduledBroadcastItem } from '@/services/notificationService';
 import { toast } from 'react-hot-toast';
 
 export function Broadcast() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [type, setType] = useState('ANNOUNCEMENT');
-  const [targetType, setTargetType] = useState('ALL_USERS');
-  const [targetGroupId, setTargetGroupId] = useState('');
   const [actionUrl, setActionUrl] = useState('');
   
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
   
   const [isSending, setIsSending] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
+  const [scheduledList, setScheduledList] = useState<ScheduledBroadcastItem[]>([]);
+  const [isLoadingScheduled, setIsLoadingScheduled] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | number | null>(null);
+
+  // Fetch scheduled broadcasts
+  const fetchScheduled = useCallback(async (silent = false) => {
+    if (!silent) setIsLoadingScheduled(true);
+    try {
+      const res = await notificationService.getScheduledBroadcasts(0, 50);
+      setScheduledList(res?.data || []);
+    } catch (err) {
+      console.error('Failed to load scheduled broadcasts:', err);
+    } finally {
+      if (!silent) setIsLoadingScheduled(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchScheduled();
+  }, [fetchScheduled]);
 
   const handleSend = async () => {
     if (!title.trim() || !content.trim()) return;
-    if (targetType === 'GROUP' && !targetGroupId.trim()) return;
     if (isScheduled && !scheduledAt) return;
     
     setIsSending(true);
     try {
       await notificationService.sendBroadcast({
-        title,
-        content: content,
+        title: title.trim(),
+        content: content.trim(),
         type,
-        targetType,
-        targetGroupId: targetType === 'GROUP' ? parseInt(targetGroupId, 10) : null,
+        targetType: 'ALL_USERS',
+        targetGroupId: null,
         actionUrl: actionUrl.trim() || null,
         isScheduled,
         scheduledAt: isScheduled ? new Date(scheduledAt).toISOString() : null,
@@ -38,16 +67,17 @@ export function Broadcast() {
       setTitle('');
       setContent('');
       setType('ANNOUNCEMENT');
-      setTargetType('ALL_USERS');
-      setTargetGroupId('');
       setActionUrl('');
       setIsScheduled(false);
       setScheduledAt('');
       
       toast.success(`Broadcast ${isScheduled ? 'scheduled' : 'sent'} successfully!`);
       
-      // Notify all active useNotifications hooks across the app to refetch immediately (e.g. for the AdminHeader bell icon)
-      if (!isScheduled) {
+      // If scheduled, refresh the queue
+      if (isScheduled) {
+        fetchScheduled(true);
+      } else {
+        // Notify all active useNotifications hooks across the app to refetch immediately
         window.dispatchEvent(new Event('quizzapp_notifications_updated'));
       }
       
@@ -56,6 +86,36 @@ export function Broadcast() {
       toast.error(err?.response?.data?.detail || 'Failed to send system broadcast.');
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleDeleteScheduled = async (item: ScheduledBroadcastItem) => {
+    const targetKey = item.job_id || item.id;
+    setDeletingId(targetKey);
+    try {
+      await notificationService.cancelScheduledBroadcast(targetKey);
+      toast.success('Scheduled broadcast deleted successfully.');
+      setScheduledList((prev) => prev.filter((s) => s.id !== item.id && s.job_id !== item.job_id));
+    } catch (err: any) {
+      console.error('Failed to delete scheduled broadcast:', err);
+      toast.error(err?.response?.data?.detail || 'Could not delete scheduled broadcast.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const formatScheduledTime = (isoString?: string | null) => {
+    if (!isoString) return 'Scheduled';
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return isoString;
     }
   };
 
@@ -69,104 +129,75 @@ export function Broadcast() {
 
   const getPreviewBg = () => {
     switch (type) {
-      case 'SYSTEM': return 'bg-error-container';
+      case 'SYSTEM': return 'bg-error-container/60';
       case 'ANNOUNCEMENT': return 'bg-orange-100';
       default: return 'bg-primary/10';
     }
   };
 
   return (
-    <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full">
+    <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-4 md:p-margin-desktop lg:px-8 max-w-container-max mx-auto w-full font-['Inter',sans-serif]">
       <div className="py-gutter w-full flex flex-col gap-6 pb-20 max-w-5xl">
         
         {/* Header */}
         <div>
-          <h1 className="font-headline-xl text-[28px] text-on-surface font-extrabold tracking-tight">
+          <h1 className="font-['Sora',sans-serif] text-2xl md:text-[28px] text-on-surface font-extrabold tracking-tight">
             System Broadcast
           </h1>
-          <p className="font-body-lg text-[15px] text-on-surface-variant mt-1">
-            Send real-time alerts or announcements to users.
+          <p className="text-sm text-on-surface-variant mt-1">
+            Send real-time alerts or schedule announcements for all active users.
           </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Form Section */}
-          <div className="lg:col-span-2 space-y-6 bg-white p-6 md:p-8 rounded-2xl border border-outline-variant/40 shadow-sm relative overflow-hidden">
+          <div className="lg:col-span-2 space-y-6 bg-white p-6 md:p-8 rounded-2xl border border-surface-variant/60 shadow-sm relative overflow-hidden">
             {/* Decorative background blur */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -z-10 -translate-y-1/2 translate-x-1/3"></div>
 
             <div className="space-y-5">
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1.5">Target Audience <span className="text-error">*</span></label>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setTargetType('ALL_USERS')}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg border text-[11px] font-bold transition-colors ${targetType === 'ALL_USERS' ? 'bg-primary text-white border-primary' : 'bg-surface-container-lowest text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      <Users className="w-4 h-4" /> All Users
-                    </button>
-                    <button
-                      onClick={() => setTargetType('GROUP')}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-lg border text-[11px] font-bold transition-colors ${targetType === 'GROUP' ? 'bg-primary text-white border-primary' : 'bg-surface-container-lowest text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      <UsersRound className="w-4 h-4" /> Group
-                    </button>
-                  </div>
-                </div>
-
-                {targetType === 'GROUP' && (
-                  <div className="animate-in fade-in zoom-in-95">
-                    <label className="block text-sm font-bold text-slate-700 mb-1.5">Group ID <span className="text-error">*</span></label>
-                    <input
-                      type="text"
-                      value={targetGroupId}
-                      onChange={(e) => setTargetGroupId(e.target.value)}
-                      placeholder="e.g. 101"
-                      className="w-full px-4 py-2.5 bg-surface-container-lowest border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium"
-                    />
-                  </div>
-                )}
-              </div>
-
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Broadcast Title <span className="text-error">*</span></label>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">
+                  Broadcast Title <span className="text-error">*</span>
+                </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Scheduled Maintenance"
-                  className="w-full px-4 py-2.5 bg-surface-container-lowest border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium"
+                  placeholder="e.g. Scheduled System Maintenance"
+                  className="w-full px-4 py-2.5 bg-surface-container-low/40 border border-surface-variant/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium placeholder:text-on-surface-variant/50"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Message Content <span className="text-error">*</span></label>
+                <label className="block text-sm font-bold text-on-surface mb-1.5">
+                  Message Content <span className="text-error">*</span>
+                </label>
                 <textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Type the detailed message here..."
                   rows={4}
-                  className="w-full px-4 py-3 bg-surface-container-lowest border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface resize-none"
+                  className="w-full px-4 py-3 bg-surface-container-low/40 border border-surface-variant/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface resize-none placeholder:text-on-surface-variant/50"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5 flex items-center gap-2">
-                  <LinkIcon className="w-4 h-4" /> Action URL (Optional)
+                <label className="block text-sm font-bold text-on-surface mb-1.5 flex items-center gap-2">
+                  <LinkIcon className="w-4 h-4 text-primary" /> Action URL (Optional)
                 </label>
                 <input
                   type="text"
                   value={actionUrl}
                   onChange={(e) => setActionUrl(e.target.value)}
-                  placeholder="e.g. /exam/101"
-                  className="w-full px-4 py-2.5 bg-surface-container-lowest border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium"
+                  placeholder="e.g. /exam/101 or https://..."
+                  className="w-full px-4 py-2.5 bg-surface-container-low/40 border border-surface-variant/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium placeholder:text-on-surface-variant/50"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Event Type</label>
+                <label className="block text-sm font-bold text-on-surface mb-2">Event Type</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                   {[
                     { id: 'ANNOUNCEMENT', label: 'News', icon: Megaphone, color: 'text-orange-600', bg: 'bg-orange-50 hover:bg-orange-100 border-orange-200' },
@@ -175,14 +206,14 @@ export function Broadcast() {
                     <button
                       key={t.id}
                       onClick={() => setType(t.id)}
-                      className={`flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl border transition-all ${
+                      className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border transition-all cursor-pointer ${
                         type === t.id 
                           ? `${t.bg} ring-2 ring-offset-1 ring-primary scale-[1.02] shadow-sm` 
-                          : 'bg-white border-slate-200 hover:border-slate-300'
+                          : 'bg-white border-surface-variant/60 hover:border-surface-variant'
                       }`}
                     >
-                      <t.icon className={`w-4 h-4 ${type === t.id ? t.color : 'text-slate-400'}`} />
-                      <span className={`text-[11px] font-bold ${type === t.id ? 'text-slate-800' : 'text-slate-500'}`}>
+                      <t.icon className={`w-4 h-4 ${type === t.id ? t.color : 'text-on-surface-variant'}`} />
+                      <span className={`text-[11px] font-bold ${type === t.id ? 'text-on-surface' : 'text-on-surface-variant'}`}>
                         {t.label}
                       </span>
                     </button>
@@ -192,41 +223,46 @@ export function Broadcast() {
             </div>
 
             {/* Scheduling Section */}
-            <div className="pt-5 flex items-center justify-between border-t border-slate-100">
+            <div className="pt-5 flex items-center justify-between border-t border-surface-variant/40">
               <div>
-                <label className="block text-sm font-bold text-slate-700">Schedule Broadcast</label>
-                <p className="text-xs text-slate-500 mt-0.5">Send this message at a future date and time</p>
+                <label className="block text-sm font-bold text-on-surface">Schedule Broadcast</label>
+                <p className="text-xs text-on-surface-variant mt-0.5">Send this message at a future date and time</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={isScheduled} onChange={() => setIsScheduled(!isScheduled)} />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer" 
+                  checked={isScheduled} 
+                  onChange={() => setIsScheduled(!isScheduled)} 
+                />
+                <div className="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
             
             {isScheduled && (
               <div className="animate-in fade-in slide-in-from-top-2 pb-2">
-                <label className="block text-sm font-bold text-slate-700 mb-1.5 flex items-center gap-2">
-                  <CalendarClock className="w-4 h-4" /> Date & Time <span className="text-error">*</span>
+                <label className="block text-sm font-bold text-on-surface mb-1.5 flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-primary" /> Scheduled Date & Time <span className="text-error">*</span>
                 </label>
                 <input
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-surface-container-lowest border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium"
+                  className="w-full px-4 py-2.5 bg-surface-container-low/40 border border-surface-variant/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium"
                 />
               </div>
             )}
 
-            <div className="pt-5 mt-2 flex items-center justify-between border-t border-slate-100">
-              <div className="text-sm font-medium text-slate-500 flex items-center gap-2">
-                <Monitor className="w-4 h-4" />
-                <Smartphone className="w-4 h-4" />
-                Delivers to {targetType === 'ALL_USERS' ? 'all' : 'group'} devices
+            <div className="pt-5 mt-2 flex items-center justify-between border-t border-surface-variant/40">
+              <div className="text-sm font-medium text-on-surface-variant flex items-center gap-2">
+                <Monitor className="w-4 h-4 text-primary" />
+                <Smartphone className="w-4 h-4 text-primary" />
+                <span>Delivers to all active devices</span>
               </div>
               <button
                 onClick={handleSend}
-                disabled={isSending || !title.trim() || !content.trim() || (targetType === 'GROUP' && !targetGroupId.trim()) || (isScheduled && !scheduledAt)}
-                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary to-[#8b5cf6] text-white rounded-xl font-bold hover:shadow-lg hover:shadow-primary/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSending || !title.trim() || !content.trim() || (isScheduled && !scheduledAt)}
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-bold hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isSending ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -236,53 +272,152 @@ export function Broadcast() {
                 {isSending ? 'Processing...' : isScheduled ? 'Schedule Broadcast' : 'Send Broadcast'}
               </button>
             </div>
-            
-            {successMsg && (
-              <div className="absolute top-4 right-4 bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-bold shadow-sm animate-in fade-in slide-in-from-top-2">
-                {successMsg}
-              </div>
-            )}
           </div>
 
-          {/* Preview Section */}
-          <div className="space-y-4">
-            <h3 className="font-bold text-slate-700 px-1">Live Preview</h3>
-            <div className="bg-white p-5 rounded-2xl border border-outline-variant/40 shadow-sm relative">
-              <div className="absolute -top-3 -right-3 bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-sm transform rotate-6">
-                User's View
-              </div>
-              <div className="flex items-start gap-3">
-                <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${getPreviewBg()}`}>
-                  {getPreviewIcon()}
+          {/* Right Column: Preview & Scheduled Broadcasts List */}
+          <div className="space-y-5">
+            {/* Live Preview */}
+            <div>
+              <h3 className="font-['Sora',sans-serif] font-bold text-on-surface px-1 mb-2">Live Preview</h3>
+              <div className="bg-white p-5 rounded-2xl border border-surface-variant/60 shadow-sm relative">
+                <div className="absolute -top-2.5 -right-2.5 bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-sm">
+                  User's View
                 </div>
-                <div className="flex flex-col gap-1 w-full min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-on-surface text-sm break-all pr-2">{title || 'Broadcast Title'}</h4>
-                    <span className="w-2 h-2 rounded-full bg-primary inline-block shrink-0 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></span>
+                <div className="flex items-start gap-3">
+                  <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${getPreviewBg()}`}>
+                    {getPreviewIcon()}
                   </div>
-                  <p className="text-xs text-on-surface-variant leading-relaxed break-all">
-                    {content || 'Your broadcast message will appear here...'}
-                  </p>
-                  
-                  {actionUrl && (
-                    <div className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-primary">
-                      <LinkIcon className="w-3 h-3" /> Click to view details
+                  <div className="flex flex-col gap-1 w-full min-w-0">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-on-surface text-sm break-all pr-2">{title || 'Broadcast Title'}</h4>
+                      <span className="w-2 h-2 rounded-full bg-primary inline-block shrink-0 shadow-[0_0_8px_rgba(53,37,205,0.6)]"></span>
                     </div>
-                  )}
+                    <p className="text-xs text-on-surface-variant leading-relaxed break-all">
+                      {content || 'Your broadcast message will appear here...'}
+                    </p>
+                    
+                    {actionUrl && (
+                      <div className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-primary">
+                        <LinkIcon className="w-3 h-3" /> Click to view details
+                      </div>
+                    )}
 
-                  <span className="text-[10px] text-outline font-medium mt-1">Just now • Today</span>
+                    <span className="text-[10px] text-on-surface-variant/70 font-medium mt-1">Just now • Today</span>
+                  </div>
                 </div>
               </div>
             </div>
             
-            <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
-              <div className="flex items-start gap-2 text-blue-700">
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <p className="text-xs font-medium leading-relaxed">
-                  Broadcasts appear instantly in the user's notification bell. Group broadcasts will only be delivered to users within the specified Group ID.
+            {/* Instant Delivery Notice */}
+            <div className="bg-surface-container-low/80 border border-surface-variant/60 rounded-xl p-4">
+              <div className="flex items-start gap-2.5 text-primary">
+                <Info className="w-4 h-4 shrink-0 mt-0.5 text-primary" />
+                <p className="text-xs text-on-surface font-medium leading-relaxed">
+                  Broadcasts appear instantly in user notification centers across all active accounts.
                 </p>
               </div>
             </div>
+
+            {/* Scheduled Broadcasts Queue */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-['Sora',sans-serif] font-bold text-sm text-on-surface">Scheduled Broadcasts</h3>
+                  {scheduledList.length > 0 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      {scheduledList.length}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => fetchScheduled()}
+                  disabled={isLoadingScheduled}
+                  className="p-1 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors cursor-pointer"
+                  title="Refresh scheduled list"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScheduled ? 'animate-spin text-primary' : ''}`} />
+                </button>
+              </div>
+
+              {isLoadingScheduled && scheduledList.length === 0 ? (
+                <div className="bg-white border border-surface-variant/60 rounded-2xl p-6 text-center text-on-surface-variant flex flex-col items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <p className="text-xs font-medium">Loading scheduled broadcasts...</p>
+                </div>
+              ) : scheduledList.length === 0 ? (
+                <div className="bg-white border border-surface-variant/60 rounded-2xl p-6 text-center text-on-surface-variant flex flex-col items-center justify-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-surface-container-low flex items-center justify-center text-primary">
+                    <CalendarClock className="w-4.5 h-4.5 opacity-80" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-on-surface">No scheduled broadcasts</p>
+                    <p className="text-[11px] text-on-surface-variant mt-0.5">
+                      Messages scheduled for later will appear in this list.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-surface-variant scrollbar-track-transparent">
+                  {scheduledList.map((item) => {
+                    const isDeleting = deletingId === item.job_id || deletingId === item.id;
+                    const isSystem = item.type === 'SYSTEM';
+                    
+                    return (
+                      <div 
+                        key={item.id}
+                        className="bg-white border border-surface-variant/60 rounded-xl p-3.5 hover:shadow-xs transition-all relative group flex flex-col gap-2"
+                      >
+                        {/* Header: Badge & Scheduled Time & Delete Button */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider shrink-0 ${
+                              isSystem ? 'bg-error-container text-error' : 'bg-orange-100 text-orange-700'
+                            }`}>
+                              {isSystem ? 'System' : 'News'}
+                            </span>
+                            <span className="text-[11px] font-semibold text-primary flex items-center gap-1 truncate">
+                              <Clock className="w-3 h-3 shrink-0" />
+                              {formatScheduledTime(item.scheduled_at)}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteScheduled(item)}
+                            disabled={isDeleting}
+                            className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/40 transition-colors shrink-0 cursor-pointer"
+                            title="Delete scheduled broadcast"
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-error" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Title & Preview Content with Ellipsis (...) */}
+                        <div>
+                          <h4 className="text-xs font-bold text-on-surface truncate" title={item.title}>
+                            {item.title}
+                          </h4>
+                          <p className="text-[11px] text-on-surface-variant line-clamp-2 mt-0.5 break-words leading-relaxed" title={item.content}>
+                            {item.content}
+                          </p>
+                        </div>
+
+                        {item.action_url && (
+                          <div className="text-[10px] font-medium text-primary flex items-center gap-1 truncate">
+                            <LinkIcon className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">{item.action_url}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
       </div>

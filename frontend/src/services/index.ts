@@ -8,4 +8,4 @@ export * from './notificationService'
 export * from './questionService'
 export * from './examService'
 export * from './achievementService'
-
+export * from './adminSettingService'

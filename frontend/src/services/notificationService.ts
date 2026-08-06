@@ -16,6 +16,28 @@ export interface NotificationListResponse {
   unread_count: number;
 }
 
+export interface ScheduledBroadcastItem {
+  id: number;
+  title: string;
+  content: string;
+  type: string;
+  target_type: string;
+  target_group_id?: number | null;
+  action_url?: string | null;
+  is_scheduled: boolean;
+  scheduled_at: string | null;
+  status: string;
+  job_id?: string | null;
+  created_at: string;
+}
+
+export interface ScheduledBroadcastListResponse {
+  data: ScheduledBroadcastItem[];
+  total: number;
+  pageIndex: number;
+  pageSize: number;
+}
+
 export const notificationService = {
   /**
    * Fetch current user's notifications list and unread count
@@ -52,6 +74,18 @@ export const notificationService = {
     apiClient.post<{ success: boolean; message: string; job_id?: string }>('/notifications/broadcast', payload),
 
   /**
+   * Fetch pending scheduled broadcasts (Admin)
+   */
+  getScheduledBroadcasts: (skip = 0, limit = 20): Promise<ScheduledBroadcastListResponse> =>
+    apiClient.get<ScheduledBroadcastListResponse>(`/notifications/broadcast/history?status=PENDING&is_scheduled=true&skip=${skip}&limit=${limit}`),
+
+  /**
+   * Cancel/delete a scheduled broadcast (Admin)
+   */
+  cancelScheduledBroadcast: (jobIdOrId: string | number): Promise<{ success: boolean; message: string }> =>
+    apiClient.delete<{ success: boolean; message: string }>(`/notifications/broadcast/${jobIdOrId}`),
+
+  /**
    * Delete a specific notification
    */
   deleteNotification: (notificationId: number): Promise<{ success: boolean }> =>
@@ -61,5 +95,11 @@ export const notificationService = {
    * Clear all read notifications
    */
   clearAllRead: (): Promise<{ success: boolean; cleared_count: number }> =>
-    apiClient.delete<{ success: boolean; cleared_count: number }>('/notifications/'),
+    apiClient.delete<{ success: boolean; cleared_count: number }>('/notifications/read'),
+
+  /**
+   * Delete all notifications (read and unread)
+   */
+  deleteAll: (): Promise<{ success: boolean; deleted_count: number }> =>
+    apiClient.delete<{ success: boolean; deleted_count: number }>('/notifications/all'),
 };

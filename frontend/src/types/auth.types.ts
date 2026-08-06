@@ -5,16 +5,21 @@ export interface TokenResponse {
 }
 
 export interface UserProfile {
-  id: string
+  id: string | number
   email: string
   fullname: string | null
   avatar: string | null
   role: string
   status: string
   auth_provider: string | null
+  provider_id?: string | null
+  email_verified?: boolean
   study_streak?: number
   achievement_points?: number
   equipped_title?: string | null
+  last_login?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface StoredUser {

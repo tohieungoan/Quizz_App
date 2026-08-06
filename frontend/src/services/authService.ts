@@ -133,6 +133,23 @@ export const saveUserProfile = (profile: UserProfile): void => {
     equipped_title: profile.equipped_title || null,
   }
   localStorage.setItem('user', JSON.stringify(stored))
+  localStorage.setItem('user_profile', JSON.stringify({
+    id: profile.id,
+    full_name: profile.fullname,
+    fullname: profile.fullname,
+    username: profile.fullname,
+    email: profile.email,
+    role: profile.role,
+    avatar_url: profile.avatar,
+    avatar: profile.avatar,
+    status: profile.status,
+    email_verified: profile.email_verified,
+    study_streak: profile.study_streak,
+    achievement_points: profile.achievement_points,
+    auth_provider: profile.auth_provider,
+    last_login: profile.last_login,
+    created_at: profile.created_at,
+  }))
 }
 
 /**
@@ -142,4 +159,5 @@ export const clearAuthData = (): void => {
   localStorage.removeItem('token')
   localStorage.removeItem('refresh_token')
   localStorage.removeItem('user')
+  localStorage.removeItem('user_profile')
 }

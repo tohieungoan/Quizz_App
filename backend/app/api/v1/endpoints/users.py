@@ -52,22 +52,11 @@ def process_import_background(valid_users: List[dict], admin_id: int, job_id: st
         imported_count = crud_user.bulk_create(db, users_in=valid_users)
         logger.info(f"Background import job ({job_id}) finished successfully. Imported {imported_count} users.")
         
-        # Create Success Notification for the Admin
-        notification = Notification(
-            user_id=admin_id,
-            title="Import Users Complete",
-            content=f"Your background import job ({job_id}) has finished successfully. Imported {imported_count} users out of {len(valid_users)} valid records.",
-            type="SYSTEM",
-        )
-        db.add(notification)
-        db.commit()
-
+        # Notify admin via central AdminNotificationService
         try:
-            from app.api.v1.endpoints.exams import _send_sync_ws_notification
-            _send_sync_ws_notification(
-                user_id=admin_id,
-                title="Import Users Complete",
-                content=f"Your background import job ({job_id}) has finished successfully. Imported {imported_count} users out of {len(valid_users)} valid records."
+            from app.services.admin_notification_service import admin_notification_service
+            admin_notification_service.notify_user_imported(
+                db, admin_id=admin_id, job_id=job_id, imported_count=imported_count, total_count=len(valid_users)
             )
         except Exception:
             pass
@@ -299,7 +288,25 @@ def update_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User not found with ID {user_id}",
         )
+    old_role = user.role
+    old_status = user.status
+
     updated_user = crud_user.update(db, db_obj=user, obj_in=user_in)
+
+    # Trigger admin notifications if role or status changed
+    try:
+        from app.services.admin_notification_service import admin_notification_service
+        if old_role != updated_user.role:
+            admin_notification_service.notify_permission_changed(
+                db, target_user=updated_user, old_role=old_role, new_role=updated_user.role, modified_by=current_user
+            )
+        if old_status != updated_user.status:
+            admin_notification_service.notify_user_status_changed(
+                db, target_user=updated_user, old_status=old_status, new_status=updated_user.status, modified_by=current_user
+            )
+    except Exception:
+        pass
+
     return updated_user
 
 
@@ -319,7 +326,20 @@ def delete_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User not found with ID {user_id}",
         )
+    deleted_email = user.email
+    deleted_id = user.id
+
     deleted_user = crud_user.delete(db, user_id=user_id)
+
+    # Trigger admin notifications for account deletion
+    try:
+        from app.services.admin_notification_service import admin_notification_service
+        admin_notification_service.notify_user_deleted(
+            db, user_email=deleted_email, user_id=deleted_id, deleted_by=current_user
+        )
+    except Exception:
+        pass
+
     return deleted_user
 
 

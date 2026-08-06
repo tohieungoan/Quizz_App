@@ -16,8 +16,8 @@ from app.api.v1.endpoints import (
     rooms,
     upload,
     users,
-    rooms,
     notifications,
+    admin_settings,
 )
 from app.api.v1.websockets import ws_notifications, ws_room
 
@@ -43,6 +43,7 @@ api_router.include_router(dashboard.router, prefix="/admin/dashboard", tags=["Da
 api_router.include_router(reports.router, prefix="/admin/reports", tags=["Reports"])
 api_router.include_router(badges.router, prefix="/admin/badges", tags=["Badges"])
 api_router.include_router(rooms.router, prefix="/admin/rooms", tags=["Rooms"])
+api_router.include_router(admin_settings.router, prefix="/admin/settings", tags=["Admin Settings"])
 
 # WebSockets
 api_router.include_router(ws_notifications.router, tags=["WebSockets"])
