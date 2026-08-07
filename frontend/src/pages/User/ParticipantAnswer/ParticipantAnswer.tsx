@@ -272,29 +272,34 @@ export const ParticipantAnswer: React.FC = () => {
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
-            if (data.type === "PONG") return
+            const msgType = data.t || data.type
+            if (msgType === "PONG" || msgType === "PO") return
 
-            if (data.type === "SYNC_STATE_RESPONSE") {
-              if (data.active_question) {
-                setActiveQuestion(data.active_question)
-                if (data.current_question_index) setQuestionIndex(data.current_question_index)
-                if (data.time_left !== undefined) setTimeLeft(data.time_left)
+            if (msgType === "SYNC_STATE_RESPONSE" || msgType === "SSR") {
+              const activeQ = data.q || data.active_question
+              if (activeQ) {
+                setActiveQuestion(activeQ)
+                if (data.idx || data.current_question_index) setQuestionIndex(data.idx || data.current_question_index)
+                if (data.tl !== undefined || data.time_left !== undefined) setTimeLeft(data.tl ?? data.time_left)
                 setLoading(false)
               }
               return
             }
 
-            if (data.type === "SUBMIT_ANSWER_RESPONSE") {
-              if (data.status === "SUCCESS") {
-                const isAnsCorrect = data.is_correct
-                const pointsForThisQuestion = Math.round(data.score || 0)
-                const totalNewScore = data.total_score !== undefined && data.total_score !== null ? data.total_score : accumulatedScore + (isAnsCorrect ? pointsForThisQuestion : 0)
+            if (msgType === "SUBMIT_ANSWER_RESPONSE" || msgType === "SAR") {
+              const isStatusSuccess = data.status === "SUCCESS" || data.st === "SUCCESS"
+              if (isStatusSuccess) {
+                const isAnsCorrect = data.c ?? data.is_correct
+                const pointsForThisQuestion = Math.round(data.s ?? data.score ?? 0)
+                const rawTotalScore = data.ts ?? data.total_score
+                const totalNewScore = rawTotalScore !== undefined && rawTotalScore !== null ? rawTotalScore : accumulatedScore + (isAnsCorrect ? pointsForThisQuestion : 0)
                 const updatedStreak = isAnsCorrect ? streak + 1 : (activePowerUp === 'shield' ? streak : 0)
+                const correctOptKey = data.ck ?? data.correct_option_key
 
                 setIsCorrect(isAnsCorrect)
                 setPointsEarned(isAnsCorrect ? pointsForThisQuestion : 0)
                 setAccumulatedScore(totalNewScore)
-                setCorrectOptionKey(data.correct_option_key)
+                setCorrectOptionKey(correctOptKey)
                 setStreak(updatedStreak)
 
                 sessionStorage.setItem('play_streak', String(updatedStreak))
@@ -451,12 +456,19 @@ export const ParticipantAnswer: React.FC = () => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       try {
         socketRef.current.send(JSON.stringify({
+          t: "SA",
           type: "SUBMIT_ANSWER",
+          pid: participantId,
           participant_id: participantId,
+          qid: submittedQuestionId,
           question_id: submittedQuestionId,
+          opt: optionId,
           selected_option_id: optionId,
+          txt: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
           answer_text: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
+          pw: activePowerUp || undefined,
           active_power_up: activePowerUp || undefined,
+          st: streak,
           streak: streak
         }))
         return

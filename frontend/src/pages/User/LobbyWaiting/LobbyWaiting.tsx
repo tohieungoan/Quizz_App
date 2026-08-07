@@ -293,14 +293,15 @@ export const LobbyWaiting: React.FC = () => {
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
-            console.log("WebSocket event received:", data)
-            if (data.type === "PONG") return
+            const msgType = data.t || data.type
+            if (msgType === "PONG" || msgType === "PO") return
 
-            if (data.type === "PLAYER_JOINED" || data.type === "PLAYER_LEFT") {
+            if (msgType === "PLAYER_JOINED" || msgType === "PJ" || msgType === "PLAYER_LEFT" || msgType === "PL") {
               // 1. Immediate UI roster update from WebSocket payload array if available
-              if (Array.isArray(data.players)) {
+              const activePlayersList = data.p || data.players
+              if (Array.isArray(activePlayersList)) {
                 if (isHost) {
-                  setHostMembers(data.players.map((pName: string): HostMember => ({
+                  setHostMembers(activePlayersList.map((pName: string): HostMember => ({
                     nickname: pName,
                     equipped_title: null
                   })))

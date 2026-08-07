@@ -69,8 +69,11 @@ async def websocket_room(
             room_code,
             {
                 "type": "PLAYER_JOINED",
+                "t": "PJ",
                 "player": decoded_nickname,
-                "players": active_nicknames
+                "u": decoded_nickname,
+                "players": active_nicknames,
+                "p": active_nicknames,
             }
         )
 
@@ -79,18 +82,18 @@ async def websocket_room(
             # Keep-alive loop, listening for client heartbeat
             data = await websocket.receive_json()
             if isinstance(data, dict):
-                msg_type = data.get("type")
-                if msg_type == "PING":
-                    await websocket.send_json({"type": "PONG"})
-                elif msg_type == "SUBMIT_ANSWER":
+                msg_type = data.get("type") or data.get("t")
+                if msg_type in ["PING", "P"]:
+                    await websocket.send_json({"type": "PONG", "t": "PO"})
+                elif msg_type in ["SUBMIT_ANSWER", "SA"]:
                     # Handle real-time WebSocket answer submission (<5ms)
                     try:
-                        participant_id = data.get("participant_id")
-                        question_id = data.get("question_id")
-                        selected_option_id = data.get("selected_option_id")
-                        answer_text = data.get("answer_text")
-                        active_power_up = data.get("active_power_up")
-                        streak = data.get("streak", 0)
+                        participant_id = data.get("participant_id") or data.get("pid")
+                        question_id = data.get("question_id") or data.get("qid")
+                        selected_option_id = data.get("selected_option_id") or data.get("opt")
+                        answer_text = data.get("answer_text") or data.get("txt")
+                        active_power_up = data.get("active_power_up") or data.get("pw")
+                        streak = data.get("streak") or data.get("st") or 0
 
                         from starlette.concurrency import run_in_threadpool
                         from app.services.redis_room_service import redis_room_service
@@ -148,15 +151,22 @@ async def websocket_room(
                                             crud_user.add_achievement_points(s, u, p)
                                 asyncio.create_task(run_in_threadpool(_bg_add_pts, participant.user_id, pts))
 
-                            # Send response back to sender client
+                            # Send response back to sender client (Dual Full & Compact keys)
                             await websocket.send_json({
                                 "type": "SUBMIT_ANSWER_RESPONSE",
+                                "t": "SAR",
                                 "status": "SUCCESS",
+                                "st": "SUCCESS",
                                 "question_id": question_id,
+                                "qid": question_id,
                                 "is_correct": is_correct,
+                                "c": is_correct,
                                 "score": score,
+                                "s": score,
                                 "total_score": redis_total_score or total_score,
+                                "ts": redis_total_score or total_score,
                                 "correct_option_key": correct_option_key,
+                                "ck": correct_option_key,
                             })
 
                             # Broadcast ANSWER_SUBMITTED to room host panel
@@ -164,15 +174,19 @@ async def websocket_room(
                                 room_code,
                                 {
                                     "type": "ANSWER_SUBMITTED",
+                                    "t": "AS",
                                     "participant_id": participant.id,
+                                    "pid": participant.id,
                                     "nickname": participant.nickname,
+                                    "u": participant.nickname,
                                     "is_correct": is_correct,
+                                    "c": is_correct,
                                 }
                             )
                     except Exception as sub_err:
                         logger.error(f"Error handling WebSocket SUBMIT_ANSWER: {sub_err}")
                         await websocket.send_json({"type": "ERROR", "message": "Failed to record answer."})
-                elif msg_type == "SYNC_STATE":
+                elif msg_type in ["SYNC_STATE", "SS"]:
                     try:
                         def _get_sync_state():
                             with SessionLocal() as db_session:
@@ -206,7 +220,10 @@ async def websocket_room(
                         if sync_payload:
                             await websocket.send_json({
                                 "type": "SYNC_STATE_RESPONSE",
-                                **sync_payload
+                                "t": "SSR",
+                                **sync_payload,
+                                "q": sync_payload.get("active_question"),
+                                "tl": sync_payload.get("time_left"),
                             })
                     except Exception as sync_err:
                         logger.error(f"Error handling SYNC_STATE: {sync_err}")
@@ -221,5 +238,18 @@ async def websocket_room(
         try:
             room_websocket_manager.disconnect(websocket, room_code, decoded_nickname)
             logger.info(f"WebSocket client '{decoded_nickname}' disconnected from room '{room_code}'")
-        except Exception as db_err:
-            logger.error(f"Error during WebSocket cleanup for '{decoded_nickname}': {db_err}")
+            if not isHost:
+                active_members = room_websocket_manager.get_room_members(room_code)
+                await room_websocket_manager.broadcast_to_room(
+                    room_code,
+                    {
+                        "type": "PLAYER_LEFT",
+                        "t": "PL",
+                        "player": decoded_nickname,
+                        "u": decoded_nickname,
+                        "players": active_members,
+                        "p": active_members,
+                    }
+                )
+        except Exception as cleanup_err:
+            logger.error(f"Error during WebSocket cleanup for '{decoded_nickname}': {cleanup_err}")

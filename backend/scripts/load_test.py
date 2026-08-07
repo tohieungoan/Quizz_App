@@ -160,80 +160,87 @@ async def bot_participant_task(
     encoded_nickname = urllib.parse.quote(nickname)
     ws_url = f"{ws_base_url}/api/v1/ws/rooms/{room_code}?nickname={encoded_nickname}&isHost=false"
 
-    try:
-        async with websockets.connect(ws_url) as ws:
-            stats.ws_connected += 1
-            
-            last_ping_time = 0.0
+    # Connect bot WebSocket with auto-reconnect resilience
+    while not stop_event.is_set():
+        try:
+            async with websockets.connect(ws_url, ping_interval=20, ping_timeout=20) as ws:
+                stats.ws_connected += 1
+                last_ping_time = 0.0
 
-            async def send_pings():
-                nonlocal last_ping_time
-                while not stop_event.is_set():
-                    try:
-                        last_ping_time = time.perf_counter()
-                        await ws.send(json.dumps({"type": "PING"}))
-                    except Exception:
-                        break
-                    await asyncio.sleep(5.0)
-
-            import random
-
-            async def submit_bot_answer(qid: int):
-                if not participant_id:
-                    return
-                # Simulate human thinking/reading time before answering (1.0 to 3.5 seconds)
-                await asyncio.sleep(random.uniform(1.0, 3.5))
-                submit_url = f"{base_url}/api/v1/rooms/{room_code}/submit-answer"
-                async with httpx.AsyncClient(timeout=10.0) as http_client:
-                    try:
-                        await http_client.post(
-                            submit_url,
-                            json={
-                                "participant_id": participant_id,
-                                "question_id": qid,
-                                "selected_option_id": random.choice([1, 2, 3, 4]),
-                                "streak": random.randint(1, 3),
-                            }
-                        )
-                    except Exception:
-                        pass
-
-            async def listen_messages():
-                nonlocal last_ping_time
-                while not stop_event.is_set():
-                    try:
-                        raw_msg = await ws.recv()
-                        stats.messages_received += 1
+                async def send_pings():
+                    nonlocal last_ping_time
+                    while not stop_event.is_set():
                         try:
-                            data = json.loads(raw_msg) if isinstance(raw_msg, str) else raw_msg
-                            if isinstance(data, dict):
-                                mtype = data.get("type")
-                                if mtype == "PONG" and last_ping_time > 0:
-                                    lat = time.perf_counter() - last_ping_time
-                                    stats.ping_latencies.append(lat)
-                                elif submit_answers and mtype in ["GAME_STARTED", "NEXT_QUESTION"]:
-                                    target_qid = data.get("question_id") or data.get("current_question_index") or 1
-                                    asyncio.create_task(submit_bot_answer(qid=target_qid))
+                            last_ping_time = time.perf_counter()
+                            await ws.send(json.dumps({"t": "P", "type": "PING"}))
+                        except Exception:
+                            break
+                        await asyncio.sleep(5.0)
+
+                import random
+
+                async def submit_bot_answer(qid: int):
+                    if not participant_id:
+                        return
+                    # Simulate human thinking/reading time before answering (0.5 to 2.5 seconds)
+                    await asyncio.sleep(random.uniform(0.5, 2.5))
+                    submit_url = f"{base_url}/api/v1/rooms/{room_code}/submit-answer"
+                    async with httpx.AsyncClient(timeout=10.0) as http_client:
+                        try:
+                            await http_client.post(
+                                submit_url,
+                                json={
+                                    "participant_id": participant_id,
+                                    "question_id": qid,
+                                    "selected_option_id": random.choice([1, 2, 3, 4]),
+                                    "streak": random.randint(1, 3),
+                                }
+                            )
                         except Exception:
                             pass
-                    except Exception:
-                        break
 
-            ping_task = asyncio.create_task(send_pings())
-            listen_task = asyncio.create_task(listen_messages())
+                async def listen_messages():
+                    nonlocal last_ping_time
+                    while not stop_event.is_set():
+                        try:
+                            raw_msg = await ws.recv()
+                            stats.messages_received += 1
+                            try:
+                                data = json.loads(raw_msg) if isinstance(raw_msg, str) else raw_msg
+                                if isinstance(data, dict):
+                                    mtype = data.get("t") or data.get("type")
+                                    if mtype in ["PONG", "PO"] and last_ping_time > 0:
+                                        lat = time.perf_counter() - last_ping_time
+                                        stats.ping_latencies.append(lat)
+                                    elif submit_answers and mtype in ["GAME_STARTED", "GS", "NEXT_QUESTION", "NQ"]:
+                                        target_qid = data.get("question_id") or data.get("qid") or data.get("current_question_index") or 1
+                                        asyncio.create_task(submit_bot_answer(qid=target_qid))
+                            except Exception:
+                                pass
+                        except Exception:
+                            break
 
-            try:
-                await stop_event.wait()
-            finally:
-                ping_task.cancel()
-                listen_task.cancel()
-                await asyncio.gather(ping_task, listen_task, return_exceptions=True)
+                ping_task = asyncio.create_task(send_pings())
+                listen_task = asyncio.create_task(listen_messages())
 
-    except Exception as e:
-        stats.ws_errors += 1
-        logger.debug(f"[{nickname}] WS connection ended: {e}")
-    finally:
-        stats.ws_disconnected += 1
+                try:
+                    await stop_event.wait()
+                finally:
+                    ping_task.cancel()
+                    listen_task.cancel()
+                    await asyncio.gather(ping_task, listen_task, return_exceptions=True)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            if not stop_event.is_set():
+                stats.ws_errors += 1
+                logger.debug(f"[{nickname}] WS connection ended: {e}")
+                await asyncio.sleep(0.3)
+            else:
+                break
+        finally:
+            stats.ws_disconnected += 1
 
 
 async def host_room_task(
