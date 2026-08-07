@@ -167,12 +167,14 @@ export const HostLiveReview: React.FC = () => {
     let pingTimer: any = null
     let reconnectTimer: any = null
     let isDisposed = false
+    let reconnectAttempt = 0
 
     const connectHostWS = () => {
       if (isDisposed) return
       try {
         socket = new WebSocket(wsUrl)
         socket.onopen = () => {
+          reconnectAttempt = 0
           pingTimer = setInterval(() => {
             if (socket && socket.readyState === WebSocket.OPEN) {
               socket.send(JSON.stringify({ type: "PING" }))
@@ -195,7 +197,9 @@ export const HostLiveReview: React.FC = () => {
         socket.onclose = () => {
           if (pingTimer) clearInterval(pingTimer)
           if (!isDisposed) {
-            reconnectTimer = setTimeout(connectHostWS, 1500)
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempt) + Math.random() * 500, 10000)
+            reconnectAttempt += 1
+            reconnectTimer = setTimeout(connectHostWS, delay)
           }
         }
 
@@ -205,7 +209,9 @@ export const HostLiveReview: React.FC = () => {
       } catch (e) {
         console.error("Failed to establish WS in Host Panel:", e)
         if (!isDisposed) {
-          reconnectTimer = setTimeout(connectHostWS, 2000)
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempt) + Math.random() * 500, 10000)
+          reconnectAttempt += 1
+          reconnectTimer = setTimeout(connectHostWS, delay)
         }
       }
     }
@@ -633,27 +639,34 @@ export const HostLiveReview: React.FC = () => {
                   No players in the room.
                 </div>
               ) : (
-                participants.map((p) => (
-                  <div key={p.id} className="flex justify-between items-center p-3 rounded-xl border border-outline-variant bg-surface-container-lowest/30 shadow-xs">
-                    <span className="text-xs font-black text-slate-850 truncate max-w-[150px]">
-                      {p.name}
-                    </span>
+                <>
+                  {participants.slice(0, 50).map((p) => (
+                    <div key={p.id} className="flex justify-between items-center p-3 rounded-xl border border-outline-variant bg-surface-container-lowest/30 shadow-xs">
+                      <span className="text-xs font-black text-slate-850 truncate max-w-[150px]">
+                        {p.name}
+                      </span>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-600 font-extrabold">{Math.round(p.score)} pts</span>
-                      {p.answered ? (
-                        <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                          Answered
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
-                          Thinking...
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-600 font-extrabold">{Math.round(p.score)} pts</span>
+                        {p.answered ? (
+                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            Answered
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                            Thinking...
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                  {participants.length > 50 && (
+                    <div className="py-2 text-center text-xs font-extrabold text-primary bg-primary/5 rounded-xl border border-primary/20">
+                      + {participants.length - 50} more active participants
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

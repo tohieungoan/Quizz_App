@@ -126,6 +126,9 @@ export const LobbyWaiting: React.FC = () => {
           })
           return
         }
+        if (res.id) {
+          setRoomId(res.id)
+        }
         if (res.created_at) {
           setCreatedAt(res.created_at)
         }
@@ -244,6 +247,7 @@ export const LobbyWaiting: React.FC = () => {
     let pingTimer: any = null
     let reconnectTimer: any = null
     let isDisposed = false
+    let reconnectAttempt = 0
 
     const connectWebSocket = () => {
       if (isDisposed) return
@@ -252,6 +256,7 @@ export const LobbyWaiting: React.FC = () => {
 
         socket.onopen = () => {
           console.log(`WebSocket connection opened for room: ${roomCode}`)
+          reconnectAttempt = 0
           
           // Re-verify room status on reconnect: if already PLAYING, redirect!
           if (!isHost) {
@@ -292,7 +297,31 @@ export const LobbyWaiting: React.FC = () => {
             if (data.type === "PONG") return
 
             if (data.type === "PLAYER_JOINED" || data.type === "PLAYER_LEFT") {
-              // Re-fetch full participant data (including equipped_title) from API
+              // 1. Immediate UI roster update from WebSocket payload array if available
+              if (Array.isArray(data.players)) {
+                if (isHost) {
+                  setHostMembers(data.players.map((pName: string): HostMember => ({
+                    nickname: pName,
+                    equipped_title: null
+                  })))
+                } else {
+                  const mapped: Player[] = data.players.map((pName: string, idx: number): Player => {
+                    const isMe = pName === nickname
+                    const color = getAvatarColor(String(idx) + pName)
+                    return {
+                      id: String(idx),
+                      name: pName,
+                      initials: getInitials(pName),
+                      avatarBg: isMe ? 'bg-primary' : color.bg,
+                      avatarText: isMe ? 'text-on-primary' : color.text,
+                      isMe,
+                    }
+                  })
+                  setPlayers(mapped)
+                }
+              }
+
+              // 2. Re-fetch full participant details (with equipped titles) from API
               const targetRoomId = roomId || state?.roomId
               if (targetRoomId) {
                 roomService.getParticipants(targetRoomId)
@@ -355,7 +384,9 @@ export const LobbyWaiting: React.FC = () => {
           console.log("WebSocket connection closed", event)
           if (pingTimer) clearInterval(pingTimer)
           if (!isDisposed) {
-            reconnectTimer = setTimeout(connectWebSocket, 1500)
+            const delay = reconnectAttempt === 0 ? 300 : Math.min(500 * Math.pow(1.5, reconnectAttempt) + Math.random() * 300, 5000)
+            reconnectAttempt += 1
+            reconnectTimer = setTimeout(connectWebSocket, delay)
           }
         }
 
@@ -366,7 +397,9 @@ export const LobbyWaiting: React.FC = () => {
       } catch (err) {
         console.error("Failed to establish WebSocket room connection:", err)
         if (!isDisposed) {
-          reconnectTimer = setTimeout(connectWebSocket, 2000)
+          const delay = reconnectAttempt === 0 ? 300 : Math.min(500 * Math.pow(1.5, reconnectAttempt) + Math.random() * 300, 5000)
+          reconnectAttempt += 1
+          reconnectTimer = setTimeout(connectWebSocket, delay)
         }
       }
     }

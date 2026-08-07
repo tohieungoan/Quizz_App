@@ -419,9 +419,12 @@ async def end_room(
             detail="You do not have permission to end this room."
         )
 
+    from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.update_status(db=db, room=room, status="ENDED")
     # Broadcast game ended to all websocket clients
     await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
+    # Batch flush cached Redis answers to PostgreSQL database
+    await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
     return updated_room
 
 
@@ -438,8 +441,10 @@ async def join_room_by_code(
     If the authorization header is present and valid, the user will be registered.
     Otherwise, they will join as a guest with the provided nickname.
     """
+    from starlette.concurrency import run_in_threadpool
+
     # 1. Verify if the room exists and is active
-    room = crud_room.get_by_code(db=db, room_code=room_code)
+    room = await run_in_threadpool(crud_room.get_by_code, db=db, room_code=room_code)
     if not room:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -450,7 +455,8 @@ async def join_room_by_code(
 
     try:
         user_id = current_user.id if current_user else None
-        participant = crud_room.join_room(
+        participant = await run_in_threadpool(
+            crud_room.join_room,
             db=db,
             room=room,
             nickname=participant_in.nickname,
@@ -458,7 +464,10 @@ async def join_room_by_code(
         )
         
         # Broadcast player joined event to all websocket clients in room
-        active_nicknames = [p.nickname for p in room.participants]
+        from app.models.room import Participant
+        active_nicknames = await run_in_threadpool(
+            lambda: [row[0] for row in db.query(Participant.nickname).filter(Participant.room_id == room.id).all()]
+        )
         await room_websocket_manager.broadcast_to_room(
             room_code,
             {
@@ -468,7 +477,7 @@ async def join_room_by_code(
             }
         )
         if current_user:
-            crud_user.add_achievement_points(db, current_user, 20)
+            await run_in_threadpool(crud_user.add_achievement_points, db, current_user, 20)
         return participant
     except ValueError as e:
         raise HTTPException(
@@ -730,6 +739,7 @@ async def next_question(
     if room.host_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have permission to advance this room.")
 
+    from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast NEXT_QUESTION to all client WebSockets in room
     await room_websocket_manager.broadcast_to_room(
@@ -740,6 +750,8 @@ async def next_question(
             "status": updated_room.status
         }
     )
+    # Batch flush cached Redis answers to PostgreSQL database
+    await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -755,8 +767,11 @@ async def submit_answer(
     Submit participant's answer for the active question.
     Calculates dynamic scoring based on server time and enforces timeouts (0 score if time is up).
     """
+    from starlette.concurrency import run_in_threadpool
+    from app.services.redis_room_service import redis_room_service
+
     # 1. Get Room
-    room = crud_room.get_by_code(db=db, room_code=room_code)
+    room = await run_in_threadpool(crud_room.get_by_code, db=db, room_code=room_code)
     if not room:
         raise HTTPException(status_code=404, detail="Active room not found or has already ended.")
 
@@ -768,18 +783,21 @@ async def submit_answer(
 
     # 2. Get Participant
     from app.models.room import Participant
-    participant = db.query(Participant).filter(
-        Participant.id == answer_in.participant_id,
-        Participant.room_id == room.id
-    ).first()
+    participant = await run_in_threadpool(
+        lambda: db.query(Participant).filter(
+            Participant.id == answer_in.participant_id,
+            Participant.room_id == room.id
+        ).first()
+    )
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found in this room.")
 
-    # 3. Submit
+    # 3. Submit Answer
     import datetime
     now = datetime.datetime.utcnow()
     try:
-        is_correct, score, total_score, correct_option_key = crud_room.submit_answer(
+        is_correct, score, total_score, correct_option_key = await run_in_threadpool(
+            crud_room.submit_answer,
             db=db,
             room=room,
             participant=participant,
@@ -789,6 +807,18 @@ async def submit_answer(
             active_power_up=answer_in.active_power_up,
             client_streak=answer_in.streak,
             now=now
+        )
+
+        # High-concurrency Redis Store update
+        redis_total_score, _ = await redis_room_service.submit_answer_redis(
+            room_code=room.room_code,
+            participant_id=participant.id,
+            question_id=answer_in.question_id,
+            selected_option_id=answer_in.selected_option_id,
+            answer_text=answer_in.answer_text,
+            is_correct=is_correct,
+            score=score,
+            correct_option_key=correct_option_key,
         )
 
         # Real-time WebSocket notification to host panel
@@ -803,12 +833,12 @@ async def submit_answer(
 
         if participant.user:
             pts = 15 if is_correct else 10
-            crud_user.add_achievement_points(db, participant.user, pts)
+            await run_in_threadpool(crud_user.add_achievement_points, db, participant.user, pts)
 
         return {
             "is_correct": is_correct,
             "score": score,
-            "total_score": total_score,
+            "total_score": redis_total_score or total_score,
             "correct_option_key": correct_option_key
         }
     except ValueError as e:

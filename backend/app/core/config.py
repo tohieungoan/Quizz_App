@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # Redis Configuration
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # AI Chatbot Configuration
+    GOOGLE_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    ASSISTANT_NAME: str = "Quizzy"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
