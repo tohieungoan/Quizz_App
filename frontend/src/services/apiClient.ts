@@ -118,23 +118,25 @@ export const apiClient = {
 
   post: <T = unknown>(
     endpoint: string,
-    body: unknown,
+    body?: unknown,
     extraHeaders?: Record<string, string>
   ): Promise<T> =>
     fetchWithAuth(`${BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: extraHeaders,
-      body: JSON.stringify(body),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then(handleResponse<T>),
 
   postMultipart: <T = unknown>(
     endpoint: string,
-    body: FormData
+    body: FormData,
+    config?: RequestInit
   ): Promise<T> =>
     fetchWithAuth(`${BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': '' }, // Empty string tells buildHeaders to delete it
       body: body,
+      ...config
     }).then(handleResponse<T>),
 
   /** Reserved for form-urlencoded (OAuth2 login) — authorization header not needed */
