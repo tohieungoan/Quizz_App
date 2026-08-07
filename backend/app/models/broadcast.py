@@ -14,7 +14,6 @@ class BroadcastLog(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[str] = mapped_column(String, default="ANNOUNCEMENT")
     target_type: Mapped[str] = mapped_column(String, default="ALL_USERS")
-    target_group_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True)
     action_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     
     is_scheduled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -30,4 +29,3 @@ class BroadcastLog(Base):
 
     # Relationships
     admin = relationship("User", foreign_keys=[admin_id])
-    target_group = relationship("Group", foreign_keys=[target_group_id])

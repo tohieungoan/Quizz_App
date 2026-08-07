@@ -18,6 +18,7 @@ from app.api.v1.endpoints import (
     users,
     notifications,
     admin_settings,
+    ai_quiz,
 )
 from app.api.v1.websockets import ws_notifications, ws_room
 
@@ -31,6 +32,8 @@ api_router.include_router(upload.router, prefix="/upload", tags=["Upload"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(badges.router, prefix="/badges", tags=["Badges"])
 
+# AI Quiz Generator Endpoints
+api_router.include_router(ai_quiz.router, prefix="/ai-quiz", tags=["AI Quiz Generator"])
 
 # Quiz & Question Endpoints
 api_router.include_router(quizzes.router, tags=["Quizzes"])

@@ -94,6 +94,24 @@ export const Users: React.FC = () => {
     fetchUsers();
   }, []);
 
+  // Current logged in user info
+  const currentUser = useMemo(() => {
+    try {
+      const rawProfile = localStorage.getItem('user_profile');
+      if (rawProfile) return JSON.parse(rawProfile);
+      const rawUser = localStorage.getItem('user');
+      if (rawUser) return JSON.parse(rawUser);
+    } catch {
+      return null;
+    }
+    return null;
+  }, []);
+
+  // Count active Super Admins to protect the last remaining one
+  const activeSuperAdminCount = useMemo(() => {
+    return users.filter((u) => u.role === 'SUPER_ADMIN' && u.status === 'ACTIVE').length;
+  }, [users]);
+
   // Handlers
   const handleCreateNew = () => {
     setSelectedUser(null);
@@ -115,8 +133,30 @@ export const Users: React.FC = () => {
     setActionModalOpen(true);
   };
 
-  const handleDeleteClick = (id: string) => {
-    setUserToDelete(id);
+  const handleDeleteClick = (user: UserData) => {
+    const isSelf = Boolean(currentUser && (currentUser.id?.toString() === user.id || currentUser.email === user.email));
+    if (isSelf) {
+      setAlertState({
+        isOpen: true,
+        title: 'Action Prohibited',
+        message: 'You cannot delete your own administrative account.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const isLastSuperAdmin = Boolean(user.role === 'SUPER_ADMIN' && user.status === 'ACTIVE' && activeSuperAdminCount <= 1);
+    if (isLastSuperAdmin) {
+      setAlertState({
+        isOpen: true,
+        title: 'Action Prohibited',
+        message: 'Cannot delete the last remaining active Super Admin in the system.',
+        type: 'error',
+      });
+      return;
+    }
+
+    setUserToDelete(user.id);
     setDeleteConfirmOpen(true);
   };
 
@@ -135,7 +175,7 @@ export const Users: React.FC = () => {
         setAlertState({
           isOpen: true,
           title: 'Delete Failed',
-          message: error.message || 'Failed to delete user.',
+          message: error?.response?.data?.detail || error.message || 'Failed to delete user.',
           type: 'error',
         });
       } finally {
@@ -344,74 +384,98 @@ export const Users: React.FC = () => {
                   </td>
                 </tr>
               ) : currentUsers.length > 0 ? (
-                currentUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-surface-bright transition-colors">
-                    <td className="px-4 md:px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
-                          {user.initials}
+                currentUsers.map((user) => {
+                  const isSelf = Boolean(currentUser && (currentUser.id?.toString() === user.id || currentUser.email === user.email));
+                  const isLastSuperAdmin = Boolean(user.role === 'SUPER_ADMIN' && user.status === 'ACTIVE' && activeSuperAdminCount <= 1);
+                  const isDeleteDisabled = isSelf || isLastSuperAdmin;
+
+                  return (
+                    <tr key={user.id} className="hover:bg-surface-container-low transition-colors">
+                      <td className="px-4 md:px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs shrink-0">
+                            {user.initials}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-semibold text-on-surface truncate flex items-center gap-1.5">
+                              {user.name}
+                              {isSelf && (
+                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-normal">
+                                  You
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-xs text-on-surface-variant truncate">{user.email}</span>
+                          </div>
                         </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-on-surface truncate">{user.name}</span>
-                          <span className="text-xs text-on-surface-variant truncate">{user.email}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          user.role === 'SUPER_ADMIN'
-                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                            : 'bg-primary-container/20 text-primary border border-primary-container/30'
-                        }`}
-                      >
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          user.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}
-                      >
+                      </td>
+                      <td className="px-4 md:px-6 py-4 whitespace-nowrap">
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            user.status === 'ACTIVE' ? 'bg-green-600' : 'bg-red-600'
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            user.role === 'SUPER_ADMIN'
+                              ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                              : 'bg-primary-container/20 text-primary border border-primary-container/30'
                           }`}
-                        ></span>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-4 md:px-6 py-4 text-on-surface-variant text-xs whitespace-nowrap">
-                      {user.last_login}
-                    </td>
-                    <td className="px-4 md:px-6 py-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleViewDetails(user)}
-                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
-                          title="View Details"
                         >
-                          <Eye className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(user)}
-                          className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
-                          title="Edit User"
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            user.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}
                         >
-                          <Edit2 className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(user.id)}
-                          className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/40 rounded-md transition-colors"
-                          title="Delete User"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              user.status === 'ACTIVE' ? 'bg-green-600' : 'bg-red-600'
+                            }`}
+                          ></span>
+                          {user.status}
+                        </span>
+                      </td>
+                      <td className="px-4 md:px-6 py-4 text-on-surface-variant text-xs whitespace-nowrap">
+                        {user.last_login}
+                      </td>
+                      <td className="px-4 md:px-6 py-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleViewDetails(user)}
+                            className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
+                            title="View Details"
+                          >
+                            <Eye className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(user)}
+                            className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-md transition-colors"
+                            title="Edit User"
+                          >
+                            <Edit2 className="w-5 h-5" />
+                          </button>
+                          <button
+                            disabled={isDeleteDisabled}
+                            onClick={() => !isDeleteDisabled && handleDeleteClick(user)}
+                            className={`p-1.5 rounded-md transition-colors ${
+                              isDeleteDisabled
+                                ? 'text-on-surface-variant/30 cursor-not-allowed'
+                                : 'text-on-surface-variant hover:text-error hover:bg-error-container/40'
+                            }`}
+                            title={
+                              isSelf
+                                ? 'You cannot delete your own administrative account'
+                                : isLastSuperAdmin
+                                ? 'Cannot delete the last remaining active Super Admin'
+                                : 'Delete User'
+                            }
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
@@ -441,6 +505,8 @@ export const Users: React.FC = () => {
         onSave={handleSaveUser}
         fieldErrors={fieldErrors}
         isSaving={isSaving}
+        isSelf={Boolean(selectedUser && currentUser && (currentUser.id?.toString() === selectedUser.id || currentUser.email === selectedUser.email))}
+        isLastSuperAdmin={Boolean(selectedUser && selectedUser.role === 'SUPER_ADMIN' && selectedUser.status === 'ACTIVE' && activeSuperAdminCount <= 1)}
       />
 
       <ConfirmModal

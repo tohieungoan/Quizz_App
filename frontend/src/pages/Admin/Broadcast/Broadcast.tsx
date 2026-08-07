@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Send, 
   Megaphone, 
@@ -30,6 +30,17 @@ export function Broadcast() {
   const [isLoadingScheduled, setIsLoadingScheduled] = useState(false);
   const [deletingId, setDeletingId] = useState<string | number | null>(null);
 
+  // Compute minimum datetime string for datetime-local input (2 minutes in future)
+  const minScheduledDateTime = useMemo(() => {
+    const d = new Date(Date.now() + 2 * 60 * 1000);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }, []);
+
   // Fetch scheduled broadcasts
   const fetchScheduled = useCallback(async (silent = false) => {
     if (!silent) setIsLoadingScheduled(true);
@@ -48,18 +59,53 @@ export function Broadcast() {
   }, [fetchScheduled]);
 
   const handleSend = async () => {
-    if (!title.trim() || !content.trim()) return;
-    if (isScheduled && !scheduledAt) return;
+    const trimmedTitle = title.trim();
+    const trimmedContent = content.trim();
+    const trimmedUrl = actionUrl.trim();
+
+    if (trimmedTitle.length < 3 || trimmedTitle.length > 200) {
+      toast.error('Title must be between 3 and 200 characters.');
+      return;
+    }
+
+    if (trimmedContent.length < 5 || trimmedContent.length > 2000) {
+      toast.error('Content must be between 5 and 2000 characters.');
+      return;
+    }
+
+    if (trimmedUrl) {
+      if (trimmedUrl.length > 500) {
+        toast.error('Action URL must not exceed 500 characters.');
+        return;
+      }
+      if (!trimmedUrl.startsWith('/') && !trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+        toast.error("Action URL must start with '/' (internal route) or 'http://' / 'https://'.");
+        return;
+      }
+    }
+
+    if (isScheduled) {
+      if (!scheduledAt) {
+        toast.error('Please select a future scheduled date & time.');
+        return;
+      }
+      const scheduledTimestamp = new Date(scheduledAt).getTime();
+      const nowTimestamp = Date.now();
+      if (scheduledTimestamp < nowTimestamp + 45 * 1000) {
+        toast.error('Scheduled time must be at least 1 minute in the future.');
+        return;
+      }
+    }
     
     setIsSending(true);
     try {
       await notificationService.sendBroadcast({
-        title: title.trim(),
-        content: content.trim(),
+        title: trimmedTitle,
+        content: trimmedContent,
         type,
         targetType: 'ALL_USERS',
         targetGroupId: null,
-        actionUrl: actionUrl.trim() || null,
+        actionUrl: trimmedUrl || null,
         isScheduled,
         scheduledAt: isScheduled ? new Date(scheduledAt).toISOString() : null,
       });
@@ -158,12 +204,18 @@ export function Broadcast() {
             <div className="space-y-5">
               
               <div>
-                <label className="block text-sm font-bold text-on-surface mb-1.5">
-                  Broadcast Title <span className="text-error">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-bold text-on-surface">
+                    Broadcast Title <span className="text-error">*</span>
+                  </label>
+                  <span className={`text-[11px] font-medium ${title.length > 200 ? 'text-error font-bold' : 'text-on-surface-variant'}`}>
+                    {title.length}/200
+                  </span>
+                </div>
                 <input
                   type="text"
                   value={title}
+                  maxLength={200}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Scheduled System Maintenance"
                   className="w-full px-4 py-2.5 bg-surface-container-low/40 border border-surface-variant/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium placeholder:text-on-surface-variant/50"
@@ -171,11 +223,17 @@ export function Broadcast() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-on-surface mb-1.5">
-                  Message Content <span className="text-error">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-bold text-on-surface">
+                    Message Content <span className="text-error">*</span>
+                  </label>
+                  <span className={`text-[11px] font-medium ${content.length > 2000 ? 'text-error font-bold' : 'text-on-surface-variant'}`}>
+                    {content.length}/2000
+                  </span>
+                </div>
                 <textarea
                   value={content}
+                  maxLength={2000}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Type the detailed message here..."
                   rows={4}
@@ -189,11 +247,15 @@ export function Broadcast() {
                 </label>
                 <input
                   type="text"
+                  maxLength={500}
                   value={actionUrl}
                   onChange={(e) => setActionUrl(e.target.value)}
                   placeholder="e.g. /exam/101 or https://..."
                   className="w-full px-4 py-2.5 bg-surface-container-low/40 border border-surface-variant/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium placeholder:text-on-surface-variant/50"
                 />
+                <p className="text-[11px] text-on-surface-variant mt-1">
+                  Must start with <code className="text-primary font-mono">/</code> for internal pages or <code className="text-primary font-mono">https://</code> for external links.
+                </p>
               </div>
 
               <div>
@@ -246,10 +308,14 @@ export function Broadcast() {
                 </label>
                 <input
                   type="datetime-local"
+                  min={minScheduledDateTime}
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
                   className="w-full px-4 py-2.5 bg-surface-container-low/40 border border-surface-variant/80 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface font-medium"
                 />
+                <p className="text-[11px] text-on-surface-variant mt-1">
+                  Schedule time must be at least 1 minute in the future.
+                </p>
               </div>
             )}
 

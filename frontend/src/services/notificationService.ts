@@ -18,11 +18,11 @@ export interface NotificationListResponse {
 
 export interface ScheduledBroadcastItem {
   id: number;
+  admin_id?: number | null;
   title: string;
   content: string;
   type: string;
-  target_type: string;
-  target_group_id?: number | null;
+  target_type?: string;
   action_url?: string | null;
   is_scheduled: boolean;
   scheduled_at: string | null;
@@ -64,9 +64,8 @@ export const notificationService = {
     title: string;
     content: string;
     type: string;
-    targetType: string;
+    targetType?: string;
     targetGroupId?: number | null;
-    targetUserId?: number | null;
     actionUrl?: string | null;
     isScheduled: boolean;
     scheduledAt?: string | null;
