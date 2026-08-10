@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Edit2, Trash2, Eye, Upload, BookOpen, Users as UsersIcon } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Eye, Upload, Download, BookOpen, Users as UsersIcon } from 'lucide-react';
 import { UserActionModal, UserData, UserMode } from '@/components/ui/UserActionModal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
@@ -296,6 +296,16 @@ export const Users: React.FC = () => {
 
         </div>
         <div className="flex items-center gap-3 self-start sm:self-auto">
+          <a
+            href="/import_users_template.csv"
+            download="import_users_template.csv"
+            className="border border-outline-variant/60 bg-white hover:bg-surface-container text-on-surface-variant hover:text-on-surface font-semibold px-3.5 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 text-sm"
+            title="Download sample CSV template"
+          >
+            <Download className="w-4 h-4 text-primary" />
+            <span className="hidden md:inline">Sample Template</span>
+            <span className="md:hidden">Template</span>
+          </a>
           <button
             onClick={handleBatchImport}
             className="border border-outline-variant/60 bg-white hover:bg-surface-container text-on-surface font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2"

@@ -1,0 +1,6 @@
+email,fullname,password,role,status
+nguyenvana@gmail.com,Nguyễn Văn A,Pass123456,USER,ACTIVE
+tranthib@gmail.com,Trần Thị B,Pass123456,USER,ACTIVE
+lequangc@gmail.com,Lê Quang C,Pass123456,ADMIN,ACTIVE
+phamthid@gmail.com,Phạm Thị D,Pass123456,USER,ACTIVE
+hoangvane@gmail.com,Hoàng Văn E,Pass123456,USER,ACTIVE
