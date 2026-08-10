@@ -34,8 +34,12 @@ class Settings(BaseSettings):
     # Redis Configuration
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Google AI Studio (Gemini API) Configuration
+    # AI Chatbot Configuration
+    GOOGLE_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
+    ASSISTANT_NAME: str = "Quizzy"
+
+    # Google AI Studio (Gemini API) Configuration
     GEMINI_PRIMARY_MODEL: str = "gemini-flash-latest"
 
     # OpenRouter AI Configuration (Fallback)
@@ -51,6 +55,4 @@ class Settings(BaseSettings):
     )
 
 
-
 settings = Settings()
-

@@ -188,9 +188,7 @@ export const ParticipantAnswer: React.FC = () => {
       setLoading(false)
     } catch (err) {
       console.error("Failed to fetch active question:", err)
-      clearPlaySession()
       setLoading(false)
-      navigate(status === 'authenticated' ? '/dashboard' : '/', { replace: true })
     }
   }
 
@@ -232,7 +230,10 @@ export const ParticipantAnswer: React.FC = () => {
     }
   }, [roomCode])
 
-  // Establish WebSocket connection to sync room next-question triggers
+  const socketRef = useRef<WebSocket | null>(null)
+  const reconnectAttemptRef = useRef<number>(0)
+
+  // Establish WebSocket connection to sync room next-question triggers and fast answer submissions (<5ms)
   useEffect(() => {
     if (!roomCode) return
 
@@ -242,7 +243,6 @@ export const ParticipantAnswer: React.FC = () => {
     const token = localStorage.getItem('token')
     const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=false${token ? `&token=${token}` : ''}`
 
-    let socket: WebSocket | null = null
     let pingTimer: any = null
     let reconnectTimer: any = null
     let isDisposed = false
@@ -250,10 +250,15 @@ export const ParticipantAnswer: React.FC = () => {
     const connectWebSocket = () => {
       if (isDisposed) return
       try {
-        socket = new WebSocket(wsUrl)
+        const socket = new WebSocket(wsUrl)
+        socketRef.current = socket
 
         socket.onopen = () => {
-          // Fetch latest active question on connect/reconnect to keep client in sync
+          reconnectAttemptRef.current = 0
+          // Request instant state sync over WebSocket
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "SYNC_STATE" }))
+          }
           fetchRoomQuestion()
 
           // Send periodic PING to keep WebSocket connection alive
@@ -267,9 +272,54 @@ export const ParticipantAnswer: React.FC = () => {
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
-            if (data.type === "PONG") return
+            const msgType = data.t || data.type
+            if (msgType === "PONG" || msgType === "PO") return
 
-            if (data.type === "NEXT_QUESTION") {
+            if (msgType === "SYNC_STATE_RESPONSE" || msgType === "SSR") {
+              const activeQ = data.q || data.active_question
+              if (activeQ) {
+                setActiveQuestion(activeQ)
+                if (data.idx || data.current_question_index) setQuestionIndex(data.idx || data.current_question_index)
+                if (data.tl !== undefined || data.time_left !== undefined) setTimeLeft(data.tl ?? data.time_left)
+                setLoading(false)
+              }
+              return
+            }
+
+            if (msgType === "SUBMIT_ANSWER_RESPONSE" || msgType === "SAR") {
+              const isStatusSuccess = data.status === "SUCCESS" || data.st === "SUCCESS"
+              if (isStatusSuccess) {
+                const isAnsCorrect = data.c ?? data.is_correct
+                const pointsForThisQuestion = Math.round(data.s ?? data.score ?? 0)
+                const rawTotalScore = data.ts ?? data.total_score
+                const totalNewScore = rawTotalScore !== undefined && rawTotalScore !== null ? rawTotalScore : accumulatedScore + (isAnsCorrect ? pointsForThisQuestion : 0)
+                const updatedStreak = isAnsCorrect ? streak + 1 : (activePowerUp === 'shield' ? streak : 0)
+                const correctOptKey = data.ck ?? data.correct_option_key
+
+                setIsCorrect(isAnsCorrect)
+                setPointsEarned(isAnsCorrect ? pointsForThisQuestion : 0)
+                setAccumulatedScore(totalNewScore)
+                setCorrectOptionKey(correctOptKey)
+                setStreak(updatedStreak)
+
+                sessionStorage.setItem('play_streak', String(updatedStreak))
+                sessionStorage.setItem('play_final_streak', String(updatedStreak))
+                sessionStorage.setItem('play_accumulated_score', String(totalNewScore))
+
+                if (location.state) {
+                  location.state.score = totalNewScore
+                  location.state.streak = updatedStreak
+                  location.state.activePowerUp = null
+                }
+
+                if (resultTimeoutRef.current) {
+                  clearTimeout(resultTimeoutRef.current)
+                }
+                resultTimeoutRef.current = setTimeout(() => {
+                  setShowResult(true)
+                }, 400)
+              }
+            } else if (data.type === "NEXT_QUESTION") {
               if (data.status === "ENDED") {
                 navigate('/leaderboard', {
                   state: {
@@ -336,8 +386,12 @@ export const ParticipantAnswer: React.FC = () => {
 
         socket.onclose = () => {
           if (pingTimer) clearInterval(pingTimer)
+          socketRef.current = null
           if (!isDisposed) {
-            reconnectTimer = setTimeout(connectWebSocket, 1500)
+            const attempt = reconnectAttemptRef.current
+            reconnectAttemptRef.current += 1
+            const delay = attempt === 0 ? 300 : Math.min(500 * Math.pow(1.5, attempt) + Math.random() * 300, 5000)
+            reconnectTimer = setTimeout(connectWebSocket, delay)
           }
         }
 
@@ -346,8 +400,12 @@ export const ParticipantAnswer: React.FC = () => {
         }
       } catch (err) {
         console.error("Failed to connect play screen websocket:", err)
+        socketRef.current = null
         if (!isDisposed) {
-          reconnectTimer = setTimeout(connectWebSocket, 2000)
+          const attempt = reconnectAttemptRef.current
+          reconnectAttemptRef.current += 1
+          const delay = attempt === 0 ? 300 : Math.min(500 * Math.pow(1.5, attempt) + Math.random() * 300, 5000)
+          reconnectTimer = setTimeout(connectWebSocket, delay)
         }
       }
     }
@@ -358,7 +416,7 @@ export const ParticipantAnswer: React.FC = () => {
       isDisposed = true
       if (pingTimer) clearInterval(pingTimer)
       if (reconnectTimer) clearTimeout(reconnectTimer)
-      if (socket) socket.close()
+      if (socketRef.current) socketRef.current.close()
     }
   }, [roomCode, nickname, navigate])
 
@@ -384,7 +442,7 @@ export const ParticipantAnswer: React.FC = () => {
     return () => clearInterval(timer)
   }, [loading, activeQuestion, startedAtMs, isAnswered])
 
-  // Submit Answer to API
+  // Submit Answer to API (WebSocket primary, REST HTTP fallback)
   const handleAnswerSubmit = async (optionId: number | null, keyOrText: string | null) => {
     if (isAnswered) return
     if (!activeQuestion) return
@@ -394,6 +452,32 @@ export const ParticipantAnswer: React.FC = () => {
     setIsAnswered(true)
     setSelectedKey(keyOrText)
 
+    // Fast-path: Submit over persistent WebSocket connection (<5ms latency)
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      try {
+        socketRef.current.send(JSON.stringify({
+          t: "SA",
+          type: "SUBMIT_ANSWER",
+          pid: participantId,
+          participant_id: participantId,
+          qid: submittedQuestionId,
+          question_id: submittedQuestionId,
+          opt: optionId,
+          selected_option_id: optionId,
+          txt: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
+          answer_text: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
+          pw: activePowerUp || undefined,
+          active_power_up: activePowerUp || undefined,
+          st: streak,
+          streak: streak
+        }))
+        return
+      } catch (wsErr) {
+        console.warn("WebSocket submit failed, falling back to HTTP REST API:", wsErr)
+      }
+    }
+
+    // Fallback path: HTTP REST API
     try {
       const res = await roomService.submitAnswer(roomCode, {
         participant_id: participantId,
@@ -662,6 +746,7 @@ export const ParticipantAnswer: React.FC = () => {
             />
             {!isAnswered && (
               <button
+                type="button"
                 onClick={() => handleAnswerSubmit(null, answerText)}
                 disabled={!answerText.trim()}
                 className="w-full py-5 bg-gradient-to-r from-primary to-secondary text-white rounded-3xl font-button text-base font-black shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-98 disabled:opacity-40 disabled:pointer-events-none transition-all cursor-pointer flex items-center justify-center gap-2"
@@ -706,6 +791,7 @@ export const ParticipantAnswer: React.FC = () => {
 
                 return (
                   <button
+                    type="button"
                     key={opt.key}
                     disabled={isAnswered}
                     onClick={() => handleAnswerSubmit(opt.id, opt.key)}
@@ -727,6 +813,7 @@ export const ParticipantAnswer: React.FC = () => {
         {/* Active Power-Up Selection Link Button (Disabled in EXAM mode) */}
         {!isAnswered && roomMode !== 'EXAM' && (
           <button
+            type="button"
             onClick={() => navigate('/powerups', { state: { nickname, roomCode, score: accumulatedScore, streak, questionNumber: questionIndex } })}
             className="w-full py-4 bg-amber-100 hover:bg-amber-200 border-2 border-amber-300 text-amber-955 rounded-2xl font-button text-xs font-black transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
           >

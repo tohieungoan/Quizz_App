@@ -44,7 +44,7 @@ export const achievementService = {
   },
 
   equipBadge: async (badgeId: number): Promise<AchievementBadge> => {
-    return apiClient.post(`/badges/${badgeId}/equip`);
+    return apiClient.post(`/badges/${badgeId}/equip`, {});
   },
 
   // Admin APIs

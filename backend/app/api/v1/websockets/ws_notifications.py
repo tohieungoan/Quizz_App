@@ -9,7 +9,6 @@ router = APIRouter()
 @router.websocket("/ws/notifications")
 async def websocket_notifications(
     websocket: WebSocket,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_ws)
 ):
     """

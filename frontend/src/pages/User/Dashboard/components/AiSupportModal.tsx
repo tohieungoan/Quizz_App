@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Bot, User, Sparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { chatbotService } from '@/services';
 
 interface AiSupportModalProps {
   isOpen: boolean;
@@ -24,6 +26,17 @@ export const AiSupportModal: React.FC<AiSupportModalProps> = ({ isOpen, onClose 
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom();
+    }
+  }, [messages, isTyping, isOpen]);
 
   if (!isOpen) return null;
 
@@ -34,9 +47,9 @@ export const AiSupportModal: React.FC<AiSupportModalProps> = ({ isOpen, onClose 
     'Reset account password',
   ];
 
-  const handleSend = (textToSend?: string) => {
+  const handleSend = async (textToSend?: string) => {
     const text = textToSend || inputText;
-    if (!text.trim()) return;
+    if (!text.trim() || isTyping) return;
 
     const userMsg: Message = {
       id: Date.now(),
@@ -49,35 +62,28 @@ export const AiSupportModal: React.FC<AiSupportModalProps> = ({ isOpen, onClose 
     if (!textToSend) setInputText('');
     setIsTyping(true);
 
-    // AI Simulated Response
-    setTimeout(() => {
-      let aiReply = 'Thank you for asking. Your AI assistant is processing your request and querying system data...';
-      const lower = text.toLowerCase();
-
-      if (lower.includes('join') || lower.includes('room') || lower.includes('exam')) {
-        aiReply =
-          'To join a live exam room, navigate to the "Join Live Room" tab on the left sidebar, enter the 6-digit PIN code provided by your teacher, and click "Enter Lobby".';
-      } else if (lower.includes('title') || lower.includes('achievement') || lower.includes('equip')) {
-        aiReply =
-          'You can head over to the "Achievements" tab in your Dashboard, select your preferred title (e.g. Perfect Score), and click "Equip Title" to display it on your Header!';
-      } else if (lower.includes('score') || lower.includes('points') || lower.includes('streak')) {
-        aiReply =
-          'Scores are calculated based on correct answers and response speed. The faster and more accurately you answer, the higher your score and streak multiplier!';
-      } else if (lower.includes('password') || lower.includes('account') || lower.includes('reset')) {
-        aiReply =
-          'You can navigate to the Settings tab in your Dashboard or click "Forgot Password" on the Login page to reset your credentials via email.';
-      }
-
+    try {
+      const res = await chatbotService.sendChatMessage(text.trim());
       const aiMsg: Message = {
         id: Date.now() + 1,
         sender: 'ai',
-        text: aiReply,
+        text: res.answer || 'No response generated.',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-
       setMessages((prev) => [...prev, aiMsg]);
+    } catch (err: any) {
+      const fallbackReply =
+        err?.message || 'Sorry, I encountered an issue connecting to the AI Assistant. Please check server settings.';
+      const errorMsg: Message = {
+        id: Date.now() + 1,
+        sender: 'ai',
+        text: fallbackReply,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
       setIsTyping(false);
-    }, 800);
+    }
   };
 
   return (
@@ -135,15 +141,21 @@ export const AiSupportModal: React.FC<AiSupportModalProps> = ({ isOpen, onClose 
               </div>
 
               <div
-                className={`max-w-[78%] p-3.5 rounded-2xl text-sm leading-relaxed ${
+                className={`max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed ${
                   msg.sender === 'user'
                     ? 'bg-primary text-white rounded-tr-xs shadow-xs'
                     : 'bg-white text-on-surface border border-outline-variant/30 rounded-tl-xs shadow-xs'
                 }`}
               >
-                <p>{msg.text}</p>
+                {msg.sender === 'user' ? (
+                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                ) : (
+                  <div className="text-on-surface space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-bold [&_strong]:text-primary [&_p]:my-1.5 [&_li]:my-1 [&_li]:leading-normal">
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  </div>
+                )}
                 <span
-                  className={`text-[10px] block mt-1 ${
+                  className={`text-[10px] block mt-1.5 ${
                     msg.sender === 'user' ? 'text-indigo-100 text-right' : 'text-on-surface-variant'
                   }`}
                 >
@@ -159,6 +171,7 @@ export const AiSupportModal: React.FC<AiSupportModalProps> = ({ isOpen, onClose 
               <span>AI is typing a response...</span>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input Form */}
