@@ -23,11 +23,12 @@ MAX_VIDEO_AUDIO_SIZE = 50 * 1024 * 1024  # 50MB
 @router.post("/request-signature", response_model=UploadSignatureResponse, summary="Request a Cloudinary upload signature")
 async def request_upload_signature(
     request: UploadSignatureRequest,
-    # current_user=Depends(get_current_active_user) # Bypassed for Mock Frontend
+    current_user=Depends(get_current_active_user),
 ):
     """
     Generate a secure signature for direct client-to-cloud upload.
     Validates file type and size before granting permission.
+    Requires an authenticated and active user.
     """
     
     # 1. Validate File Type
@@ -77,12 +78,12 @@ async def request_upload_signature(
 async def delete_asset(
     url: str,
     background_tasks: BackgroundTasks,
-    # current_admin=Depends(get_current_active_admin) # Bypassed for Mock Frontend
+    current_user=Depends(get_current_active_user),
 ):
     """
     Safely delete an asset from Cloudinary by its secure URL.
-    Used by frontend to clean up orphaned uploads during the draft creation process.
-    Requires Admin privileges.
+    Used by authenticated users/admins to clean up orphaned uploads during the draft creation process.
+    Requires an authenticated and active user.
     """
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")

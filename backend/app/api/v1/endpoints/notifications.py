@@ -2,14 +2,12 @@ import logging
 import asyncio
 import uuid
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import insert, select, literal
 
 from app.api.deps import get_db, get_current_active_user, get_current_active_admin
 from app.models.user import User
-from app.models.group import GroupMember
 from app.models.notification import Notification
 from app.models.broadcast import BroadcastLog
 from app.schemas.notification import NotificationListResponse
@@ -101,20 +99,18 @@ def delete_notification(
 # ADMIN BROADCAST ENDPOINTS
 # -----------------------------------------
 
-def save_broadcast_to_db(job_id: Optional[str], admin_id: int, target_type: str, target_group_id: Optional[int], request_data: dict):
+def save_broadcast_to_db(job_id: Optional[str], admin_id: int, request_data: dict):
     """
-    Sync function for DB fan-out insertion.
-    Safe to use with FastAPI BackgroundTasks.
+    Sync function to insert global notification and update scheduled job status.
+    Safe to use with FastAPI BackgroundTasks and APScheduler.
     """
     db = SessionLocal()
     try:
-        # 1. Update BroadcastLog status to SENT if it was a scheduled job
         if job_id:
             log = db.query(BroadcastLog).filter(BroadcastLog.job_id == job_id).first()
             if log:
                 log.status = "SENT"
                 
-        # 2. Insert into DB (fan-out)
         parsed_scheduled_at = None
         if request_data.get("scheduledAt"):
             try:
@@ -123,71 +119,42 @@ def save_broadcast_to_db(job_id: Optional[str], admin_id: int, target_type: str,
             except ValueError:
                 pass
 
-        if target_type == "ALL_USERS":
-            new_notif = Notification(
-                sender_id=admin_id,
-                user_id=None,
-                target_type="ALL_USERS",
-                target_group_id=None,
-                title=request_data["title"],
-                content=request_data["content"],
-                type=request_data["type"],
-                action_url=request_data.get("actionUrl"),
-                scheduled_at=parsed_scheduled_at
-            )
-            db.add(new_notif)
-
-        elif target_type == "GROUP" and target_group_id:
-            select_stmt = select(
-                literal(admin_id).label("sender_id"),
-                GroupMember.user_id.label("user_id"),
-                literal(target_type).label("target_type"),
-                literal(target_group_id).label("target_group_id"),
-                literal(request_data["title"]).label("title"),
-                literal(request_data["content"]).label("content"),
-                literal(request_data["type"]).label("type"),
-                literal(request_data.get("actionUrl")).label("action_url"),
-                literal(parsed_scheduled_at).label("scheduled_at")
-            ).where(GroupMember.group_id == target_group_id, GroupMember.user_id.isnot(None))
-            
-            insert_stmt = insert(Notification).from_select(
-                ["sender_id", "user_id", "target_type", "target_group_id", "title", "content", "type", "action_url", "scheduled_at"],
-                select_stmt
-            )
-            db.execute(insert_stmt)
-
+        new_notif = Notification(
+            sender_id=admin_id,
+            user_id=None,
+            target_type="ALL_USERS",
+            title=request_data["title"],
+            content=request_data["content"],
+            type=request_data["type"],
+            action_url=request_data.get("actionUrl"),
+            scheduled_at=parsed_scheduled_at
+        )
+        db.add(new_notif)
         db.commit()
             
     except Exception as e:
         logger.error(f"Error saving broadcast to DB: {e}", exc_info=True)
         db.rollback()
-        if job_id and 'log' in locals() and log:
-            log.status = "FAILED"
-            db.commit()
+        if job_id:
+            try:
+                log = db.query(BroadcastLog).filter(BroadcastLog.job_id == job_id).first()
+                if log:
+                    log.status = "FAILED"
+                    db.commit()
+            except Exception:
+                pass
     finally:
         db.close()
 
 
-async def push_scheduled_broadcast(job_id: Optional[str], admin_id: int, ws_payload: dict, target_type: str, target_group_id: Optional[int], request_data: dict):
+async def push_scheduled_broadcast(job_id: Optional[str], admin_id: int, ws_payload: dict, request_data: dict):
     """
     Async function for APScheduler scheduled jobs.
-    Handles both WS push and DB save (since APScheduler runs on the main event loop).
+    Inserts notification into DB and pushes real-time WebSocket to all users.
     """
-    # 1. Save to DB (sync call is fine here since APScheduler runs in its own thread)
-    save_broadcast_to_db(job_id, admin_id, target_type, target_group_id, request_data)
-
-    # 2. Push WS
+    save_broadcast_to_db(job_id, admin_id, request_data)
     try:
-        if target_type == "ALL_USERS":
-            await manager.broadcast(ws_payload)
-        elif target_type == "GROUP" and target_group_id:
-            db = SessionLocal()
-            try:
-                group_members = db.query(GroupMember.user_id).filter(GroupMember.group_id == target_group_id).all()
-                user_ids = [m.user_id for m in group_members if m.user_id is not None]
-                await manager.send_group_message(ws_payload, user_ids)
-            finally:
-                db.close()
+        await manager.broadcast(ws_payload)
     except Exception as e:
         logger.error(f"Error pushing WS broadcast: {e}", exc_info=True)
 
@@ -199,25 +166,40 @@ async def send_broadcast(
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_active_admin)
 ):
-    if request.targetType == "GROUP" and not request.targetGroupId:
-        raise HTTPException(status_code=400, detail="Target Group ID is required when targetType is GROUP")
-        
-    if request.targetType == "ALL_USERS" or request.targetGroupId == 0:
-        request.targetGroupId = None
-
+    # 1. Validation for isScheduled & scheduledAt
     parsed_scheduled_at_aware = None
     parsed_scheduled_at_naive = None
-    if request.isScheduled and request.scheduledAt:
+    if request.isScheduled:
+        if not request.scheduledAt or not request.scheduledAt.strip():
+            raise HTTPException(status_code=400, detail="scheduledAt is required when isScheduled is True.")
         try:
             parsed_scheduled_at_aware = datetime.fromisoformat(request.scheduledAt.replace('Z', '+00:00'))
-            parsed_scheduled_at_naive = parsed_scheduled_at_aware.astimezone(timezone.utc).replace(tzinfo=None)
-        except ValueError:
-            pass
+            if parsed_scheduled_at_aware.tzinfo is None:
+                parsed_scheduled_at_aware = parsed_scheduled_at_aware.replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid scheduledAt ISO datetime format.")
 
-    # 1. Create Broadcast Log
+        now_utc = datetime.now(timezone.utc)
+        min_allowed_time = now_utc + timedelta(seconds=45) # Must be at least ~1 minute into future
+        if parsed_scheduled_at_aware < min_allowed_time:
+            raise HTTPException(
+                status_code=400,
+                detail="Scheduled time must be at least 1 minute in the future. Past or immediate times are not permitted for scheduled broadcasts."
+            )
+        max_allowed_time = now_utc + timedelta(days=365)
+        if parsed_scheduled_at_aware > max_allowed_time:
+            raise HTTPException(
+                status_code=400,
+                detail="Scheduled time cannot exceed 1 year in the future."
+            )
+        parsed_scheduled_at_naive = parsed_scheduled_at_aware.astimezone(timezone.utc).replace(tzinfo=None)
+    else:
+        request.scheduledAt = None
+
+    # 2. Create Broadcast Log
     job_id = None
     status = "SENT"
-    if request.isScheduled and parsed_scheduled_at_aware and parsed_scheduled_at_aware > datetime.now(timezone.utc):
+    if request.isScheduled and parsed_scheduled_at_aware:
         job_id = f"job_{uuid.uuid4().hex}"
         status = "PENDING"
         
@@ -226,8 +208,7 @@ async def send_broadcast(
         title=request.title,
         content=request.content,
         type=request.type,
-        target_type=request.targetType,
-        target_group_id=request.targetGroupId,
+        target_type="ALL_USERS",
         action_url=request.actionUrl,
         is_scheduled=request.isScheduled,
         scheduled_at=parsed_scheduled_at_naive,
@@ -236,6 +217,7 @@ async def send_broadcast(
     )
     db.add(broadcast_log)
     db.commit()
+    db.refresh(broadcast_log)
 
     ws_payload = {
         "event": "NEW_BROADCAST",
@@ -257,14 +239,14 @@ async def send_broadcast(
         "scheduledAt": request.scheduledAt
     }
 
-    # 2. If scheduled, add APScheduler job (async function is OK here)
+    # 3. If scheduled, add APScheduler job
     if status == "PENDING":
         scheduler.add_job(
             push_scheduled_broadcast,
             'date',
             run_date=parsed_scheduled_at_aware,
             id=job_id,
-            args=[job_id, current_admin.id, ws_payload, request.targetType, request.targetGroupId, request_data]
+            args=[job_id, current_admin.id, ws_payload, request_data]
         )
         return BroadcastResponse(
             success=True,
@@ -272,25 +254,16 @@ async def send_broadcast(
             job_id=job_id
         )
 
-    # 3. Instant Push
-    # Step A: Push WS immediately on the main event loop (await = guaranteed delivery)
+    # 4. Instant Broadcast: Push WS immediately & save to DB via background task
     try:
-        if request.targetType == "ALL_USERS":
-            await manager.broadcast(ws_payload)
-        elif request.targetType == "GROUP" and request.targetGroupId:
-            group_members = db.query(GroupMember.user_id).filter(GroupMember.group_id == request.targetGroupId).all()
-            user_ids = [m.user_id for m in group_members if m.user_id is not None]
-            await manager.send_group_message(ws_payload, user_ids)
+        await manager.broadcast(ws_payload)
     except Exception as e:
         logger.error(f"Error pushing instant WS broadcast: {e}", exc_info=True)
 
-    # Step B: Dispatch DB fan-out to background (sync function = safe with BackgroundTasks)
     background_tasks.add_task(
         save_broadcast_to_db,
         None,
         current_admin.id,
-        request.targetType,
-        request.targetGroupId,
         request_data
     )
 
@@ -311,7 +284,7 @@ def cancel_broadcast(
         log = db.query(BroadcastLog).filter(BroadcastLog.id == int(job_id)).first()
         
     if not log:
-        raise HTTPException(status_code=404, detail="Scheduled broadcast not found")
+        raise HTTPException(status_code=404, detail="Scheduled broadcast not found.")
         
     # Remove from APScheduler if job exists
     target_job_id = log.job_id or job_id
@@ -323,7 +296,10 @@ def cancel_broadcast(
     db.delete(log)
     db.commit()
     
-    return {"success": True, "message": "Scheduled broadcast deleted and cancelled successfully."}
+    return {
+        "success": True, 
+        "message": "Scheduled broadcast cancelled and deleted successfully."
+    }
 
 @router.get("/broadcast/history", response_model=BroadcastHistoryResponse, summary="Get broadcast history")
 def get_broadcast_history(

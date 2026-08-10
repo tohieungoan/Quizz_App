@@ -71,12 +71,24 @@ interface UserActionModalProps {
   onClose: () => void;
   mode: UserMode;
   user?: UserData | null;
-  onSave: (user: Partial<UserData>) => void;
+  onSave: (user: Partial<UserData> & { password?: string }) => void;
   fieldErrors?: Record<string, string>;
   isSaving?: boolean;
+  isSelf?: boolean;
+  isLastSuperAdmin?: boolean;
 }
 
-export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErrors = {}, isSaving = false }: UserActionModalProps) {
+export function UserActionModal({
+  isOpen,
+  onClose,
+  mode,
+  user,
+  onSave,
+  fieldErrors = {},
+  isSaving = false,
+  isSelf = false,
+  isLastSuperAdmin = false,
+}: UserActionModalProps) {
   const [formData, setFormData] = useState<Partial<UserData>>({
     name: '',
     email: '',
@@ -241,7 +253,7 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErro
                     <Shield className="w-4 h-4" /> Role <span className="text-error">*</span>
                   </label>
                   <CustomSelect 
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || (mode === 'edit' && (isSelf || isLastSuperAdmin))}
                     value={formData.role || 'USER'}
                     onChange={val => setFormData({ ...formData, role: val as any })}
                     options={[
@@ -249,6 +261,16 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErro
                       { value: 'SUPER_ADMIN', label: 'Super Admin' }
                     ]}
                   />
+                  {mode === 'edit' && isSelf && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3 h-3 shrink-0" /> You cannot demote your own Super Admin role.
+                    </p>
+                  )}
+                  {mode === 'edit' && !isSelf && isLastSuperAdmin && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3 h-3 shrink-0" /> Cannot demote the last remaining active Super Admin.
+                    </p>
+                  )}
                 </div>
 
                 {/* Status */}
@@ -257,7 +279,7 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErro
                     <AlertCircle className="w-4 h-4" /> Status <span className="text-error">*</span>
                   </label>
                   <CustomSelect 
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || (mode === 'edit' && (isSelf || isLastSuperAdmin))}
                     value={formData.status || 'ACTIVE'}
                     onChange={val => setFormData({ ...formData, status: val as any })}
                     options={[
@@ -265,6 +287,16 @@ export function UserActionModal({ isOpen, onClose, mode, user, onSave, fieldErro
                       { value: 'SUSPENDED', label: 'Suspended' }
                     ]}
                   />
+                  {mode === 'edit' && isSelf && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3 h-3 shrink-0" /> You cannot suspend your own account.
+                    </p>
+                  )}
+                  {mode === 'edit' && !isSelf && isLastSuperAdmin && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3 h-3 shrink-0" /> Cannot suspend the last remaining active Super Admin.
+                    </p>
+                  )}
                 </div>
 
                 {/* Achievement Points */}

@@ -288,6 +288,37 @@ def update_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User not found with ID {user_id}",
         )
+
+    # 1. Prevent self-demotion or self-suspension
+    if current_user.id == user_id:
+        if user_in.role is not None and user_in.role != "SUPER_ADMIN" and user.role == "SUPER_ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot demote your own Super Admin role.",
+            )
+        if user_in.status is not None and user_in.status != "ACTIVE" and user.status == "ACTIVE":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot lock or suspend your own administrative account.",
+            )
+
+    # 2. Prevent demoting or deactivating the last remaining active Super Admin
+    if user.role == "SUPER_ADMIN" and user.status == "ACTIVE":
+        is_demoting = user_in.role is not None and user_in.role != "SUPER_ADMIN"
+        is_suspending = user_in.status is not None and user_in.status != "ACTIVE"
+        if is_demoting or is_suspending:
+            active_super_admin_count = (
+                db.query(User)
+                .filter(User.role == "SUPER_ADMIN", User.status == "ACTIVE")
+                .count()
+            )
+            if active_super_admin_count <= 1:
+                action_name = "demote" if is_demoting else "deactivate"
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot {action_name} the last remaining active Super Admin in the system.",
+                )
+
     old_role = user.role
     old_status = user.status
 
@@ -320,12 +351,33 @@ def delete_user(
     Permanently delete a user by ID.
     **Required Permission**: Super Admin.
     """
+    # 1. Prevent self-deletion
+    if current_user.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own administrative account.",
+        )
+
     user = crud_user.get_by_id(db, user_id=user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User not found with ID {user_id}",
         )
+
+    # 2. Prevent deleting the last remaining active Super Admin
+    if user.role == "SUPER_ADMIN":
+        active_super_admin_count = (
+            db.query(User)
+            .filter(User.role == "SUPER_ADMIN", User.status == "ACTIVE")
+            .count()
+        )
+        if active_super_admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the last remaining active Super Admin in the system.",
+            )
+
     deleted_email = user.email
     deleted_id = user.id
 

@@ -1,10 +1,14 @@
-import { ArrowLeft, Wrench, X, List, CheckSquare, AlignLeft, Sparkles, ArrowRight, Check, Plus, Trash2, Edit2, Image as ImageIcon, Mic, UploadCloud, GripVertical, CopyPlus, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Wrench, X, List, CheckSquare, AlignLeft, Sparkles, ArrowRight, Check, Plus, Trash2, Edit2, Image as ImageIcon, Mic, UploadCloud, GripVertical, CopyPlus, ChevronDown, Bot, Save, CheckCircle2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { QuestionBankModal } from '@/components/ui/QuestionBankModal';
+import { AIQuizModal } from '@/components/ui/AIQuizModal';
+import { AIQuestionItem } from '@/types/aiQuiz';
+import { useAIQuiz } from '@/contexts/AIQuizContext';
 import { CloudUpload, CloudUploadRef } from '@/components/ui/CloudUpload';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
 import { quizService } from '@/services/quizService';
@@ -21,6 +25,9 @@ export interface BaseQuestion {
   mediaUrl?: string;
   audioUrl?: string;
   optionIds?: number[];
+  isAIGenerated?: boolean;
+  source?: string;
+  explanation?: string;
 }
 
 export interface MultipleChoiceQuestion extends BaseQuestion {
@@ -84,17 +91,112 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [shuffleOptions, setShuffleOptions] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Auto-Save Draft & Crash Recovery State
+  const quizRawId = (id || initialData?.id || '').replace('QZ-', '');
+  const draftStorageKey = quizRawId ? `quizz_creator_draft_edit_${quizRawId}` : 'quizz_creator_draft_new';
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
+  const [lastAutoSaveTime, setLastAutoSaveTime] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [recoveredDraftModalOpen, setRecoveredDraftModalOpen] = useState(false);
+  const [recoveredDraftData, setRecoveredDraftData] = useState<any>(null);
+  const isInitialMount = useRef(true);
+
   // Modal State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);
-  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [bankModalOpen, setBankModalOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [quickAIPrompt, setQuickAIPrompt] = useState('');
+  const [deletedBlacklist, setDeletedBlacklist] = useState<string[]>([]);
+  const [highlightedQuestionIds, setHighlightedQuestionIds] = useState<Set<string>>(new Set());
+
   const [alertState, setAlertState] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
   const [formResetKey, setFormResetKey] = useState(0);
+
+  // Global Background AI Generation Integration
+  const { startGeneration, unconsumedQuestions, consumeQuestions } = useAIQuiz();
+
+  // Handle direct injection of AI-generated questions
+  const handleAIGenerateSuccess = (generatedQuestions: AIQuestionItem[], modelUsed: string) => {
+    const newQuestions: Question[] = generatedQuestions.map((item, idx) => {
+      const uniqueId = `q_ai_${Date.now()}_${idx}`;
+      const base = {
+        id: uniqueId,
+        text: item.content,
+        difficulty: (item.difficulty as 'EASY' | 'MEDIUM' | 'HARD') || 'MEDIUM',
+        timeLimit: item.time_limit || 60,
+        isAIGenerated: true,
+        source: item.source,
+        explanation: item.explanation,
+      };
+
+      if (item.type === 'truefalse') {
+        const tfAns = item.options.find(o => o.content.toLowerCase() === 'true')?.is_correct ?? true;
+        return {
+          ...base,
+          type: 'truefalse' as const,
+          correctAnswer: tfAns,
+        };
+      } else if (item.type === 'short') {
+        const shortAns = item.keyword || item.options[0]?.content || 'Answer';
+        return {
+          ...base,
+          type: 'short' as const,
+          correctAnswer: shortAns,
+        };
+      } else {
+        // Multiple choice
+        const optionsText = item.options.map(o => o.content);
+        let correctIdx = item.options.findIndex(o => o.is_correct);
+        if (correctIdx < 0) correctIdx = 0;
+
+        return {
+          ...base,
+          type: 'multiple' as const,
+          options: optionsText.length >= 2 ? optionsText : [...optionsText, 'Additional Option'],
+          correctAnswer: correctIdx,
+        };
+      }
+    });
+
+    setQuestions(prev => [...prev, ...newQuestions]);
+    
+    // Highlight new questions
+    const newIds = new Set(newQuestions.map(q => q.id));
+    setHighlightedQuestionIds(newIds);
+    setTimeout(() => setHighlightedQuestionIds(new Set()), 5000);
+
+    setQuickAIPrompt('');
+    setAlertState({
+      isOpen: true,
+      title: 'AI Generation Complete! 🎉',
+      message: `Successfully generated and added ${newQuestions.length} standard questions (${modelUsed}) to your quiz list.`,
+      type: 'success'
+    });
+
+    // Smooth scroll down to questions list
+    setTimeout(() => {
+      document.getElementById('questions-list-section')?.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
+  };
+
+  // Consume any newly generated AI questions automatically
+  useEffect(() => {
+    if (unconsumedQuestions) {
+      const data = consumeQuestions();
+      if (data && data.questions.length > 0) {
+        handleAIGenerateSuccess(data.questions, data.modelUsed);
+      }
+    }
+  }, [unconsumedQuestions]);
+
+  const handleStartAIGeneration = (formData: FormData, count: number) => {
+    startGeneration(formData, count, window.location.pathname);
+  };
 
   // Load existing questions and quiz info if editing
   useEffect(() => {
@@ -186,6 +288,130 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     };
     loadExistingData();
   }, [id, initialData]);
+
+  // Check for recovered unsaved draft from previous crash/session on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(draftStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.questions?.length > 0 || (parsed.quizTitle && parsed.quizTitle.trim() !== ''))) {
+          setRecoveredDraftData(parsed);
+          setRecoveredDraftModalOpen(true);
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading saved draft:', e);
+    } finally {
+      const timer = setTimeout(() => {
+        isInitialMount.current = false;
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [draftStorageKey]);
+
+  // Debounced Auto-Save Draft to LocalStorage whenever anything changes
+  useEffect(() => {
+    if (isInitialMount.current) {
+      return;
+    }
+
+    setHasUnsavedChanges(true);
+    setAutoSaveStatus('saving');
+
+    const timer = setTimeout(() => {
+      try {
+        if (quizTitle.trim() || questions.length > 0 || quizDescription.trim()) {
+          const payload = {
+            quizTitle,
+            quizDescription,
+            quizSubject,
+            quizDifficulty,
+            isPublic,
+            shuffleOptions,
+            questions,
+            timestamp: Date.now()
+          };
+          localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+          setAutoSaveStatus('saved');
+          setLastAutoSaveTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        } else {
+          setAutoSaveStatus('idle');
+        }
+      } catch (err) {
+        console.warn('Failed to auto-save draft to localStorage:', err);
+        setAutoSaveStatus('idle');
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [quizTitle, quizDescription, quizSubject, quizDifficulty, isPublic, shuffleOptions, questions, draftStorageKey]);
+
+  // Auto-save immediately when switching browser tabs, minimizing window or page hiding
+  useEffect(() => {
+    const handleTabOrVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' || document.hidden) {
+        if (quizTitle.trim() || questions.length > 0 || quizDescription.trim()) {
+          const payload = {
+            quizTitle,
+            quizDescription,
+            quizSubject,
+            quizDifficulty,
+            isPublic,
+            shuffleOptions,
+            questions,
+            timestamp: Date.now()
+          };
+          localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+          setAutoSaveStatus('saved');
+          setLastAutoSaveTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleTabOrVisibilityChange);
+    window.addEventListener('pagehide', handleTabOrVisibilityChange);
+    window.addEventListener('blur', handleTabOrVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleTabOrVisibilityChange);
+      window.removeEventListener('pagehide', handleTabOrVisibilityChange);
+      window.removeEventListener('blur', handleTabOrVisibilityChange);
+    };
+  }, [quizTitle, quizDescription, quizSubject, quizDifficulty, isPublic, shuffleOptions, questions, draftStorageKey]);
+
+  // Browser beforeunload protection against accidental tab close or page refresh
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges && (quizTitle.trim() || questions.length > 0)) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges, quizTitle, questions]);
+
+  const handleRestoreDraft = () => {
+    if (recoveredDraftData) {
+      if (recoveredDraftData.quizTitle !== undefined) setQuizTitle(recoveredDraftData.quizTitle);
+      if (recoveredDraftData.quizDescription !== undefined) setQuizDescription(recoveredDraftData.quizDescription);
+      if (recoveredDraftData.quizSubject !== undefined) setQuizSubject(recoveredDraftData.quizSubject);
+      if (recoveredDraftData.quizDifficulty !== undefined) setQuizDifficulty(recoveredDraftData.quizDifficulty);
+      if (recoveredDraftData.isPublic !== undefined) setIsPublic(recoveredDraftData.isPublic);
+      if (recoveredDraftData.shuffleOptions !== undefined) setShuffleOptions(recoveredDraftData.shuffleOptions);
+      if (recoveredDraftData.questions && Array.isArray(recoveredDraftData.questions)) {
+        setQuestions(recoveredDraftData.questions);
+      }
+      toast.success('Unsaved draft recovered successfully!');
+    }
+    setRecoveredDraftModalOpen(false);
+  };
+
+  const handleDiscardDraft = () => {
+    localStorage.removeItem(draftStorageKey);
+    setRecoveredDraftData(null);
+    setRecoveredDraftModalOpen(false);
+  };
 
   const handleStartBuild = (type: QuestionType) => {
     setEditingType(type);
@@ -393,6 +619,11 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     if (questionToDelete) {
       const qToDelete = questions.find(q => q.id === questionToDelete);
       if (qToDelete) {
+        // Add to deleted blacklist to prevent AI from re-generating this question
+        if (qToDelete.text && qToDelete.text.trim()) {
+          setDeletedBlacklist(prev => [...prev, qToDelete.text.trim()]);
+        }
+
         if (qToDelete.mediaUrl && draftUploadedUrls.has(qToDelete.mediaUrl)) {
           const isReferenced = questions.some(q => q.id !== questionToDelete && (q.mediaUrl === qToDelete.mediaUrl || q.audioUrl === qToDelete.mediaUrl));
           if (!isReferenced) {
@@ -421,9 +652,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }
   };
 
-  const saveQuizAndQuestions = async (status: string) => {
+  const saveQuizAndQuestions = async (status: string, shouldExit: boolean = true) => {
     if (questions.length === 0 && quizTitle.trim() === '') {
-      onCancel();
+      if (shouldExit) onCancel();
       return;
     }
     
@@ -473,15 +704,13 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       if (isEditMode) {
         targetQuizId = rawId;
         // 1. Update Quiz Shell
-        // We only change to Draft temporarily if we are going to publish immediately after. 
-        // Otherwise, keep the requested status.
         await quizService.updateQuiz(targetQuizId, {
           title: quizTitle.trim() || 'Untitled Quiz',
           description: quizDescription,
           subject: quizSubject,
           difficulty: quizDifficulty,
           is_public: isPublic,
-          status: 'Draft'
+          status: status === 'Published' ? 'Published' : 'Draft'
         });
 
         // 2. Delete Questions Sequentially
@@ -508,11 +737,11 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
               id: newQ.id.toString(),
               optionIds: newQ.options?.map((opt: any) => opt.id)
             };
-            setQuestions([...updatedQuestions]);
           } else {
             await questionService.updateQuestion(q.id, payload);
           }
         }
+        setQuestions([...updatedQuestions]);
 
       } else {
         // 1. Create Quiz Shell
@@ -522,7 +751,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           subject: quizSubject,
           difficulty: quizDifficulty,
           is_public: isPublic,
-          status: 'Draft'
+          status: status === 'Published' ? 'Published' : 'Draft'
         });
         
         targetQuizId = quizRes.id;
@@ -537,15 +766,13 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
             id: newQ.id.toString(),
             optionIds: newQ.options?.map((opt: any) => opt.id)
           };
-          setQuestions([...updatedQuestions]);
         }
+        setQuestions([...updatedQuestions]);
       }
 
       // 3. Update to Published if requested
       if (status === 'Published') {
         await quizService.updateQuiz(targetQuizId, { status: 'Published' });
-      } else if (isEditMode && initialData?.status === 'Published' && status === 'Draft') {
-        // Handled
       }
       
       // 4. Cleanup orphaned draft images
@@ -562,17 +789,27 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       });
       // Clear draft tracking since they are now safely in the DB
       setDraftUploadedUrls(new Set());
+
+      // Clear local draft from localStorage since DB is up to date
+      localStorage.removeItem(draftStorageKey);
+      setHasUnsavedChanges(false);
+      setAutoSaveStatus('saved');
+      setLastAutoSaveTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       
-      setAlertState({
-        isOpen: true,
-        title: status === 'Published' ? 'Quiz Published!' : 'Draft Saved',
-        message: status === 'Published' ? 'Your quiz has been successfully published and is now available.' : 'Your quiz has been safely auto-saved as a draft.',
-        type: 'success'
-      });
-      
-      setTimeout(() => {
-        onCancel();
-      }, 1500);
+      if (shouldExit) {
+        setAlertState({
+          isOpen: true,
+          title: status === 'Published' ? 'Quiz Published!' : 'Draft Saved',
+          message: status === 'Published' ? 'Your quiz has been successfully published and is now available.' : 'Your quiz draft has been safely saved to the database.',
+          type: 'success'
+        });
+        
+        setTimeout(() => {
+          onCancel();
+        }, 1200);
+      } else {
+        toast.success(status === 'Published' ? 'Quiz published!' : 'Draft saved to server successfully!');
+      }
       
     } catch (error) {
       console.error("Failed to save quiz", error);
@@ -593,30 +830,16 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
   const confirmPublish = () => {
     setPublishConfirmOpen(false);
-    saveQuizAndQuestions('Published');
+    saveQuizAndQuestions('Published', true);
   };
 
   const handleCancelClick = () => {
-    if (id || initialData?.id) {
-      setExitConfirmOpen(true);
+    if (quizTitle.trim() || questions.length > 0) {
+      // Directly auto-save to Database as Draft and exit smoothly
+      saveQuizAndQuestions('Draft', true);
     } else {
-      saveQuizAndQuestions('Draft');
+      onCancel();
     }
-  };
-
-  const confirmExit = () => {
-    // Delete any draft uploaded URLs that haven't been saved to the DB!
-    draftUploadedUrls.forEach(url => {
-      deleteMediaFile(url);
-    });
-    
-    // Also delete any pending audio
-    if (audioUrl && draftUploadedUrls.has(audioUrl)) {
-      deleteMediaFile(audioUrl);
-    }
-    
-    setExitConfirmOpen(false);
-    onCancel();
   };
 
   const updateMcOption = (index: number, val: string) => {
@@ -659,15 +882,49 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     <div className="h-[calc(100dvh-64px)] md:h-[calc(100dvh-80px)] w-full flex flex-col overflow-hidden bg-surface-container-lowest text-on-surface">
       <header className="h-14 md:h-16 shrink-0 flex items-center justify-between px-3 md:px-6 bg-surface-container-lowest/80 backdrop-blur-md border-b border-outline-variant/50 sticky top-0 z-20">
         <div className="flex items-center gap-2 md:gap-4">
-          <button onClick={handleCancelClick} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high text-on-surface transition-colors">
+          <button onClick={handleCancelClick} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high text-on-surface transition-colors" title="Back">
             <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
           </button>
-          <h1 className="font-headline-sm md:font-headline-md text-primary hidden sm:block">Quiz Creator Studio</h1>
-          <h1 className="font-headline-sm text-primary sm:hidden">Creator</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-headline-sm md:font-headline-md text-primary hidden sm:block">Quiz Creator Studio</h1>
+            <h1 className="font-headline-sm text-primary sm:hidden">Creator</h1>
+            
+            {/* Auto-save Status Indicator */}
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container border border-outline-variant/40 text-[11px] font-medium text-on-surface-variant transition-all">
+              {autoSaveStatus === 'saving' ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-amber-600 dark:text-amber-400 font-semibold">Saving draft...</span>
+                </>
+              ) : autoSaveStatus === 'saved' ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                  <span>Draft saved {lastAutoSaveTime ? `(${lastAutoSaveTime})` : 'locally'}</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-primary/60" />
+                  <span>Draft mode</span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
+
         <div className="flex items-center gap-2 md:gap-3">
-          <button onClick={handleCancelClick} disabled={isSaving || isUploadingMedia} className="font-button text-xs md:text-button text-on-surface-variant hover:text-on-surface px-2 md:px-4 py-2 transition-colors hidden sm:block">Close</button>
-          <button onClick={handlePublishClick} disabled={isSaving || isUploadingMedia} className="font-button text-xs md:text-button bg-primary text-on-primary px-3 md:px-6 py-2 md:py-2.5 rounded-lg hover:opacity-90 transition-colors shadow-sm disabled:opacity-50">{isSaving ? 'Saving...' : 'Publish'}</button>
+          <button onClick={handleCancelClick} disabled={isSaving || isUploadingMedia} className="font-button text-xs md:text-button text-on-surface-variant hover:text-on-surface px-2 md:px-3 py-2 transition-colors">
+            Close
+          </button>
+
+          {/* Publish Button */}
+          <button 
+            type="button"
+            onClick={handlePublishClick} 
+            disabled={isSaving || isUploadingMedia} 
+            className="font-button text-xs md:text-button bg-primary text-on-primary px-4 md:px-6 py-2 md:py-2.5 rounded-lg hover:opacity-90 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <span>{isSaving ? 'Publishing...' : 'Publish'}</span>
+          </button>
         </div>
       </header>
 
@@ -769,32 +1026,37 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           {!editingType && (
             <div className="max-w-5xl w-full mx-auto">
               
-              {/* AI Generator Section (Premium Layout) */}
-              <div className="relative rounded-2xl p-[1px] bg-gradient-to-r from-primary via-[#8b5cf6] to-primary overflow-hidden shadow-md mb-10 hover:shadow-lg transition-shadow">
-                <div className="bg-white rounded-[15px] p-4 md:p-5 flex flex-col md:flex-row items-center gap-4 relative z-10">
+              {/* AI Generator Quick Bar */}
+              <div className="rounded-2xl border border-outline-variant/50 bg-white shadow-sm mb-10 overflow-hidden">
+                <div className="p-4 md:p-5 flex flex-col md:flex-row items-center gap-4">
                   <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-[#8b5cf6]/20 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-primary" />
+                    <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Sparkles className="w-4.5 h-4.5 text-primary" />
                     </div>
-                    <h2 className="font-headline-md text-base whitespace-nowrap font-extrabold bg-gradient-to-r from-primary to-[#8b5cf6] bg-clip-text text-transparent">AI Magic Generate</h2>
+                    <h2 className="font-bold text-sm whitespace-nowrap text-primary">AI Generate</h2>
                   </div>
                   
                   <div className="flex-1 w-full relative">
                     <input 
                       type="text"
-                      className="w-full bg-surface-container-lowest border border-outline-variant/50 rounded-xl pl-4 pr-4 py-3 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm text-on-surface shadow-sm font-medium placeholder:text-slate-400 transition-all"
-                      placeholder="E.g. Generate 5 multiple choice questions about Quantum Physics..."
+                      value={quickAIPrompt}
+                      onChange={(e) => setQuickAIPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setAiModalOpen(true);
+                        }
+                      }}
+                      className="w-full bg-surface-container-lowest border border-outline-variant/50 rounded-xl pl-4 pr-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm text-on-surface font-medium placeholder:text-slate-400 transition-all"
+                      placeholder="E.g., Generate 5 multiple-choice questions on Object-Oriented Programming (OOP)..."
                     />
                   </div>
 
-                  <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto mt-2 md:mt-0">
-                    <button className="flex-1 md:flex-none border border-outline-variant/60 rounded-xl text-sm font-bold text-slate-600 hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all flex items-center justify-center gap-2 bg-surface-container-lowest px-4 py-3 shadow-sm" title="Upload Source Document">
-                      <UploadCloud className="w-4 h-4 text-primary/80" /> 
-                      <span className="hidden sm:inline">Upload File</span>
-                    </button>
-
-                    <button className="flex-1 md:flex-none px-6 py-3 bg-gradient-to-r from-primary to-[#8b5cf6] text-white rounded-xl text-sm font-bold hover:shadow-lg hover:opacity-95 transition-all shadow-md flex items-center justify-center gap-2">
-                      <Sparkles className="w-4 h-4" /> Generate
+                  <div className="flex items-center gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">
+                    <button 
+                      onClick={() => setAiModalOpen(true)}
+                      className="w-full md:w-auto px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Sparkles className="w-4 h-4" /> Generate with AI
                     </button>
                   </div>
                 </div>
@@ -1117,9 +1379,10 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           )}
 
           {/* Questions List Section (Always Visible) */}
-          <div className="shrink-0 max-w-5xl mx-auto flex flex-col w-full mt-10">
+          <div id="questions-list-section" className="shrink-0 max-w-5xl mx-auto flex flex-col w-full mt-10 mb-12">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-on-surface-variant uppercase tracking-wider">Question List ({questions.length})</h3>
+              <span className="text-xs text-on-surface-variant">Reorder by dragging rows</span>
             </div>
             {questions.length === 0 ? (
               <div className="text-center py-12 bg-surface-container-lowest border border-dashed border-outline-variant/50 rounded-2xl text-on-surface-variant text-sm shadow-sm">
@@ -1140,49 +1403,54 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-outline-variant/20">
-                      {questions.map((q, idx) => (
-                        <tr key={q.id} className="hover:bg-surface-bright transition-colors group">
-                          <td className="px-4 py-4 text-on-surface-variant cursor-grab active:cursor-grabbing hover:text-on-surface opacity-30 group-hover:opacity-100 transition-opacity text-center">
-                            <GripVertical className="w-4 h-4 mx-auto" />
-                          </td>
-                          <td className="px-6 py-4 text-sm font-bold text-on-surface text-center">Q{idx + 1}</td>
-                          <td className="px-6 py-4">
-                            <span className="text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-2.5 py-1 rounded-full whitespace-nowrap">{getTypeName(q.type)}</span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-on-surface font-medium">
-                            <p className="line-clamp-2 max-w-md group-hover:line-clamp-none transition-all">{q.text || 'Untitled Question'}</p>
-                          </td>
-                          <td className="px-6 py-4 text-xs text-on-surface-variant font-medium">
-                            {q.type === 'multiple' && (
-                              <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-primary/50"></span>
-                                {q.options.length} Options
-                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-2"></span>
-                                Ans: {String.fromCharCode(65 + q.correctAnswer)}
+                      {questions.map((q, idx) => {
+                        return (
+                          <tr 
+                            key={q.id} 
+                            className="group hover:bg-surface-bright"
+                          >
+                            <td className="px-4 py-4 text-on-surface-variant cursor-grab active:cursor-grabbing hover:text-on-surface opacity-30 group-hover:opacity-100 transition-opacity text-center">
+                              <GripVertical className="w-4 h-4 mx-auto" />
+                            </td>
+                            <td className="px-6 py-4 text-sm font-bold text-on-surface text-center">Q{idx + 1}</td>
+                            <td className="px-6 py-4">
+                              <span className="text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-2.5 py-1 rounded-full whitespace-nowrap">{getTypeName(q.type)}</span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-on-surface font-medium">
+                              <p className="line-clamp-2 max-w-md group-hover:line-clamp-none transition-all">{q.text || 'Untitled Question'}</p>
+                            </td>
+                            <td className="px-6 py-4 text-xs text-on-surface-variant font-medium">
+                              {q.type === 'multiple' && (
+                                <div className="flex items-center gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-primary/50"></span>
+                                  {q.options.length} Options
+                                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-2"></span>
+                                  Ans: {String.fromCharCode(65 + q.correctAnswer)}
+                                </div>
+                              )}
+                              {q.type === 'truefalse' && (
+                                <div className="flex items-center gap-2">
+                                   <span className={`w-1.5 h-1.5 rounded-full ${q.correctAnswer ? 'bg-green-500' : 'bg-error'}`}></span>
+                                   Answer: <span className="font-bold text-on-surface">{q.correctAnswer ? 'True' : 'False'}</span>
+                                </div>
+                              )}
+                              {q.type === 'short' && (
+                                <div className="flex items-center gap-2">
+                                   <span className="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span>
+                                   Keyword: <span className="text-on-surface font-bold truncate max-w-[150px]">{q.correctAnswer || 'None'}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => handleEditQuestion(q)} className="p-1.5 text-on-surface-variant hover:text-primary rounded-md transition-colors hover:bg-surface-container" title="Edit"><Edit2 className="w-4 h-4" /></button>
+                                <button onClick={() => handleDuplicateQuestion(q)} className="p-1.5 text-on-surface-variant hover:text-primary rounded-md transition-colors hover:bg-surface-container" title="Duplicate"><CopyPlus className="w-4 h-4" /></button>
+                                <button onClick={() => handleDeleteClick(q.id)} className="p-1.5 text-on-surface-variant hover:text-error rounded-md transition-colors hover:bg-error-container" title="Delete"><Trash2 className="w-4 h-4" /></button>
                               </div>
-                            )}
-                            {q.type === 'truefalse' && (
-                              <div className="flex items-center gap-2">
-                                 <span className={`w-1.5 h-1.5 rounded-full ${q.correctAnswer ? 'bg-green-500' : 'bg-error'}`}></span>
-                                 Answer: <span className="font-bold text-on-surface">{q.correctAnswer ? 'True' : 'False'}</span>
-                              </div>
-                            )}
-                            {q.type === 'short' && (
-                              <div className="flex items-center gap-2">
-                                 <span className="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span>
-                                 Keyword: <span className="text-on-surface font-bold truncate max-w-[150px]">{q.correctAnswer || 'None'}</span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <button onClick={() => handleEditQuestion(q)} className="p-1.5 text-on-surface-variant hover:text-primary rounded-md transition-colors hover:bg-surface-container" title="Edit"><Edit2 className="w-4 h-4" /></button>
-                              <button onClick={() => handleDuplicateQuestion(q)} className="p-1.5 text-on-surface-variant hover:text-primary rounded-md transition-colors hover:bg-surface-container" title="Duplicate"><CopyPlus className="w-4 h-4" /></button>
-                              <button onClick={() => handleDeleteClick(q.id)} className="p-1.5 text-on-surface-variant hover:text-error rounded-md transition-colors hover:bg-error-container" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1203,13 +1471,14 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       />
 
       <ConfirmModal 
-        isOpen={exitConfirmOpen} 
-        onClose={() => setExitConfirmOpen(false)} 
-        onConfirm={confirmExit} 
-        title="Exit Without Saving" 
-        message="You are editing an existing quiz. Any unsaved changes will be lost. Are you sure you want to exit?" 
-        confirmText="Exit"
-        variant="danger"
+        isOpen={recoveredDraftModalOpen} 
+        onClose={handleDiscardDraft} 
+        onConfirm={handleRestoreDraft} 
+        title="Unsaved Draft Recovered" 
+        message={`We found an auto-saved draft of "${recoveredDraftData?.quizTitle || 'Untitled Quiz'}" with ${recoveredDraftData?.questions?.length || 0} question(s) from your previous session (e.g. power outage or closed tab). Would you like to restore it?`} 
+        confirmText="Restore Draft"
+        cancelText="Discard"
+        variant="primary"
       />
 
       <ConfirmModal 
@@ -1243,6 +1512,15 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
             type: 'success'
           });
         }}
+      />
+
+      <AIQuizModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onStartGeneration={handleStartAIGeneration}
+        existingQuestions={questions.map(q => q.text)}
+        deletedBlacklist={deletedBlacklist}
+        initialPromptText={quickAIPrompt}
       />
     </div>
   );

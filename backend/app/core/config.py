@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     ASSISTANT_NAME: str = "Quizzy"
 
+    # Google AI Studio (Gemini API) Configuration
+    GEMINI_PRIMARY_MODEL: str = "gemini-flash-latest"
+
+    # OpenRouter AI Configuration (Fallback)
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_PRIMARY_MODEL: str = "inclusionai/ling-3.0-flash:free"
+    OPENROUTER_FALLBACK_MODEL: str = "google/gemma-4-26b-a4b-it:free"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -46,6 +55,4 @@ class Settings(BaseSettings):
     )
 
 
-
 settings = Settings()
-

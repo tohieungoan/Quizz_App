@@ -5,20 +5,21 @@ Include sub-routers from auth.py, users.py, groups.py, quizzes.py, exams.py, das
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    admin_settings,
+    ai_quiz,
     auth,
     badges,
+    chatbot,
     dashboard,
-    reports,
     exams,
     groups,
+    notifications,
     questions,
     quizzes,
+    reports,
     rooms,
     upload,
     users,
-    notifications,
-    admin_settings,
-    chatbot,
 )
 from app.api.v1.websockets import ws_notifications, ws_room
 
@@ -33,7 +34,8 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(badges.router, prefix="/badges", tags=["Badges"])
 api_router.include_router(chatbot.router, prefix="/chatbot", tags=["Chatbot"])
 
-
+# AI Quiz Generator Endpoints
+api_router.include_router(ai_quiz.router, prefix="/ai-quiz", tags=["AI Quiz Generator"])
 
 # Quiz & Question Endpoints
 api_router.include_router(quizzes.router, tags=["Quizzes"])
