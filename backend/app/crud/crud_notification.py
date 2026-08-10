@@ -5,7 +5,29 @@ from app.models.notification import Notification, NotificationRead
 
 class CRUDNotification:
     def get_user_notifications(self, db: Session, user_id: int, skip: int = 0, limit: int = 20) -> Tuple[List[Notification], int]:
-        """Get notifications for a specific user (both personal and global system-wide) and unread count"""
+        """Get notifications for a specific user (both personal and global system-wide) and unread count, respecting UserSetting preferences."""
+        from app.models.user import UserSetting
+
+        # Fetch user's notification preferences
+        user_setting = db.query(UserSetting).filter(UserSetting.user_id == user_id).first()
+        if user_setting and not user_setting.in_app_notifications_enabled:
+            return [], 0
+
+        def is_topic_enabled(notif_type: str) -> bool:
+            if not user_setting:
+                return True
+            t = (notif_type or "").upper()
+            if t in ["QUIZ_ASSIGNED", "EXAM_ASSIGNED"]:
+                return user_setting.notify_quiz_assigned
+            elif t in ["EXAM_REMINDER", "DEADLINE_REMINDER"]:
+                return user_setting.notify_exam_reminder
+            elif t in ["RESULTS_PUBLISHED", "EXAM_RESULTS", "GRADE_FEEDBACK"]:
+                return user_setting.notify_results_published
+            elif t in ["ROOM_INVITE", "LIVE_ROOM_INVITE", "GROUP_INVITE"]:
+                return user_setting.notify_room_invite
+            elif t in ["SYSTEM", "ANNOUNCEMENT", "MAINTENANCE"]:
+                return user_setting.notify_system
+            return True
         
         # Select statement to find system notifications that this user has deleted
         deleted_notif_ids_stmt = select(NotificationRead.notification_id).where(
@@ -30,38 +52,24 @@ class CRUDNotification:
             )
         ).filter(
             not_(Notification.id.in_(deleted_notif_ids_stmt))
-        ).order_by(Notification.created_at.desc()).offset(skip).limit(limit).all()
+        ).order_by(Notification.created_at.desc()).all()
 
-        # Map dynamic is_read state onto Notification models in-memory
+        # Map dynamic is_read state onto Notification models in-memory & filter enabled topics
         mapped_notifications = []
         for notif, user_is_read in results:
+            if not is_topic_enabled(notif.type):
+                continue
             if notif.user_id is None:
                 notif.is_read = user_is_read if user_is_read is not None else False
             mapped_notifications.append(notif)
         
-        # Calculate unread count:
-        # 1. Unread personal notifications
-        personal_unread = db.query(func.count(Notification.id)).filter(
-            Notification.user_id == user_id, 
-            Notification.is_read == False
-        ).scalar() or 0
-
-        # 2. Unread global notifications (no NotificationRead entry with is_read=True)
-        read_global_ids_stmt = select(NotificationRead.notification_id).where(
-            NotificationRead.user_id == user_id,
-            NotificationRead.is_read == True
-        )
-
-        global_unread = db.query(func.count(Notification.id)).filter(
-            Notification.target_type == "ALL_USERS",
-            Notification.user_id.is_(None),
-            not_(Notification.id.in_(read_global_ids_stmt)),
-            not_(Notification.id.in_(deleted_notif_ids_stmt))
-        ).scalar() or 0
-
-        unread_count = personal_unread + global_unread
+        # Calculate unread count for enabled notifications
+        unread_count = sum(1 for n in mapped_notifications if not n.is_read)
         
-        return mapped_notifications, unread_count
+        # Apply pagination
+        paginated_notifications = mapped_notifications[skip:skip + limit]
+        
+        return paginated_notifications, unread_count
 
     def mark_as_read(self, db: Session, notification_id: int, user_id: int) -> bool:
         """Mark a single notification (personal or global) as read"""

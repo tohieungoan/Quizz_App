@@ -673,15 +673,33 @@ export const ParticipantAnswer: React.FC = () => {
             </div>
           </div>
 
-          {/* Active Power-Up Alert Banner (Hidden in EXAM mode) */}
-          {effectivePowerUp && (
-            <div className="flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-amber-500/15 to-amber-600/10 text-amber-955 border-2 border-amber-300 rounded-xl text-xs font-bold animate-in slide-in-from-top-2 duration-300 shadow-sm">
-              <Zap className="w-4 h-4 text-amber-650 animate-pulse fill-current" />
-              <span>
-                Active Power-Up: {effectivePowerUp === 'double' ? 'Double Points (x2)' : effectivePowerUp === 'shield' ? 'Streak Shield' : effectivePowerUp === 'fifty' ? '50:50 Split' : 'Booster Active'}
-              </span>
-            </div>
-          )}
+          {/* Active Power-Up Alert Banner (Hidden in EXAM mode or unsupported question types) */}
+          {(() => {
+            const isUnsupported = activeQuestion?.type === 'TRUE_FALSE' || activeQuestion?.type === 'SHORT_ANSWER' || activeQuestion?.type === 'SHORT_TEXT'
+            if (effectivePowerUp && isUnsupported) {
+              return (
+                <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-100 text-amber-950 border-2 border-amber-300 rounded-xl text-xs font-bold animate-in slide-in-from-top-2 duration-300 shadow-sm">
+                  <div className="w-5 h-5 rounded-full bg-amber-200 flex items-center justify-center font-extrabold text-amber-800 flex-shrink-0">
+                    ⚠️
+                  </div>
+                  <span>
+                    Power-ups cannot be used for True/False or Short Text questions. Please choose another item.
+                  </span>
+                </div>
+              )
+            }
+            if (effectivePowerUp) {
+              return (
+                <div className="flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-amber-500/15 to-amber-600/10 text-amber-955 border-2 border-amber-300 rounded-xl text-xs font-bold animate-in slide-in-from-top-2 duration-300 shadow-sm">
+                  <Zap className="w-4 h-4 text-amber-650 animate-pulse fill-current" />
+                  <span>
+                    Active Power-Up: {effectivePowerUp === 'double' ? 'Double Points (x2)' : effectivePowerUp === 'shield' ? 'Streak Shield' : effectivePowerUp === 'fifty' ? '50:50 Split' : 'Booster Active'}
+                  </span>
+                </div>
+              )
+            }
+            return null
+          })()}
         </header>
 
         {/* Question Text */}
@@ -814,7 +832,7 @@ export const ParticipantAnswer: React.FC = () => {
         {!isAnswered && roomMode !== 'EXAM' && (
           <button
             type="button"
-            onClick={() => navigate('/powerups', { state: { nickname, roomCode, score: accumulatedScore, streak, questionNumber: questionIndex } })}
+            onClick={() => navigate('/powerups', { state: { nickname, roomCode, score: accumulatedScore, streak, questionNumber: questionIndex, questionType: activeQuestion?.type } })}
             className="w-full py-4 bg-amber-100 hover:bg-amber-200 border-2 border-amber-300 text-amber-955 rounded-2xl font-button text-xs font-black transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
           >
             <Sparkles className="w-4 h-4 fill-amber-500 text-amber-600 animate-pulse" /> Select a Power-Up / Booster

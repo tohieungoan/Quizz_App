@@ -69,7 +69,7 @@ export interface EnrolledGroupResponse {
 
 export const groupService = {
   getMyGroups: async (): Promise<BackendGroupResponse[]> => {
-    return apiClient.get<BackendGroupResponse[]>('/groups');
+    return apiClient.get<BackendGroupResponse[]>('/groups/');
   },
 
   getMyMemberships: async (): Promise<EnrolledGroupResponse[]> => {
@@ -77,7 +77,7 @@ export const groupService = {
   },
 
   createGroup: async (data: GroupCreateData): Promise<BackendGroupResponse> => {
-    return apiClient.post<BackendGroupResponse>('/groups', data);
+    return apiClient.post<BackendGroupResponse>('/groups/', data);
   },
 
   updateGroup: async (groupId: number | string, data: GroupUpdateData): Promise<BackendGroupResponse> => {

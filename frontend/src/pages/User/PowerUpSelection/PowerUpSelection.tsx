@@ -45,16 +45,26 @@ export const PowerUpSelection: React.FC = () => {
   const location = useLocation()
 
   // State variables passed in React Router state
-  const state = location.state as { nickname?: string; roomCode?: string; score?: number; streak?: number } | null
+  const state = location.state as { nickname?: string; roomCode?: string; score?: number; streak?: number; questionType?: string } | null
   const nickname = state?.nickname || 'Guest'
   const roomCode = state?.roomCode || 'ROOM'
   const currentScore = state?.score ?? 0
   const currentStreak = state?.streak ?? 0
+  const questionType = state?.questionType || ''
+
+  const isUnsupportedQuestionType = questionType === 'TRUE_FALSE' || questionType === 'SHORT_ANSWER' || questionType === 'SHORT_TEXT'
 
   const [powerUps, setPowerUps] = useState<PowerUp[]>([])
   const [selectedPowerUpId, setSelectedPowerUpId] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   // Initialize randomized power-up inventory for the participant in this session
+  useEffect(() => {
+    if (isUnsupportedQuestionType) {
+      setErrorMessage('Power-ups cannot be used for True/False or Short Text questions. Please choose another item or return to quiz.')
+    }
+  }, [isUnsupportedQuestionType])
+
   useEffect(() => {
     const storageKey = `powerups_${roomCode}_${nickname}`
     const saved = sessionStorage.getItem(storageKey)
@@ -102,13 +112,24 @@ export const PowerUpSelection: React.FC = () => {
   }, [roomCode, nickname])
 
   const handleSelect = (id: string) => {
+    if (isUnsupportedQuestionType) {
+      setErrorMessage('This power-up cannot be used for True/False or Short Text questions. Please choose another item.')
+      return
+    }
+
     const target = powerUps.find(p => p.id === id)
     if (target && target.count > 0) {
       setSelectedPowerUpId(selectedPowerUpId === id ? null : id)
+      setErrorMessage(null)
     }
   }
 
   const handleApply = () => {
+    if (isUnsupportedQuestionType) {
+      setErrorMessage('This power-up cannot be used for True/False or Short Text questions. Please choose another item.')
+      return
+    }
+
     if (!selectedPowerUpId) return
 
     // Decrement item count in sessionStorage upon equipping
@@ -123,8 +144,6 @@ export const PowerUpSelection: React.FC = () => {
         }
       } catch (_) {}
     }
-
-
 
     // Return to gameplay screen with active booster
     navigate('/play', {
@@ -179,6 +198,15 @@ export const PowerUpSelection: React.FC = () => {
           <p className="font-body-md text-xs text-slate-800 mt-2 leading-relaxed font-medium">
             Equip a randomized booster before answering the question to enhance your score or time.
           </p>
+
+          {errorMessage && (
+            <div className="mt-4 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-amber-900 text-xs font-bold shadow-md flex items-center gap-3 animate-in fade-in duration-200">
+              <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center flex-shrink-0 text-amber-800 font-extrabold">
+                ⚠️
+              </div>
+              <p className="text-left font-bold leading-tight">{errorMessage}</p>
+            </div>
+          )}
         </div>
 
         {/* Power-Up Grid */}

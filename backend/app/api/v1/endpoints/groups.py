@@ -38,7 +38,8 @@ def generate_unique_group_code(db: Session) -> str:
             return code
 
 
-@router.post("/", response_model=GroupResponse, status_code=status.HTTP_201_CREATED, summary="Create a new study group")
+@router.post("", response_model=GroupResponse, status_code=status.HTTP_201_CREATED, summary="Create a new study group")
+@router.post("/", response_model=GroupResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_group(
     group_in: GroupCreate,
     db: Session = Depends(get_db),
@@ -61,18 +62,47 @@ def create_group(
     db.add(db_group)
     db.commit()
     db.refresh(db_group)
+
+    # Automatically register group creator as APPROVED HOST in GroupMember
+    owner_member = GroupMember(
+        group_id=db_group.id,
+        user_id=current_user.id,
+        role_in_group="HOST",
+        status="APPROVED",
+        joined_at=datetime.utcnow()
+    )
+    db.add(owner_member)
+    db.commit()
+
     return db_group
 
 
-@router.get("/", response_model=List[GroupResponse], summary="Retrieve study groups owned by the current user")
+@router.get("", response_model=List[GroupResponse], summary="Retrieve study groups owned or hosted by the current user")
+@router.get("/", response_model=List[GroupResponse], include_in_schema=False)
 def read_my_groups(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
-    Get a list of study groups created/owned by the logged-in user.
+    Get a list of study groups created/owned or hosted by the logged-in user.
     """
-    groups = db.query(Group).filter(Group.owner_id == current_user.id).all()
+    # 1. Directly owned groups
+    owned_ids = [g.id for g in db.query(Group.id).filter(Group.owner_id == current_user.id).all()]
+
+    # 2. Groups where user is registered as HOST/OWNER/TEACHER/ADMIN in group_members
+    member_host_ids = [
+        gm.group_id for gm in db.query(GroupMember.group_id).filter(
+            GroupMember.user_id == current_user.id,
+            GroupMember.status == "APPROVED",
+            GroupMember.role_in_group.in_(["HOST", "OWNER", "TEACHER", "ADMIN"])
+        ).all()
+    ]
+
+    all_ids = list(set(owned_ids + member_host_ids))
+    if not all_ids:
+        return []
+
+    groups = db.query(Group).filter(Group.id.in_(all_ids)).order_by(Group.created_at.desc()).all()
     return groups
 
 
