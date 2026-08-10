@@ -19,16 +19,27 @@ export function AdminLayout() {
   }
 
   const handleNavigate = (view: ViewState, context?: any) => {
-    if (view === 'quiz-creator') {
-      if (context && context.id) navigate(`/admin/quizzes/edit/${context.id}`, { state: context });
-      else navigate(`/admin/quizzes/create`);
-    } else if (view === 'reports' && context && (context.roomId || context.id)) {
-      navigate(`/admin/reports/${context.roomId || context.id}`, { state: context });
-    } else if (view === 'live-rooms') {
-      navigate(`/admin/rooms`);
-    } else {
-      navigate(`/admin/${view}`, { state: context });
+    const goToView = () => {
+      if (view === 'quiz-creator') {
+        if (context && context.id) navigate(`/admin/quizzes/edit/${context.id}`, { state: context });
+        else navigate(`/admin/quizzes/create`);
+      } else if (view === 'reports' && context && (context.roomId || context.id)) {
+        navigate(`/admin/reports/${context.roomId || context.id}`, { state: context });
+      } else if (view === 'live-rooms') {
+        navigate(`/admin/rooms`);
+      } else {
+        navigate(`/admin/${view}`, { state: context });
+      }
+    };
+
+    // When leaving Quiz Creator through the admin navigation, let the editor
+    // persist its work as a server-side Draft before changing routes.
+    if (location.pathname.includes('/admin/quizzes/create') || location.pathname.includes('/admin/quizzes/edit')) {
+      window.dispatchEvent(new CustomEvent('quizzapp:save-quiz-draft', { detail: { onSaved: goToView } }));
+      return;
     }
+
+    goToView();
   };
 
   const currentPath = location.pathname;

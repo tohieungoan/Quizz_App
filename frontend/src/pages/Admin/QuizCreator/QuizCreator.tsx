@@ -100,6 +100,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [recoveredDraftModalOpen, setRecoveredDraftModalOpen] = useState(false);
   const [recoveredDraftData, setRecoveredDraftData] = useState<any>(null);
   const isInitialMount = useRef(true);
+  const saveQuizRef = useRef<(status: string, shouldExit?: boolean) => Promise<boolean>>(async () => false);
 
   // Modal State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -291,6 +292,16 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
   // Check for recovered unsaved draft from previous crash/session on mount
   useEffect(() => {
+    // New quizzes are now persisted as server-side Drafts when leaving the
+    // editor. Do not offer recovery of an old local browser draft here.
+    if (!quizRawId) {
+      localStorage.removeItem(draftStorageKey);
+      const timer = setTimeout(() => {
+        isInitialMount.current = false;
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+
     try {
       const saved = localStorage.getItem(draftStorageKey);
       if (saved) {
@@ -308,7 +319,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       }, 600);
       return () => clearTimeout(timer);
     }
-  }, [draftStorageKey]);
+  }, [draftStorageKey, quizRawId]);
 
   // Debounced Auto-Save Draft to LocalStorage whenever anything changes
   useEffect(() => {
@@ -655,7 +666,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const saveQuizAndQuestions = async (status: string, shouldExit: boolean = true) => {
     if (questions.length === 0 && quizTitle.trim() === '') {
       if (shouldExit) onCancel();
-      return;
+      return true;
     }
     
     setIsSaving(true);
@@ -710,7 +721,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           subject: quizSubject,
           difficulty: quizDifficulty,
           is_public: isPublic,
-          status: status === 'Published' ? 'Published' : 'Draft'
+          // Questions cannot be changed after publication. Keep the quiz editable
+          // until every question has been persisted, then publish in the final step.
+          status: 'Draft'
         });
 
         // 2. Delete Questions Sequentially
@@ -751,7 +764,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           subject: quizSubject,
           difficulty: quizDifficulty,
           is_public: isPublic,
-          status: status === 'Published' ? 'Published' : 'Draft'
+          // Create the quiz as a draft first so the subsequent question-create
+          // requests are accepted; publication happens after they all succeed.
+          status: 'Draft'
         });
         
         targetQuizId = quizRes.id;
@@ -810,19 +825,40 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       } else {
         toast.success(status === 'Published' ? 'Quiz published!' : 'Draft saved to server successfully!');
       }
+
+      return true;
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save quiz", error);
       setAlertState({
         isOpen: true,
         title: 'Error',
-        message: 'Failed to save quiz. Please try again.',
+        message: error?.message || 'Failed to save quiz. Please try again.',
         type: 'error'
       });
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
+
+  // AdminLayout requests this save before routing away through the sidebar or
+  // header. The route change only proceeds after the Draft is stored on server.
+  useEffect(() => {
+    saveQuizRef.current = saveQuizAndQuestions;
+  });
+
+  useEffect(() => {
+    const handleSaveBeforeNavigation = async (event: Event) => {
+      if (isSaving) return;
+      const { onSaved } = (event as CustomEvent<{ onSaved?: () => void }>).detail || {};
+      const saved = await saveQuizRef.current('Draft', false);
+      if (saved) onSaved?.();
+    };
+
+    window.addEventListener('quizzapp:save-quiz-draft', handleSaveBeforeNavigation);
+    return () => window.removeEventListener('quizzapp:save-quiz-draft', handleSaveBeforeNavigation);
+  }, [isSaving]);
 
   const handlePublishClick = () => {
     setPublishConfirmOpen(true);
