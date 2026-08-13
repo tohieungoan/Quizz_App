@@ -400,7 +400,7 @@ class CRUDRoom:
         db.commit()
         db.refresh(participant)
 
-        # Get correct answer explanation to send back
+        # Determine the correct answer key to send back.
         correct_option_key = None
         if is_short_answer:
             correct_opt = next((o for o in options if o.is_correct), None)

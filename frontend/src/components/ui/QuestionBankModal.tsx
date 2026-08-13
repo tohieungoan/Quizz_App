@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Search, CheckCircle2, List, CheckSquare, AlignLeft, Check, ChevronDown } from 'lucide-react';
-import { Question } from '@/pages/Admin/QuizCreator/QuizCreator';
+import { Question } from '@/pages/Admin/QuizCreator/quizCreatorModels';
 
 
 

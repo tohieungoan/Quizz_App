@@ -13,6 +13,7 @@ import { HostRoomModal } from './components/HostRoomModal';
 import { USER_ASSIGNED_EXAMS } from '@/data/userData';
 import { useLogout } from '@/hooks/useLogout';
 import { examService, achievementService } from '@/services';
+import { startNewQuizDraftSession } from '@/utils/quizDraftSession';
 
 type TabType = 'overview' | 'join_room' | 'assigned_exams' | 'history' | 'achievements' | 'host_studio' | 'settings';
 
@@ -188,6 +189,7 @@ export const Dashboard: React.FC = () => {
 
   const handleCreateQuiz = () => {
     sessionStorage.setItem('dashboard_active_tab', activeTab);
+    startNewQuizDraftSession();
     navigate('/create-quiz', { state: { activeTab } });
   };
 

@@ -14,8 +14,6 @@ class AIQuestionItem(BaseModel):
     bloom_level: Optional[str] = Field("understand", description="Cấp độ Bloom: remember, understand, apply, analyze, evaluate")
     time_limit: int = Field(60, description="Thời gian làm bài gợi ý (giây)")
     points: float = Field(1.0, description="Điểm số")
-    source: Optional[str] = Field(None, description="Trích dẫn nguồn từ tài liệu (trang, mục)")
-    explanation: str = Field("", description="Giải thích lý do đáp án đúng và phân tích phương án sai")
     keyword: Optional[str] = Field(None, description="Từ khóa đáp án ngắn / điền từ")
     acceptable_answers: Optional[List[str]] = Field(default=None, description="Danh sách từ đồng nghĩa được chấp nhận")
     options: List[AIOptionItem] = Field(default_factory=list, description="Danh sách các phương án lựa chọn")

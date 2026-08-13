@@ -316,9 +316,7 @@ export const AIQuizModal: React.FC<AIQuizModalProps> = ({
                   }}
                   className="w-full px-3 py-2 bg-surface-container-lowest border border-outline-variant/40 rounded-lg text-sm font-bold text-primary outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-on-surface-variant pointer-events-none">
-                  questions
-                </span>
+
               </div>
             </div>
 

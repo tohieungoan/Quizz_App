@@ -89,7 +89,7 @@ export function ReportsList() {
             </div>
             <div>
               <div className="text-3xl font-extrabold text-[#1a0b82] mb-1">{metrics?.total_participants ?? 0}</div>
-              <p className="text-on-surface-variant flex items-center gap-1 text-sm font-medium"><Minus className="w-4 h-4" /> Across all sessions</p>
+              <p className="text-green-600 flex items-center gap-1 text-sm font-medium"><TrendingUp className="w-4 h-4" /> Across all sessions</p>
             </div>
           </div>
           <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/50 p-6 flex flex-col gap-4 shadow-sm">
@@ -99,7 +99,7 @@ export function ReportsList() {
             </div>
             <div>
               <div className="text-3xl font-extrabold text-[#1a0b82] mb-1">{metrics?.total_questions ?? 0}</div>
-              <p className="text-on-surface-variant flex items-center gap-1 text-sm font-medium">In database</p>
+              <p className="text-green-600 flex items-center gap-1 text-sm font-medium"><TrendingUp className="w-4 h-4" /> In database</p>
             </div>
           </div>
         </section>

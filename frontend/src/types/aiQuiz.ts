@@ -14,11 +14,14 @@ export interface AIQuestionItem {
   bloom_level?: AIBloomLevel;
   time_limit: number;
   points: number;
-  source?: string;
-  explanation: string;
   keyword?: string;
   acceptable_answers?: string[];
   options: AIOptionItem[];
+  media_url?: string;
+}
+
+export interface AIQuestionReviewItem extends AIQuestionItem {
+  review_id: string;
 }
 
 export interface AIQuizGenerateRequest {

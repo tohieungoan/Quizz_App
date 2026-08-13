@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Copy, Trash2, Search, CheckCircle2, FileEdit, Library } from 'lucide-react';
+import { Plus, Edit2, Copy, Trash2, Search, CheckCircle2, FileEdit } from 'lucide-react';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AlertModal } from '@/components/ui/AlertModal';
@@ -134,13 +134,6 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
     if (quizToDelete) {
       try {
         const rawId = quizToDelete.replace('QZ-', '');
-        const targetQuiz = quizzes.find(q => q.id === quizToDelete);
-        
-        // If the quiz is Published, we must change it to Draft first to satisfy backend constraints
-        if (targetQuiz && targetQuiz.status === 'Published') {
-          await quizService.updateQuiz(rawId, { status: 'Draft' });
-        }
-
         await quizService.deleteQuiz(rawId);
         fetchQuizzes();
         setAlertState({
