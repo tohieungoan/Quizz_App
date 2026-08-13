@@ -12,7 +12,7 @@ class AIQuizValidator:
     """
 
     @classmethod
-    def validate_and_normalize(cls, raw_dict: Dict[str, Any], default_source: str = "Tài liệu đính kèm") -> List[AIQuestionItem]:
+    def validate_and_normalize(cls, raw_dict: Dict[str, Any]) -> List[AIQuestionItem]:
         questions_raw = raw_dict.get("questions", [])
         if not isinstance(questions_raw, list):
             return []
@@ -52,8 +52,6 @@ class AIQuizValidator:
                     time_limit = 45 if difficulty == "EASY" else (60 if difficulty == "MEDIUM" else 90)
 
                 points = float(item.get("points") or 1.0)
-                source = str(item.get("source") or default_source).strip()
-                explanation = str(item.get("explanation") or "").strip()
                 keyword = str(item.get("keyword") or "").strip() if item.get("keyword") else None
                 acceptable_answers = item.get("acceptable_answers") if isinstance(item.get("acceptable_answers"), list) else None
 
@@ -72,34 +70,26 @@ class AIQuizValidator:
                             elif isinstance(opt, str) and opt.strip():
                                 normalized_options.append(AIOptionItem(content=opt.strip(), is_correct=False))
 
-                    # Ensure exactly 1 correct answer
+                    # Never invent an answer key. Invalid LLM output is rejected
+                    # and can be retried by the orchestration layer.
                     correct_count = sum(1 for o in normalized_options if o.is_correct)
-                    if correct_count == 0 and len(normalized_options) > 0:
-                        normalized_options[0].is_correct = True
-                    elif correct_count > 1:
-                        # Keep only the first correct answer
-                        first_found = False
-                        for o in normalized_options:
-                            if o.is_correct:
-                                if not first_found:
-                                    first_found = True
-                                else:
-                                    o.is_correct = False
-
-                    if len(normalized_options) < 2:
+                    if len(normalized_options) < 2 or correct_count != 1:
                         continue
 
                 elif q_type == "truefalse":
                     # Determine true/false correctness
-                    tf_val = True
+                    tf_val = None
                     if isinstance(raw_options, list) and len(raw_options) >= 2:
                         for opt in raw_options:
                             if isinstance(opt, dict) and str(opt.get("content")).lower() == "true":
-                                tf_val = bool(opt.get("is_correct", True))
+                                tf_val = bool(opt.get("is_correct", False))
                     elif "true" in str(item.get("correct_answer") or "").lower():
                         tf_val = True
                     elif "false" in str(item.get("correct_answer") or "").lower():
                         tf_val = False
+
+                    if tf_val is None:
+                        continue
 
                     normalized_options = [
                         AIOptionItem(content="True", is_correct=tf_val),
@@ -113,7 +103,7 @@ class AIQuizValidator:
                         short_ans = first_opt.get("content", "") if isinstance(first_opt, dict) else str(first_opt)
 
                     if not short_ans:
-                        short_ans = "Đáp án"
+                        continue
 
                     keyword = short_ans
                     normalized_options = [AIOptionItem(content=short_ans, is_correct=True)]
@@ -126,8 +116,6 @@ class AIQuizValidator:
                     bloom_level=bloom_level,
                     time_limit=time_limit,
                     points=points,
-                    source=source,
-                    explanation=explanation,
                     keyword=keyword,
                     acceptable_answers=acceptable_answers,
                     options=normalized_options

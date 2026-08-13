@@ -82,7 +82,7 @@ def _trigger_auto_advance_if_enabled(db: Session, room):
 
     time_limit = 20
     if room.quiz and room.quiz.questions:
-        sorted_q = sorted(room.quiz.questions, key=lambda q: q.id)
+        sorted_q = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
         if 1 <= room.current_question_index <= len(sorted_q):
             time_limit = sorted_q[room.current_question_index - 1].time_limit or 20
 
@@ -171,7 +171,9 @@ def launch_room(
     Requires authentication (active user).
     """
     # Verify if quiz exists
-    quiz = crud_quiz.get(db=db, quiz_id=room_in.quiz_id)
+    # Serialize room creation with authoring saves. Once this lock is held,
+    # either the save completes before launch or subsequent saves see WAITING.
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=room_in.quiz_id)
     if not quiz:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -301,7 +303,7 @@ def get_my_active_rooms(
     for room in active_rooms:
         active_q = None
         if room.status == "PLAYING" and room.quiz and room.quiz.questions:
-            sorted_questions = sorted(room.quiz.questions, key=lambda q: q.id)
+            sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
             if 1 <= room.current_question_index <= len(sorted_questions):
                 q = sorted_questions[room.current_question_index - 1]
                 KEYS = ["A", "B", "C", "D"]
@@ -350,7 +352,7 @@ def get_room_by_code(
     # Construct active_question safely without exposing correct_option_key
     active_q = None
     if room.status == "PLAYING" and room.quiz and room.quiz.questions:
-        sorted_questions = sorted(room.quiz.questions, key=lambda q: q.id)
+        sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
         if 1 <= room.current_question_index <= len(sorted_questions):
             q = sorted_questions[room.current_question_index - 1]
             
@@ -593,7 +595,7 @@ def get_live_session(
     active_question = None
     sorted_questions = []
     if room.quiz and room.quiz.questions:
-        sorted_questions = sorted(room.quiz.questions, key=lambda q: q.id)
+        sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
         
     if 1 <= room.current_question_index <= len(sorted_questions):
         q = sorted_questions[room.current_question_index - 1]

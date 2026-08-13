@@ -45,11 +45,10 @@ class AIQuizService:
         start_time = time.time()
         
         raw_text = ""
-        total_pages = 0
-        
+        author_instructions = custom_prompt if file_bytes else None
         if file_bytes:
             # 1. Parse document text & pages
-            file_text, total_pages = DocumentParserService.extract_text(
+            file_text, _ = DocumentParserService.extract_text(
                 file_bytes=file_bytes,
                 filename=filename,
                 start_page=start_page,
@@ -57,8 +56,8 @@ class AIQuizService:
             )
             raw_text += file_text + "\n\n"
             
-        if custom_prompt:
-            raw_text += f"--- Additional Instructions / Topic ---\n{custom_prompt}\n"
+        if custom_prompt and not file_bytes:
+            raw_text = custom_prompt
             
         if not raw_text or len(raw_text.strip()) < 20:
             raise ValueError(f"Insufficient text content to generate quiz questions. Please provide more context.")
@@ -75,6 +74,8 @@ class AIQuizService:
         tasks = []
         remaining = num_questions
         
+        total_batches = math.ceil(num_questions / batch_size)
+        batch_index = 1
         while remaining > 0:
             current_batch = min(remaining, batch_size)
             batch_user_prompt = PromptBuilder.build_user_prompt(
@@ -86,7 +87,9 @@ class AIQuizService:
                 language=language,
                 existing_questions=existing_questions,
                 deleted_blacklist=deleted_blacklist,
-                custom_prompt=custom_prompt
+                custom_prompt=author_instructions,
+                batch_index=batch_index,
+                total_batches=total_batches,
             )
             tasks.append(LLMOrchestrator.invoke_chat_completion(
                 system_prompt=system_prompt,
@@ -94,6 +97,7 @@ class AIQuizService:
                 num_questions=current_batch
             ))
             remaining -= current_batch
+            batch_index += 1
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -112,17 +116,28 @@ class AIQuizService:
         if not merged_questions:
             raise ValueError("The AI model was unable to generate valid questions. Please try again.")
 
-        parsed_dict = {"questions": merged_questions}
+        deduplicated_questions = []
+        seen_content = set()
+        for question in merged_questions:
+            content = " ".join(str(question.get("content") or question.get("question") or "").split())
+            key = content.casefold()
+            if content and key not in seen_content:
+                seen_content.add(key)
+                deduplicated_questions.append(question)
+
+        parsed_dict = {"questions": deduplicated_questions[:num_questions]}
 
         # 5. Validation & Normalization
-        source_label = f"File: {filename}" if total_pages <= 1 else f"File: {filename} (Total {total_pages} pages)"
-        if not file_bytes:
-            source_label = "Direct Text Prompt"
-            
-        validated_questions = AIQuizValidator.validate_and_normalize(parsed_dict, default_source=source_label)
+        validated_questions = AIQuizValidator.validate_and_normalize(parsed_dict)
 
         if not validated_questions:
             raise ValueError("Generated questions did not pass the assessment quality criteria.")
+        if len(validated_questions) != num_questions:
+            logger.warning(
+                "Only %s of %s AI-generated questions passed quality validation; returning the valid subset.",
+                len(validated_questions),
+                num_questions,
+            )
 
         elapsed_ms = int((time.time() - start_time) * 1000)
 

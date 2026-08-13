@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional
-from sqlalchemy import String, Integer, Boolean, Text, DateTime, ForeignKey
+from typing import Any, Optional
+from sqlalchemy import String, Integer, Boolean, Text, DateTime, ForeignKey, BigInteger, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -16,12 +16,22 @@ class Quiz(Base):
     difficulty: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    shuffle_options: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    draft_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    draft_builder_state: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     author = relationship("User", foreign_keys=[user_id])
-    questions = relationship("Question", back_populates="quiz", cascade="all, delete-orphan")
+    questions = relationship(
+        "Question",
+        back_populates="quiz",
+        cascade="all, delete-orphan",
+        order_by="Question.position",
+    )
     upload_files = relationship("UploadFile", back_populates="quiz")
 
     @property
@@ -44,15 +54,20 @@ class Question(Base):
 
     difficulty: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     time_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    source: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_original: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     quiz = relationship("Quiz", back_populates="questions")
     parent_question = relationship("Question", remote_side=[id])
-    options = relationship("QuestionOption", back_populates="question", cascade="all, delete-orphan")
+    options = relationship(
+        "QuestionOption",
+        back_populates="question",
+        cascade="all, delete-orphan",
+        order_by="QuestionOption.id",
+    )
 
 
 class QuestionOption(Base):
@@ -83,7 +98,16 @@ class UploadFile(Base):
     filename: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    public_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
+    secure_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True, unique=True)
+    resource_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="PENDING", nullable=False, index=True)
+    delete_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     upload_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     user = relationship("User")

@@ -19,7 +19,7 @@ class CRUDQuestion:
         if difficulty:
             query = query.filter(Question.difficulty == difficulty)
             
-        return query.order_by(Question.id.asc()).offset(skip).limit(limit).all()
+        return query.order_by(Question.position.asc(), Question.id.asc()).offset(skip).limit(limit).all()
 
     def get_bank_questions(
         self, db: Session, user_id: int, skip: int = 0, limit: int = 100,
@@ -47,6 +47,9 @@ class CRUDQuestion:
 
         # 1. BATCH FETCH: Get all original questions owned by the user
         from app.models.quiz import Quiz
+        target_quiz = db.query(Quiz).filter(Quiz.id == target_quiz_id).with_for_update().first()
+        if not target_quiz:
+            return []
         original_qs = db.query(Question).join(Quiz).filter(
             Question.id.in_(question_ids),
             Quiz.user_id == user_id
@@ -74,6 +77,7 @@ class CRUDQuestion:
         )
 
         imported_questions = []
+        next_position = db.query(Question).filter(Question.quiz_id == target_quiz_id).count()
         for original_q in original_qs:
             ultimate_parent_id = q_to_ultimate_id[original_q]
             
@@ -95,9 +99,10 @@ class CRUDQuestion:
                 audio_play_limit=original_q.audio_play_limit,
                 difficulty=original_q.difficulty,
                 time_limit=original_q.time_limit,
-                source="Imported",
-                is_original=False
+                is_original=False,
+                position=next_position,
             )
+            next_position += 1
             db.add(new_q)
             db.flush() # Flush to get newly generated ID to assign to Options
             
@@ -114,6 +119,8 @@ class CRUDQuestion:
                 
             imported_questions.append(new_q)
             
+        if imported_questions:
+            target_quiz.version = (target_quiz.version or 0) + 1
         db.commit()
         for q in imported_questions:
             db.refresh(q)
@@ -122,6 +129,19 @@ class CRUDQuestion:
 
     def create_with_options(self, db: Session, obj_in: QuestionCreate, quiz_id: int) -> Question:
         """Create a question and its associated options in a single transaction."""
+        from app.models.quiz import Quiz
+        quiz = db.query(Quiz).filter(Quiz.id == quiz_id).with_for_update().first()
+        if not quiz:
+            raise ValueError("Quiz not found.")
+
+        from sqlalchemy import func
+        current_max_position = (
+            db.query(func.max(Question.position))
+            .filter(Question.quiz_id == quiz_id)
+            .scalar()
+        )
+        next_position = 0 if current_max_position is None else current_max_position + 1
+
         # 1. Create Question
         db_question = Question(
             quiz_id=quiz_id,
@@ -133,8 +153,8 @@ class CRUDQuestion:
             audio_play_limit=obj_in.audio_play_limit or 0,
             difficulty=obj_in.difficulty,
             time_limit=obj_in.time_limit,
-            source=obj_in.source,
-            is_original=obj_in.is_original
+            is_original=obj_in.is_original,
+            position=next_position,
         )
         db.add(db_question)
         db.flush() # Flush to get db_question.id without committing
@@ -150,6 +170,7 @@ class CRUDQuestion:
             )
             db.add(db_opt)
             
+        quiz.version = (quiz.version or 0) + 1
         db.commit()
         db.refresh(db_question)
         return db_question
@@ -162,6 +183,7 @@ class CRUDQuestion:
         for field, value in update_data.items():
             setattr(db_obj, field, value)
         db.add(db_obj)
+        db_obj.quiz.version = (db_obj.quiz.version or 0) + 1
         db.commit()
         db.refresh(db_obj)
         return db_obj
@@ -173,6 +195,12 @@ class CRUDQuestion:
         Update a question and completely replace its options.
         Returns the updated question and a list of orphaned media/audio URLs from the deleted options.
         """
+        locked_question = db.query(Question).filter(
+            Question.id == db_obj.id
+        ).with_for_update().first()
+        if locked_question is None:
+            raise ValueError("Question not found.")
+        db_obj = locked_question
         orphaned_urls = []
         update_data = obj_in.model_dump(exclude_unset=True)
         options_data = update_data.pop("options", None)
@@ -189,10 +217,6 @@ class CRUDQuestion:
             for idx, opt_data in enumerate(options_data):
                 opt_id = opt_data.get("id")
                 
-                # Fallback: if frontend lost the ID, try to map it by index to prevent data loss
-                if not opt_id and idx < len(old_options_list):
-                    opt_id = old_options_list[idx].id
-                    
                 if opt_id and opt_id in old_options:
                     # Update existing option
                     old_opt = old_options[opt_id]
@@ -227,14 +251,19 @@ class CRUDQuestion:
                     db.delete(old_opt)
                 
         db.add(db_obj)
+        db_obj.quiz.version = (db_obj.quiz.version or 0) + 1
         db.commit()
         db.refresh(db_obj)
         return db_obj, orphaned_urls
 
     def delete(self, db: Session, question_id: int) -> Optional[Question]:
-        db_obj = db.query(Question).filter(Question.id == question_id).first()
+        db_obj = db.query(Question).filter(
+            Question.id == question_id
+        ).with_for_update().first()
         if db_obj:
+            quiz = db_obj.quiz
             db.delete(db_obj)
+            quiz.version = (quiz.version or 0) + 1
             db.commit()
         return db_obj
         

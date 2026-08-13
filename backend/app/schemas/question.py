@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --- QUESTION OPTION SCHEMAS ---
 class QuestionOptionBase(BaseModel):
@@ -16,11 +16,10 @@ class QuestionOptionUpdate(QuestionOptionBase):
     id: Optional[int] = None
 
 class QuestionOptionResponse(QuestionOptionBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     question_id: int
-
-    class Config:
-        from_attributes = True
 
 
 # --- QUESTION SCHEMAS ---
@@ -33,8 +32,8 @@ class QuestionBase(BaseModel):
     audio_play_limit: Optional[int] = Field(0, examples=[0, 3])
     difficulty: Optional[str] = Field("Beginner", examples=["Beginner", "Intermediate"])
     time_limit: Optional[int] = Field(None, examples=[30])
-    source: Optional[str] = Field(None, examples=["Internal"])
     is_original: Optional[bool] = Field(True, examples=[True])
+    position: Optional[int] = Field(0, ge=0)
 
 class QuestionCreate(QuestionBase):
     options: List[QuestionOptionCreate] = Field(default_factory=list)
@@ -77,14 +76,13 @@ class QuestionUpdate(QuestionBase):
         return self
 
 class QuestionResponse(QuestionBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     quiz_id: int
     created_at: datetime
     updated_at: datetime
-    options: List[QuestionOptionResponse] = []
-
-    class Config:
-        from_attributes = True
+    options: List[QuestionOptionResponse] = Field(default_factory=list)
 
 class QuestionPageResponse(BaseModel):
     data: List[QuestionResponse]

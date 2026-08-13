@@ -30,8 +30,11 @@ export const useCloudinaryUpload = () => {
       formData.append('timestamp', String(sigData.timestamp));
       formData.append('signature', sigData.signature);
       formData.append('folder', sigData.folder);
+      formData.append('public_id', sigData.public_id);
+      formData.append('overwrite', 'false');
+      formData.append('unique_filename', 'false');
 
-      const cloudinaryUrl = `${CLOUDINARY_URL}/${sigData.cloud_name}/auto/upload`;
+      const cloudinaryUrl = `${CLOUDINARY_URL}/${sigData.cloud_name}/${sigData.resource_type}/upload`;
 
       // Use native XMLHttpRequest for upload progress tracking
       return new Promise((resolve) => {
@@ -44,15 +47,23 @@ export const useCloudinaryUpload = () => {
           }
         });
 
-        xhr.addEventListener('load', () => {
+        xhr.addEventListener('load', async () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const response = JSON.parse(xhr.responseText);
-              setUploadedUrl(response.secure_url);
+              const verified = await uploadService.completeUpload({
+                asset_id: sigData.asset_id,
+                public_id: response.public_id,
+                secure_url: response.secure_url,
+                resource_type: response.resource_type,
+                bytes: response.bytes,
+                format: response.format,
+              });
+              setUploadedUrl(verified.secure_url);
               setIsUploading(false);
-              resolve(response.secure_url);
+              resolve(verified.secure_url);
             } catch (err) {
-              setError('Failed to parse upload response');
+              setError(err instanceof Error ? err.message : 'Failed to verify uploaded media');
               setIsUploading(false);
               resolve(null);
             }
@@ -69,7 +80,14 @@ export const useCloudinaryUpload = () => {
           resolve(null);
         });
 
+        xhr.addEventListener('timeout', () => {
+          setError('Upload timed out. Please retry.');
+          setIsUploading(false);
+          resolve(null);
+        });
+
         xhr.open('POST', cloudinaryUrl, true);
+        xhr.timeout = 120_000;
         xhr.send(formData);
       });
 

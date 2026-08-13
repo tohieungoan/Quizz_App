@@ -1,5 +1,5 @@
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
@@ -7,9 +7,23 @@ from app.api.deps import get_db, get_current_active_user
 from app.crud.crud_question import crud_question
 from app.crud.crud_quiz import crud_quiz
 from app.schemas.question import QuestionCreate, QuestionUpdate, QuestionResponse, QuestionPageResponse, QuestionImport
-from app.utils.cloudinary_utils import delete_cloudinary_asset_bg
+from app.services.media_asset_service import media_asset_service
+from app.services.quiz_authoring_policy import (
+    QuizInActiveRoomError,
+    ensure_quiz_is_not_in_active_room,
+)
 
 router = APIRouter()
+
+
+def _ensure_quiz_authoring_is_unlocked(db: Session, quiz_id: int) -> None:
+    try:
+        ensure_quiz_is_not_in_active_room(db, quiz_id)
+    except QuizInActiveRoomError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
 
 @router.get("/questions/bank", response_model=QuestionPageResponse, summary="Get question bank")
 def read_question_bank(
@@ -51,12 +65,14 @@ def create_question(
     Requires an active user.
     """
     # Verify quiz exists
-    quiz = crud_quiz.get(db=db, quiz_id=quiz_id)
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=quiz_id)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
     if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to add questions to this quiz")
+
+    _ensure_quiz_authoring_is_unlocked(db, quiz.id)
         
     if quiz.status and quiz.status.lower() == "published":
         raise HTTPException(status_code=400, detail="Cannot add questions to a published quiz. Please change its status to Draft first.")
@@ -77,12 +93,14 @@ def import_questions(
     Requires an active user who owns the destination quiz.
     """
     # 1. Verify destination quiz exists and belongs to the user
-    quiz = crud_quiz.get(db=db, quiz_id=quiz_id)
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=quiz_id)
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
     if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    _ensure_quiz_authoring_is_unlocked(db, quiz.id)
         
     if quiz.status and quiz.status.lower() == "published":
         raise HTTPException(status_code=400, detail="Cannot import questions into a published quiz. Please change its status to Draft first.")
@@ -115,7 +133,9 @@ def read_questions(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
         
-    if not quiz.is_public and quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+    # Authoring responses include answer keys. Public participants must use the
+    # room/exam take endpoints, which intentionally omit is_correct.
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to view questions for this quiz")
         
     skip = (pageIndex - 1) * pageSize
@@ -131,7 +151,6 @@ def read_questions(
 def update_question(
     question_id: int,
     question_in: QuestionUpdate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
 ) -> Any:
@@ -142,10 +161,16 @@ def update_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    if question.quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=question.quiz_id)
+    if quiz is None:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to update this question")
+
+    _ensure_quiz_authoring_is_unlocked(db, quiz.id)
         
-    if question.quiz.status and question.quiz.status.lower() == "published":
+    if quiz.status and quiz.status.lower() == "published":
         raise HTTPException(status_code=400, detail="Cannot update a question in a published quiz. Please change the quiz status to Draft first.")
         
     old_media_url = question.media_url
@@ -160,9 +185,13 @@ def update_question(
         orphaned_urls.append(old_audio_url)
         
     # Trigger background tasks to delete all orphaned assets
-    for url in orphaned_urls:
-        if url and not crud_question.is_url_referenced(db, url):
-            background_tasks.add_task(delete_cloudinary_asset_bg, url)
+    cleanup_urls = {
+        url for url in orphaned_urls
+        if url and not crud_question.is_url_referenced(db, url)
+    }
+    media_asset_service.schedule_cleanup_by_urls(
+        db, question.quiz.user_id, cleanup_urls
+    )
         
     return question
 
@@ -170,7 +199,6 @@ def update_question(
 @router.delete("/questions/{question_id}", summary="Delete a question")
 def delete_question(
     question_id: int,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
 ) -> Any:
@@ -181,10 +209,16 @@ def delete_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    if question.quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=question.quiz_id)
+    if quiz is None:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to delete this question")
+
+    _ensure_quiz_authoring_is_unlocked(db, quiz.id)
         
-    if question.quiz.status and question.quiz.status.lower() == "published":
+    if quiz.status and quiz.status.lower() == "published":
         raise HTTPException(status_code=400, detail="Cannot delete a question in a published quiz. Please change the quiz status to Draft first.")
         
     urls_to_check = set()
@@ -203,8 +237,12 @@ def delete_question(
     crud_question.delete(db=db, question_id=question_id)
     
     # Trigger background tasks to delete associated media if they are no longer referenced
-    for url in urls_to_check:
-        if not crud_question.is_url_referenced(db, url):
-            background_tasks.add_task(delete_cloudinary_asset_bg, url)
+    cleanup_urls = {
+        url for url in urls_to_check
+        if not crud_question.is_url_referenced(db, url)
+    }
+    media_asset_service.schedule_cleanup_by_urls(
+        db, question.quiz.user_id, cleanup_urls
+    )
         
     return {"detail": "Question deleted successfully"}

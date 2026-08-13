@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_PRIMARY_MODEL: str = "inclusionai/ling-3.0-flash:free"
     OPENROUTER_FALLBACK_MODEL: str = "google/gemma-4-26b-a4b-it:free"
+    AI_GENERATION_LIMIT_PER_HOUR: int = 20
 
     model_config = SettingsConfigDict(
         env_file=".env",

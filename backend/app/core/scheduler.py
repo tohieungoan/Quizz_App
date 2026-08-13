@@ -24,6 +24,16 @@ except ImportError:
 def start_scheduler():
     """Start the APScheduler if it's not already running."""
     if hasattr(scheduler, 'running') and not scheduler.running:
+        from app.services.media_asset_service import process_media_cleanup_jobs
+        scheduler.add_job(
+            process_media_cleanup_jobs,
+            "interval",
+            seconds=60,
+            id="media-asset-cleanup",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
         scheduler.start()
         logger.info("APScheduler started successfully.")
 
