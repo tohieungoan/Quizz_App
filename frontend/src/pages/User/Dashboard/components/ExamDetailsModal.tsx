@@ -81,32 +81,32 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-outline-variant/30 w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-left flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-outline-variant/30 w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-left flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="p-6 bg-gradient-to-r from-primary to-indigo-700 text-white flex items-start justify-between shrink-0">
-          <div className="flex-1 min-w-0 pr-3">
-            <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+        <div className="p-4 sm:p-6 bg-gradient-to-r from-primary to-indigo-700 text-white flex items-start justify-between shrink-0">
+          <div className="flex-1 min-w-0 pr-2 sm:pr-3">
+            <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-white/20 text-white inline-block">
               Official Exam Results
             </span>
-            <h3 className="font-extrabold text-xl mt-2 leading-tight">
+            <h3 className="font-extrabold text-lg sm:text-xl mt-1.5 leading-tight line-clamp-2">
               {result?.exam_title ?? (isLoading ? 'Loading...' : 'Exam Result')}
             </h3>
             {result && (
-              <p className="text-xs text-indigo-100 mt-1 flex items-center gap-3 flex-wrap">
+              <p className="text-xs text-indigo-100 mt-1.5 flex items-center gap-2.5 sm:gap-3 flex-wrap">
                 {result.host_fullname && (
                   <span className="flex items-center gap-1">
-                    <User className="w-3 h-3" /> {result.host_fullname}
+                    <User className="w-3 h-3 shrink-0" /> {result.host_fullname}
                   </span>
                 )}
                 {result.quiz_subject && (
                   <span className="flex items-center gap-1">
-                    <BookOpen className="w-3 h-3" /> {result.quiz_subject}
+                    <BookOpen className="w-3 h-3 shrink-0" /> {result.quiz_subject}
                   </span>
                 )}
                 {result.submitted_at && (
                   <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> Submitted {formatDate(result.submitted_at)}
+                    <Clock className="w-3 h-3 shrink-0" /> {formatDate(result.submitted_at)}
                   </span>
                 )}
               </p>
@@ -114,54 +114,55 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all shrink-0"
+            className="p-1.5 sm:p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all shrink-0 active:scale-95"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-on-surface-variant">
+            <div className="flex flex-col items-center justify-center py-16 sm:py-20 gap-3 text-on-surface-variant">
               <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
-              <p className="text-sm">Loading your results...</p>
+              <p className="text-xs sm:text-sm">Loading your results...</p>
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-rose-600">
-              <p className="text-sm font-medium">{error}</p>
+            <div className="flex flex-col items-center justify-center py-14 sm:py-16 gap-3 text-rose-600">
+              <p className="text-xs sm:text-sm font-medium">{error}</p>
             </div>
           ) : result ? (
             <>
               {/* Stats Bar */}
-              <div className="grid grid-cols-3 gap-3 p-4 bg-surface-container-low rounded-2xl border border-outline-variant/20 text-center">
+              <div className="grid grid-cols-3 gap-2 p-3 sm:p-4 bg-surface-container-low rounded-xl sm:rounded-2xl border border-outline-variant/20 text-center">
                 <div>
-                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Final Score</span>
-                  <p className={`text-2xl font-black mt-1 ${getScoreColor(result.score)}`}>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">Final Score</span>
+                  <p className={`text-lg sm:text-2xl font-black mt-0.5 ${getScoreColor(result.score)}`}>
                     {result.score !== null ? `${result.score}%` : 'Pending'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Correct</span>
-                  <p className="text-2xl font-black text-on-surface mt-1">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">Correct</span>
+                  <p className="text-lg sm:text-2xl font-black text-on-surface mt-0.5">
                     {result.correct_count} / {result.total_questions}
                   </p>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Status</span>
-                  <p className="text-sm font-black text-emerald-600 mt-1 capitalize">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">Status</span>
+                  <p className="text-xs sm:text-sm font-black text-emerald-600 mt-1 capitalize">
                     {result.status}
                   </p>
                 </div>
               </div>
 
               {/* Host Feedback */}
-              <div className="p-5 bg-indigo-50/60 rounded-2xl border border-indigo-100 space-y-2">
-                <div className="flex items-center gap-2 text-primary font-bold text-sm">
-                  <MessageSquare className="w-4 h-4" />
+              <div className="p-4 sm:p-5 bg-indigo-50/60 rounded-xl sm:rounded-2xl border border-indigo-100 space-y-2">
+                <div className="flex items-center gap-2 text-primary font-bold text-xs sm:text-sm">
+                  <MessageSquare className="w-4 h-4 shrink-0" />
                   <span>Host Feedback</span>
                   {result.host_fullname && (
-                    <span className="text-xs text-on-surface-variant font-normal">({result.host_fullname})</span>
+                    <span className="text-[11px] text-on-surface-variant font-normal">({result.host_fullname})</span>
                   )}
                 </div>
                 <p className="text-xs text-on-surface leading-relaxed font-medium">
@@ -173,8 +174,8 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
 
               {/* Question Review */}
               <div className="space-y-3">
-                <h4 className="font-bold text-sm text-on-surface flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-primary" />
+                <h4 className="font-bold text-xs sm:text-sm text-on-surface flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary shrink-0" />
                   Question Review ({result.total_questions} questions)
                 </h4>
 
@@ -188,7 +189,7 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
                     return (
                       <div
                         key={q.id}
-                        className={`p-4 rounded-xl border space-y-3 ${
+                        className={`p-3.5 sm:p-4 rounded-xl border space-y-3 ${
                           !hasAns
                             ? 'border-outline-variant/25 bg-surface-container-lowest'
                             : isCorrect
@@ -197,20 +198,20 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
                         }`}
                       >
                         {/* Question header */}
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start justify-between gap-2.5">
                           <div className="flex items-start gap-2 flex-1 min-w-0">
                             <span className="w-5 h-5 rounded-full bg-secondary/15 text-secondary font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
                               {idx + 1}
                             </span>
-                            <div className="flex-1">
-                              <p className="font-bold text-on-surface text-sm leading-snug">{q.content}</p>
-                              <span className="text-[10px] text-on-surface-variant font-semibold mt-1 inline-block uppercase tracking-wider bg-surface-container px-2 py-0.5 rounded">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-on-surface text-xs sm:text-sm leading-snug">{q.content}</p>
+                              <span className="text-[9px] sm:text-[10px] text-on-surface-variant font-semibold mt-1 inline-block uppercase tracking-wider bg-surface-container px-2 py-0.5 rounded">
                                 {q.type}
                               </span>
                             </div>
                           </div>
                           {hasAns ? (
-                            <span className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider ${
+                            <span className={`shrink-0 flex items-center gap-1 px-2 py-0.5 sm:py-1 rounded-lg font-bold text-[9px] sm:text-[10px] uppercase tracking-wider ${
                               isCorrect ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
                             }`}>
                               {isCorrect
@@ -218,7 +219,7 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
                                 : <><XCircle className="w-3 h-3" /> Incorrect</>}
                             </span>
                           ) : (
-                            <span className="shrink-0 px-2 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider bg-slate-100 text-slate-500">
+                            <span className="shrink-0 px-2 py-0.5 sm:py-1 rounded-lg font-bold text-[9px] sm:text-[10px] uppercase tracking-wider bg-slate-100 text-slate-500">
                               Skipped
                             </span>
                           )}
@@ -226,7 +227,7 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
 
                         {/* MCQ Options */}
                         {isMCQ && (
-                          <div className="pl-7 space-y-1.5">
+                          <div className="pl-0 sm:pl-7 space-y-1.5">
                             {q.options.map((opt) => {
                               const isUserPick = q.user_answer?.selected_option_id === opt.id;
                               const isCorrectOpt = opt.is_correct;
@@ -234,10 +235,10 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
                               if (isCorrectOpt) cls = 'bg-emerald-50 border-emerald-400/50 text-emerald-900';
                               else if (isUserPick && !isCorrectOpt) cls = 'bg-rose-50 border-rose-400/50 text-rose-900';
                               return (
-                                <div key={opt.id} className={`px-3 py-2 rounded-lg border text-xs flex items-center justify-between ${cls}`}>
+                                <div key={opt.id} className={`px-3 py-2 rounded-lg border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1 ${cls}`}>
                                   <span className={isCorrectOpt ? 'font-bold' : ''}>{opt.content}</span>
                                   {isUserPick && (
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded self-start sm:self-auto ${
                                       isCorrectOpt ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
                                     }`}>Your Answer</span>
                                   )}
@@ -249,7 +250,7 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
 
                         {/* Written answer */}
                         {!isMCQ && (
-                          <div className="pl-7 space-y-2 text-xs">
+                          <div className="pl-0 sm:pl-7 space-y-2 text-xs">
                             <div className="p-3 bg-surface-container-low/60 rounded-lg border border-outline-variant/20">
                               <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">Your Answer:</span>
                               <p className="font-medium whitespace-pre-wrap text-on-surface">
@@ -279,10 +280,10 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-surface-container-low border-t border-outline-variant/20 flex justify-end shrink-0">
+        <div className="p-3.5 sm:p-4 bg-surface-container-low border-t border-outline-variant/20 flex justify-end shrink-0">
           <button
             onClick={onClose}
-            className="px-6 py-2.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/90 transition-all shadow-xs"
+            className="w-full sm:w-auto px-6 py-2.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/90 transition-all shadow-xs active:scale-[0.98]"
           >
             Close Results
           </button>
@@ -291,3 +292,4 @@ export const ExamDetailsModal: React.FC<ExamDetailsModalProps> = ({ isOpen, onCl
     </div>
   );
 };
+

@@ -1,11 +1,12 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
+import asyncio
+import logging
 
 from app.api.v1.websockets.room_manager import room_websocket_manager
 from app.api.deps import get_db
 from app.crud.crud_room import crud_room
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -155,15 +156,25 @@ async def websocket_room(
                             question_id=question_id,
                             selected_option_id=selected_option_id,
                             answer_text=answer_text,
-                            is_correct=True,  # Will be synced from DB / Redis active question
-                            score=100,       # Initial fast RAM score estimate
+                            is_correct=True,
+                            score=100,
                             correct_option_key=None,
                         )
 
-                        # 2. Fire-and-forget DB persistence task in background
-                        asyncio.create_task(run_in_threadpool(_do_submit_answer))
+                        # 2. Synchronize DB persistence task to get exact scoring & option key
+                        res, err = await run_in_threadpool(_do_submit_answer)
+                        if res:
+                            is_correct = res["is_correct"]
+                            score = res["score"]
+                            total_score = res["total_score"]
+                            correct_option_key = res["correct_option_key"]
+                        else:
+                            is_correct = True
+                            score = 100
+                            total_score = redis_total_score or 100
+                            correct_option_key = None
 
-                        # 3. Send response back to sender client IMMEDIATELY (<1ms)
+                        # 3. Send response back to sender client
                         await websocket.send_json({
                             "type": "SUBMIT_ANSWER_RESPONSE",
                             "t": "SAR",
@@ -171,14 +182,14 @@ async def websocket_room(
                             "st": "SUCCESS",
                             "question_id": question_id,
                             "qid": question_id,
-                            "is_correct": True,
-                            "c": True,
-                            "score": 100,
-                            "s": 100,
-                            "total_score": redis_total_score or 100,
-                            "ts": redis_total_score or 100,
-                            "correct_option_key": None,
-                            "ck": None,
+                            "is_correct": is_correct,
+                            "c": is_correct,
+                            "score": score,
+                            "s": score,
+                            "total_score": total_score,
+                            "ts": total_score,
+                            "correct_option_key": correct_option_key,
+                            "ck": correct_option_key,
                         })
 
                         # 4. Broadcast ANSWER_SUBMITTED to room host panel IMMEDIATELY (<1ms)

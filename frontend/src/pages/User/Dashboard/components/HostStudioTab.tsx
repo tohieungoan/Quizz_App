@@ -1405,29 +1405,29 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const paginatedExams = filteredExams.slice((examPage - 1) * HOST_ITEMS_PER_PAGE, examPage * HOST_ITEMS_PER_PAGE);
 
   return (
-    <div className="space-y-8 text-left">
+    <div className="space-y-6 sm:space-y-8 text-left">
       {/* Host Header Banner */}
-      <div className="bg-gradient-to-r from-secondary via-emerald-600 to-teal-700 rounded-3xl p-8 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="space-y-2">
-          <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+      <div className="bg-gradient-to-r from-secondary via-emerald-600 to-teal-700 rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-white shadow-lg flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 sm:gap-6">
+        <div className="space-y-1.5 sm:space-y-2 min-w-0">
+          <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider inline-block">
             Host Studio
           </span>
-          <h2 className="text-3xl font-extrabold">Host Live Quiz Sessions</h2>
-          <p className="text-emerald-100 text-sm max-w-xl">
+          <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight">Host Live Quiz Sessions</h2>
+          <p className="text-emerald-100 text-xs sm:text-sm max-w-xl">
             Select a quiz set, configure game settings, manage member rosters, approve join requests, and launch real-time rooms.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 w-full lg:w-auto shrink-0">
           <button
             onClick={onCreateQuiz}
-            className="px-5 py-3 bg-white/20 hover:bg-white/30 text-white font-bold text-xs rounded-xl transition-all border border-white/30 flex items-center gap-2"
+            className="w-full sm:w-auto px-5 py-2.5 sm:py-3 bg-white/20 hover:bg-white/30 text-white font-bold text-xs rounded-xl transition-all border border-white/30 flex items-center justify-center gap-2 active:scale-98"
           >
             <Plus className="w-4 h-4" /> Create New Quiz
           </button>
           <button
             onClick={onOpenHostRoomModal}
-            className="px-6 py-3 bg-white text-secondary hover:bg-emerald-50 font-extrabold text-xs rounded-xl transition-all shadow-md flex items-center gap-2 active:scale-95"
+            className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-white text-secondary hover:bg-emerald-50 font-extrabold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 active:scale-95"
           >
             <Play className="w-4 h-4 fill-current" /> Launch Live Room 🚀
           </button>
@@ -1435,29 +1435,29 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       </div>
 
       {/* 🔴 Active Live Rooms Management Section */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 text-white border border-indigo-500/30 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center relative">
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-white border border-indigo-500/30 shadow-xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center relative shrink-0">
               <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping absolute" />
               <span className="w-2.5 h-2.5 bg-rose-500 rounded-full relative" />
             </div>
-            <div>
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                Active Live Rooms Management
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2 flex-wrap">
+                <span>Active Live Rooms</span>
                 <span className="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded-full font-black uppercase">
                   {activeRooms.length} Live
                 </span>
               </h3>
-              <p className="text-xs text-slate-300 font-medium">
-                Manage multiple live rooms simultaneously. Re-enter control panels or close active sessions anytime.
+              <p className="text-[11px] sm:text-xs text-slate-300 font-medium line-clamp-1 sm:line-clamp-none">
+                Manage live rooms simultaneously. Re-enter control panels or close active sessions anytime.
               </p>
             </div>
           </div>
           <button
             onClick={loadActiveRooms}
             disabled={isLoadingActiveRooms}
-            className="px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 flex items-center gap-1.5 cursor-pointer"
+            className="w-full sm:w-auto px-3.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
           >
             Refresh List
           </button>
@@ -1468,17 +1468,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             Loading active rooms...
           </div>
         ) : activeRooms.length === 0 ? (
-          <div className="py-6 text-center text-xs text-slate-400 bg-white/5 rounded-2xl border border-white/10">
+          <div className="py-6 text-center text-xs text-slate-400 bg-white/5 rounded-2xl border border-white/10 px-3">
             No active live rooms running right now. Click <strong>"Launch Live Room 🚀"</strong> above to start a new session.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
             {activeRooms.map((room) => {
               const isWaiting = room.status === 'WAITING';
               return (
-                <div key={room.id} className="bg-slate-800/80 border border-white/10 p-4 rounded-2xl flex flex-col justify-between gap-3 shadow-md hover:border-indigo-400/50 transition-all">
+                <div key={room.id} className="bg-slate-800/80 border border-white/10 p-4 rounded-2xl flex flex-col justify-between gap-3 shadow-md hover:border-indigo-400/50 transition-all text-left">
                   <div>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
                       <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-500/30">
                         PIN: {room.room_code}
                       </span>
@@ -1541,7 +1541,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                           }
                         }
                       }}
-                      className="px-3 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs rounded-xl transition-all flex items-center justify-center cursor-pointer"
+                      className="px-3 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold text-xs rounded-xl transition-all flex items-center justify-center cursor-pointer shrink-0"
                       title="End and close room"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -1555,11 +1555,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       </div>
 
       {/* Sub-tab Navigation */}
-      <div className="flex border-b border-outline-variant/30 gap-6">
+      <div className="flex overflow-x-auto border-b border-outline-variant/30 gap-4 sm:gap-6 pb-0.5 scrollbar-none">
         <button
           onClick={() => setSubTab('quizzes')}
-          className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'quizzes' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-            }`}
+          className={`pb-2.5 text-xs sm:text-sm font-bold transition-all relative shrink-0 whitespace-nowrap ${
+            subTab === 'quizzes' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+          }`}
         >
           My Quizzes ({isLoadingQuizzes ? '...' : quizzes.length})
           {subTab === 'quizzes' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
@@ -1567,8 +1568,9 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
         <button
           onClick={() => setSubTab('groups')}
-          className={`pb-3 text-sm font-bold transition-all relative flex items-center gap-1.5 ${subTab === 'groups' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-            }`}
+          className={`pb-2.5 text-xs sm:text-sm font-bold transition-all relative flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            subTab === 'groups' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+          }`}
         >
           <span>My Study Groups ({groups.length})</span>
           {(() => {
@@ -1585,25 +1587,25 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
           {subTab === 'groups' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
         </button>
+
         <button
           onClick={() => setSubTab('exams')}
-          className={`pb-3 text-sm font-bold transition-all relative ${subTab === 'exams' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
-            }`}
+          className={`pb-2.5 text-xs sm:text-sm font-bold transition-all relative shrink-0 whitespace-nowrap ${
+            subTab === 'exams' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+          }`}
         >
           My Assigned Exams ({exams.length})
           {subTab === 'exams' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-full" />}
         </button>
-
-
       </div>
 
       {/* Quizzes Tab Content */}
       {subTab === 'quizzes' && (
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
           {/* Controls */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row gap-3 flex-1">
-              <div className="relative flex-1 max-w-md">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 flex-1 w-full">
+              <div className="relative flex-1 w-full lg:max-w-md">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
                 <input
                   type="text"
@@ -1616,7 +1618,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <select
                 value={quizDifficultyFilter}
                 onChange={(e) => setQuizDifficultyFilter(e.target.value)}
-                className="px-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20 min-w-[140px]"
+                className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 min-w-[130px]"
               >
                 <option value="All Difficulty">All Difficulty</option>
                 <option value="Easy">Easy</option>
@@ -1626,7 +1628,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <select
                 value={quizQuestionFilter}
                 onChange={(e) => setQuizQuestionFilter(e.target.value)}
-                className="px-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20 min-w-[150px]"
+                className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 min-w-[140px]"
               >
                 <option value="All Questions">All Questions</option>
                 <option value="< 10 Questions">&lt; 10 Questions</option>
@@ -1636,13 +1638,13 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             </div>
             <button
               onClick={onCreateQuiz}
-              className="px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0"
+              className="w-full lg:w-auto px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 active:scale-98"
             >
               <Plus className="w-4 h-4" /> Create New Quiz
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {isLoadingQuizzes ? (
               <div className="col-span-full py-12 flex justify-center items-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-secondary"></div>
@@ -1652,7 +1654,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 {quizzesError}
               </div>
             ) : filteredQuizzes.length === 0 ? (
-              <div className="col-span-full py-12 text-center text-on-surface-variant text-sm">
+              <div className="col-span-full py-12 text-center text-on-surface-variant text-sm bg-white rounded-2xl border border-dashed border-outline-variant/40">
                 {quizzes.length === 0 
                   ? "No quizzes found. Create your first quiz using the Quiz Creator." 
                   : "No quizzes match the current filters."}
@@ -1661,33 +1663,33 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               paginatedQuizzes.map((quiz) => (
                 <div
                   key={quiz.id}
-                  className="bg-white p-6 rounded-2xl border border-outline-variant/30 shadow-sm space-y-4 flex flex-col justify-between hover:border-secondary/50 transition-all"
+                  className="bg-white p-4 sm:p-6 rounded-2xl border border-outline-variant/30 shadow-xs space-y-4 flex flex-col justify-between hover:border-secondary/50 transition-all text-left"
                 >
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-secondary uppercase tracking-wider">{quiz.category}</span>
-                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-secondary uppercase tracking-wider truncate">{quiz.category}</span>
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant shrink-0">
                         {quiz.level}
                       </span>
                     </div>
-                    <h3 className="font-bold text-lg text-on-surface">{quiz.title}</h3>
+                    <h3 className="font-bold text-base sm:text-lg text-on-surface leading-tight">{quiz.title}</h3>
                     <p className="text-xs text-on-surface-variant">{quiz.questions} Questions • Ready to host</p>
                   </div>
 
-                  <div className="pt-3 border-t border-outline-variant/20 flex items-center justify-between">
-                    <span className="text-xs text-outline font-medium">ID: {quiz.id}</span>
+                  <div className="pt-3 border-t border-outline-variant/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <span className="text-[11px] text-outline font-medium">ID: {quiz.id}</span>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => (onEditQuiz ? onEditQuiz(quiz.id) : onCreateQuiz())}
-                        className="p-2 text-on-surface-variant hover:text-secondary hover:bg-surface-container rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold"
+                        className="flex-1 sm:flex-none py-2 px-3 text-on-surface-variant hover:text-secondary hover:bg-surface-container rounded-xl transition-all flex items-center justify-center gap-1.5 text-xs font-semibold border border-outline-variant/25 sm:border-none"
                         title="Edit Quiz"
                       >
-                        <Edit2 className="w-4 h-4 text-secondary" />
+                        <Edit2 className="w-3.5 h-3.5 text-secondary" />
                         <span>Edit</span>
                       </button>
                       <button
                         onClick={onOpenHostRoomModal}
-                        className="px-4 py-2 bg-secondary text-white rounded-xl text-xs font-bold hover:bg-secondary/90 transition-all flex items-center gap-1.5"
+                        className="flex-1 sm:flex-none px-4 py-2 bg-secondary text-white rounded-xl text-xs font-bold hover:bg-secondary/90 transition-all flex items-center justify-center gap-1.5 shadow-xs"
                       >
                         <Play className="w-3.5 h-3.5 fill-current" /> Host This Quiz
                       </button>
@@ -1700,7 +1702,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
           {/* Quizzes Pagination Controls */}
           {totalQuizPages > 1 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-outline-variant/20 mt-6 text-xs text-on-surface-variant font-medium">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-5 border-t border-outline-variant/20 text-xs text-on-surface-variant font-medium">
               <div>
                 Showing <span className="font-bold text-on-surface">{(quizPage - 1) * HOST_ITEMS_PER_PAGE + 1}</span> to{' '}
                 <span className="font-bold text-on-surface">{Math.min(quizPage * HOST_ITEMS_PER_PAGE, filteredQuizzes.length)}</span> of{' '}
@@ -1741,11 +1743,11 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
       {/* Exams Tab Content */}
       {subTab === 'exams' && (
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
           {/* Controls */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row gap-3 flex-1 max-w-3xl">
-              <div className="relative flex-1">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 flex-1 w-full max-w-none lg:max-w-3xl">
+              <div className="relative flex-1 w-full">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
                 <input
                   type="text"
@@ -1758,7 +1760,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <select
                 value={examStatusFilter}
                 onChange={(e) => setExamStatusFilter(e.target.value)}
-                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
+                className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
               >
                 <option>All Status</option>
                 <option>Active</option>
@@ -1768,7 +1770,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <select
                 value={examSubjectFilter}
                 onChange={(e) => setExamSubjectFilter(e.target.value)}
-                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
+                className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
               >
                 {examSubjects.map(sub => (
                   <option key={sub}>{sub}</option>
@@ -1777,14 +1779,14 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             </div>
             <button
               onClick={handleOpenAssignExamModal}
-              className="px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0"
+              className="w-full lg:w-auto px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 active:scale-98"
             >
               <Plus className="w-4 h-4" /> Assign New Exam
             </button>
           </div>
 
           {/* Exam Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {paginatedExams.map((exam) => {
               const progressPct = exam.totalMembers > 0 ? Math.round((exam.submittedCount / exam.totalMembers) * 100) : 0;
               const inProgressCount = (exam.submissions || []).filter((s) => s.status === 'In Progress').length;
@@ -1796,19 +1798,19 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               return (
                 <div
                   key={exam.id}
-                  className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm flex flex-col hover:border-secondary/40 hover:shadow-md transition-all overflow-hidden"
+                  className="bg-white rounded-2xl border border-outline-variant/30 shadow-xs flex flex-col hover:border-secondary/40 hover:shadow-md transition-all overflow-hidden text-left"
                 >
                   {/* Card Header */}
-                  <div className="p-5 pb-4 space-y-3">
-                    <div className="flex items-start justify-between gap-3">
+                  <div className="p-4 sm:p-5 pb-3.5 space-y-3">
+                    <div className="flex items-start justify-between gap-2.5">
                       <div className="space-y-1 flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold text-secondary uppercase tracking-wider">{exam.subject}</span>
+                          <span className="text-xs font-bold text-secondary uppercase tracking-wider truncate">{exam.subject}</span>
                           {/* Status Badge — click to toggle status */}
                           <button
                             onClick={() => handleToggleExamStatus(exam.id)}
                             title="Click to toggle status (Pending → Active → Closed)"
-                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full transition-all flex items-center gap-1.5 ${exam.status === 'Active'
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full transition-all flex items-center gap-1.5 ${exam.status === 'Active'
                               ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
                               : exam.status === 'Pending'
                                 ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
@@ -1824,7 +1826,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                             {exam.status === 'Pending' ? 'Pending' : exam.status}
                           </button>
                         </div>
-                        <h3 className="font-bold text-base text-on-surface leading-tight">{exam.title}</h3>
+                        <h3 className="font-bold text-sm sm:text-base text-on-surface leading-snug">{exam.title}</h3>
                       </div>
                       {/* Action buttons */}
                       <div className="flex items-center gap-1 shrink-0">
@@ -1846,16 +1848,16 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     </div>
 
                     {/* Meta info */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                    <div className="space-y-1.5 text-xs text-on-surface-variant">
+                      <div className="flex items-center gap-2">
                         <Users className="w-3.5 h-3.5 text-outline shrink-0" />
                         <span className="font-medium truncate">{exam.groupName}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                      <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5 text-outline shrink-0" />
                         <span>Due: <span className="font-semibold text-error">{formattedDue}</span></span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                      <div className="flex items-center gap-2">
                         <Clock className="w-3.5 h-3.5 text-outline shrink-0" />
                         <span>Duration: <span className="font-semibold text-on-surface">{exam.duration} minutes</span></span>
                       </div>
@@ -1863,7 +1865,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   </div>
 
                   {/* Submission Progress */}
-                  <div className="px-5 py-3 bg-surface-container/50 border-t border-outline-variant/20 space-y-2">
+                  <div className="px-4 sm:px-5 py-3 bg-surface-container/50 border-t border-outline-variant/20 space-y-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-medium text-on-surface-variant">Submissions</span>
                       <span className="font-bold text-on-surface">{exam.submittedCount} / {exam.totalMembers} Submitted</span>
@@ -1876,7 +1878,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       />
                     </div>
                     {/* Status badges */}
-                    <div className="flex items-center gap-3 text-[11px]">
+                    <div className="flex items-center gap-2.5 sm:gap-3 text-[11px] flex-wrap">
                       <span className="flex items-center gap-1 text-emerald-700 font-medium">
                         <CheckCircle2 className="w-3 h-3" />{exam.submittedCount} Submitted
                       </span>
@@ -1894,19 +1896,20 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   </div>
 
                   {/* Footer CTA & Export */}
-                  <div className="p-4 border-t border-outline-variant/20 grid grid-cols-5 gap-2">
+                  <div className="p-3.5 sm:p-4 border-t border-outline-variant/20 flex flex-col sm:flex-row gap-2">
                     <button
                       onClick={() => handleOpenSubmissionsModal(exam)}
-                      className="col-span-4 py-2.5 bg-secondary/10 hover:bg-secondary/20 text-secondary text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+                      className="w-full sm:flex-1 py-2.5 bg-secondary/10 hover:bg-secondary/20 text-secondary text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-xs active:scale-99"
                     >
                       <ClipboardList className="w-4 h-4" /> Submissions & Analytics ({exam.totalMembers})
                     </button>
                     <button
                       onClick={() => handleExportExamExcel(exam)}
-                      className="col-span-1 py-2.5 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1"
+                      className="w-full sm:w-auto px-4 py-2.5 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shrink-0"
                       title="Export Exam & Grade Report (Excel .xls)"
                     >
                       <Download className="w-4 h-4 text-emerald-600" />
+                      <span className="sm:hidden text-xs">Export Report</span>
                     </button>
                   </div>
                 </div>
@@ -1914,7 +1917,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             })}
 
             {filteredExams.length === 0 && (
-              <div className="col-span-full py-16 text-center text-on-surface-variant space-y-4 bg-white rounded-2xl border border-dashed border-outline-variant/40">
+              <div className="col-span-full py-16 text-center text-on-surface-variant space-y-4 bg-white rounded-2xl border border-dashed border-outline-variant/40 p-4">
                 <ClipboardList className="w-12 h-12 mx-auto text-outline/40" />
                 <div>
                   <p className="text-sm font-bold text-on-surface">No assigned exams yet</p>
@@ -1932,7 +1935,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
           {/* Exams Pagination Controls */}
           {totalExamPages > 1 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-outline-variant/20 mt-6 text-xs text-on-surface-variant font-medium">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-5 border-t border-outline-variant/20 text-xs text-on-surface-variant font-medium">
               <div>
                 Showing <span className="font-bold text-on-surface">{(examPage - 1) * HOST_ITEMS_PER_PAGE + 1}</span> to{' '}
                 <span className="font-bold text-on-surface">{Math.min(examPage * HOST_ITEMS_PER_PAGE, filteredExams.length)}</span> of{' '}
@@ -1973,24 +1976,24 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
       {/* Assign / Edit Exam Modal */}
       {isExamModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-xl space-y-4 text-left animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3.5">
-              <h3 className="text-lg font-bold text-on-surface flex items-center gap-2">
-                <ClipboardList className="w-5 h-5 text-secondary" />
-                {editingExam ? 'Edit Exam Assignment' : 'Assign New Exam'}
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xl space-y-4 text-left animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3 shrink-0">
+              <h3 className="text-base sm:text-lg font-bold text-on-surface flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-secondary shrink-0" />
+                <span>{editingExam ? 'Edit Exam Assignment' : 'Assign New Exam'}</span>
               </h3>
               <button
                 onClick={() => setIsExamModalOpen(false)}
-                className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors"
+                className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveExam} className="space-y-3">
-              {/* Quiz Selection + Group Selection — same row */}
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveExam} className="space-y-3 flex-1 overflow-y-auto pr-0.5">
+              {/* Quiz Selection + Group Selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
                     Select Quiz <span className="text-error">*</span>
@@ -2042,8 +2045,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <p className="text-[10px] text-on-surface-variant mt-0.5">If left blank, the quiz title will be used.</p>
               </div>
 
-              {/* Due Date + Duration — same row */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Due Date + Duration */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
                     Deadline <span className="text-error">*</span>
@@ -2081,7 +2084,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               </div>
 
               {/* Navigation Rule + Publish Results Toggle */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-surface-container/30 p-3 rounded-xl border border-outline-variant/20">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-surface-container/30 p-3 rounded-xl border border-outline-variant/20">
                 <div>
                   <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
                     Navigation Rule
@@ -2097,7 +2100,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 </div>
 
                 <div className="flex flex-col justify-center">
-                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1.5 md:mt-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1 sm:mt-4">
                     <input
                       type="checkbox"
                       checked={resultsPublished}
@@ -2144,17 +2147,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-outline-variant/20">
+              <div className="flex flex-col sm:flex-row justify-end gap-2.5 pt-3 border-t border-outline-variant/20 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsExamModalOpen(false)}
-                  className="px-4 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all"
+                  className="w-full sm:w-auto px-4 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center gap-1.5 shadow-sm"
+                  className="w-full sm:w-auto px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
                 >
                   <Check className="w-4 h-4" />
                   {editingExam ? 'Save Changes' : 'Assign Exam'}
@@ -2708,11 +2711,11 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
       {/* Groups Tab Content */}
       {subTab === 'groups' && (
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
           {/* Groups Controls */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row gap-3 flex-1 max-w-3xl">
-              <div className="relative flex-1">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 flex-1 w-full max-w-none lg:max-w-3xl">
+              <div className="relative flex-1 w-full">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
                 <input
                   type="text"
@@ -2725,7 +2728,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <select
                 value={groupStatusFilter}
                 onChange={(e) => setGroupStatusFilter(e.target.value)}
-                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
+                className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[130px]"
               >
                 <option>All Status</option>
                 <option>Open</option>
@@ -2734,7 +2737,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <select
                 value={groupSizeFilter}
                 onChange={(e) => setGroupSizeFilter(e.target.value)}
-                className="px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[150px]"
+                className="w-full sm:w-auto px-3.5 py-2.5 bg-white border border-outline-variant/30 rounded-xl text-xs font-bold text-on-surface-variant focus:outline-none focus:ring-2 focus:ring-secondary/20 cursor-pointer min-w-[140px]"
               >
                 <option>All Sizes</option>
                 <option>{"Small (< 5 members)"}</option>
@@ -2744,14 +2747,14 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             </div>
             <button
               onClick={handleOpenCreateModal}
-              className="px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0"
+              className="w-full lg:w-auto px-5 py-2.5 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 active:scale-98"
             >
               <Plus className="w-4 h-4" /> Create New Group
             </button>
           </div>
 
           {/* Groups Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {paginatedGroups.map((group) => {
               const count = group.membersCount ?? group.members?.length ?? 0;
               const pendingCount = group.pendingRequests?.length || 0;
@@ -2759,74 +2762,74 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               return (
                 <div
                   key={group.id}
-                  className={`bg-white p-6 rounded-2xl border transition-all text-left space-y-4 flex flex-col justify-between shadow-sm relative ${group.isLocked ? 'border-amber-400/40 bg-amber-50/10' : 'border-outline-variant/30 hover:border-secondary/40'
+                  className={`bg-white p-4 sm:p-6 rounded-2xl border transition-all text-left space-y-4 flex flex-col justify-between shadow-xs relative ${group.isLocked ? 'border-amber-400/40 bg-amber-50/10' : 'border-outline-variant/30 hover:border-secondary/40'
                     }`}
                 >
                   <div className="space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="w-12 h-12 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center font-bold relative">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-secondary/10 text-secondary flex items-center justify-center font-bold relative shrink-0">
                         {(() => {
                           const IconComponent = GROUP_ICONS[group.icon as keyof typeof GROUP_ICONS] || Users;
-                          return <IconComponent className="w-6 h-6" />;
+                          return <IconComponent className="w-5 h-5 sm:w-6 sm:h-6" />;
                         })()}
                         {pendingCount > 0 && (
-                          <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-white rounded-full text-[10px] font-black flex items-center justify-center animate-bounce">
+                          <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-amber-500 text-white rounded-full text-[9px] sm:text-[10px] font-black flex items-center justify-center animate-bounce">
                             {pendingCount}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0">
                         {/* Lock / Unlock Toggle Button */}
                         <button
                           onClick={() => handleToggleLock(group.id)}
-                          className={`p-2 rounded-xl transition-all flex items-center gap-1 text-xs font-bold ${group.isLocked
+                          className={`p-1.5 sm:p-2 rounded-xl transition-all flex items-center gap-1 text-xs font-bold ${group.isLocked
                             ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
                             : 'bg-green-100 text-green-800 hover:bg-green-200'
                             }`}
                           title={group.isLocked ? 'Group is LOCKED (Click to Unlock)' : 'Group is OPEN (Click to Lock)'}
                         >
                           {group.isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                          <span className="text-[10px] uppercase tracking-wider">{group.isLocked ? 'Locked' : 'Open'}</span>
+                          <span className="text-[10px] uppercase tracking-wider hidden sm:inline">{group.isLocked ? 'Locked' : 'Open'}</span>
                         </button>
 
                         <button
                           onClick={() => handleOpenEditModal(group)}
-                          className="p-2 text-on-surface-variant hover:text-secondary hover:bg-surface-container rounded-xl transition-all"
+                          className="p-1.5 sm:p-2 text-on-surface-variant hover:text-secondary hover:bg-surface-container rounded-xl transition-all"
                           title="Edit Group"
                         >
-                          <Edit2 className="w-4 h-4" />
+                          <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                         <button
                           onClick={() => handleExportGroupExcel(group)}
-                          className="p-2 text-on-surface-variant hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                          className="p-1.5 sm:p-2 text-on-surface-variant hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
                           title="Export Group Roster (Excel .xls)"
                         >
-                          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                          <FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
                         </button>
                         <button
                           onClick={() => handleDeleteGroup(group.id)}
-                          className="p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-xl transition-all"
+                          className="p-1.5 sm:p-2 text-on-surface-variant hover:text-error hover:bg-error/10 rounded-xl transition-all"
                           title="Delete Group"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                       </div>
                     </div>
 
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <h3 className="font-bold text-base text-on-surface truncate">{group.name}</h3>
+                        <h3 className="font-bold text-sm sm:text-base text-on-surface truncate">{group.name}</h3>
                       </div>
 
                       {/* Join Code Badge with Copy */}
                       <div className="flex items-center gap-2 mb-2">
                         <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-container rounded-lg border border-outline-variant/30 text-xs font-mono font-bold text-on-surface">
-                          <Key className="w-3 h-3 text-secondary" />
-                          <span>Code: {group.joinCode || group.id}</span>
+                          <Key className="w-3 h-3 text-secondary shrink-0" />
+                          <span className="truncate max-w-[150px]">Code: {group.joinCode || group.id}</span>
                           <button
                             onClick={() => handleCopyCode(group.joinCode || group.id)}
-                            className="ml-1 text-on-surface-variant hover:text-secondary transition-colors"
+                            className="ml-1 text-on-surface-variant hover:text-secondary transition-colors shrink-0"
                             title="Copy Join Code"
                           >
                             {copiedCode === (group.joinCode || group.id) ? (
@@ -2844,7 +2847,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-3 border-t border-outline-variant/20">
+                  <div className="space-y-2.5 pt-3 border-t border-outline-variant/20">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-medium text-on-surface-variant">Enrolled Roster</span>
                       <span className="font-bold text-secondary bg-secondary/10 px-2.5 py-0.5 rounded-full">
@@ -2856,9 +2859,9 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     {pendingCount > 0 && (
                       <button
                         onClick={() => handleOpenRosterModal(group, 'pending')}
-                        className="w-full py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 border border-amber-300/60"
+                        className="w-full py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 border border-amber-300/60 shadow-xs"
                       >
-                        <Clock className="w-4 h-4 text-amber-700" />
+                        <Clock className="w-4 h-4 text-amber-700 shrink-0" />
                         <span>{pendingCount} Pending Approvals Needed</span>
                       </button>
                     )}
@@ -2867,7 +2870,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                       onClick={() => handleOpenRosterModal(group, 'enrolled')}
                       className="w-full py-2.5 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2"
                     >
-                      <Users className="w-4 h-4 text-secondary" />
+                      <Users className="w-4 h-4 text-secondary shrink-0" />
                       Manage Group Roster
                     </button>
                   </div>
@@ -2876,7 +2879,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             })}
 
             {paginatedGroups.length === 0 && (
-              <div className="col-span-full py-12 text-center text-on-surface-variant space-y-3 bg-white rounded-2xl border border-dashed border-outline-variant/40">
+              <div className="col-span-full py-12 text-center text-on-surface-variant space-y-3 bg-white rounded-2xl border border-dashed border-outline-variant/40 p-4">
                 <Users className="w-10 h-10 mx-auto text-outline/50" />
                 <p className="text-sm font-medium">No study groups found.</p>
                 <button
@@ -2891,7 +2894,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
           {/* Groups Pagination Controls */}
           {totalGroupPages > 1 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-outline-variant/20 mt-6 text-xs text-on-surface-variant font-medium">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-5 border-t border-outline-variant/20 text-xs text-on-surface-variant font-medium">
               <div>
                 Showing <span className="font-bold text-on-surface">{(groupPage - 1) * HOST_ITEMS_PER_PAGE + 1}</span> to{' '}
                 <span className="font-bold text-on-surface">{Math.min(groupPage * HOST_ITEMS_PER_PAGE, filteredGroups.length)}</span> of{' '}
@@ -2932,22 +2935,22 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
       {/* Create / Edit Group Modal */}
       {isGroupModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-xl space-y-6 text-left animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-4">
-              <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
-                <Users className="w-5 h-5 text-secondary" />
-                {editingGroup ? 'Edit Group' : 'Create New Group'}
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4 text-left animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3 shrink-0">
+              <h3 className="text-lg sm:text-xl font-bold text-on-surface flex items-center gap-2">
+                <Users className="w-5 h-5 text-secondary shrink-0" />
+                <span>{editingGroup ? 'Edit Group' : 'Create New Group'}</span>
               </h3>
               <button
                 onClick={() => setIsGroupModalOpen(false)}
-                className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors"
+                className="p-1 rounded-full hover:bg-surface-container text-on-surface-variant transition-colors shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveGroup} className="space-y-4">
+            <form onSubmit={handleSaveGroup} className="space-y-4 flex-1 overflow-y-auto pr-0.5">
               <div>
                 <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1.5">
                   Group Name <span className="text-error">*</span>
@@ -2966,7 +2969,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-2">
                   Select Group Icon <span className="text-error">*</span>
                 </label>
-                <div className="grid grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-2">
+                <div className="grid grid-cols-5 gap-2 sm:gap-3 bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-100">
                   {Object.entries(GROUP_ICONS).map(([iconName, IconComponent]) => {
                     const isSelected = groupIcon === iconName;
                     return (
@@ -2980,7 +2983,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                           }`}
                         title={iconName}
                       >
-                        <IconComponent className="w-4.5 h-4.5" />
+                        <IconComponent className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                       </button>
                     );
                   })}
@@ -3037,17 +3040,17 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
+              <div className="flex flex-col sm:flex-row justify-end gap-2.5 pt-3 border-t border-outline-variant/20 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsGroupModalOpen(false)}
-                  className="px-4 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all"
+                  className="w-full sm:w-auto px-4 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-bold rounded-xl transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center gap-1.5 shadow-sm"
+                  className="w-full sm:w-auto px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
                 >
                   <Check className="w-4 h-4" />
                   {editingGroup ? 'Save Changes' : 'Create Group'}
@@ -3060,36 +3063,36 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
       {/* Manage Group Roster & Approval Modal */}
       {rosterGroup && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl p-6 shadow-xl space-y-6 text-left max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-4 sm:space-y-6 text-left max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-4 shrink-0">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xl font-bold text-on-surface">{rosterGroup.name}</h3>
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3 sm:pb-4 shrink-0">
+              <div className="min-w-0 pr-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base sm:text-xl font-bold text-on-surface truncate">{rosterGroup.name}</h3>
                   <span
-                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
+                    className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 ${rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
                       }`}
                   >
                     {rosterGroup.isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                     {rosterGroup.isLocked ? 'LOCKED' : 'OPEN'}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-on-surface-variant mt-1">
-                  <span className="font-mono font-bold bg-surface-container px-2 py-0.5 rounded">
+                <div className="flex items-center gap-2.5 text-xs text-on-surface-variant mt-1 flex-wrap">
+                  <span className="font-mono font-bold bg-surface-container px-2 py-0.5 rounded text-[11px]">
                     Code: {rosterGroup.joinCode || rosterGroup.id}
                   </span>
-                  <span>{rosterGroup.members?.length || 0} Enrolled Members</span>
+                  <span>{rosterGroup.members?.length || 0} Enrolled</span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => handleExportGroupExcel(rosterGroup)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-all border border-emerald-200"
                   title="Export Group Roster (Excel .xls)"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  Export Excel
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="hidden sm:inline">Export Excel</span>
                 </button>
                 <button
                   onClick={() => setRosterGroup(null)}
@@ -3101,10 +3104,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             </div>
 
             {/* Modal Sub-Tabs (Enrolled vs Pending) */}
-            <div className="flex border-b border-outline-variant/30 gap-6 shrink-0">
+            <div className="flex border-b border-outline-variant/30 gap-4 sm:gap-6 shrink-0 overflow-x-auto no-scrollbar">
               <button
                 onClick={() => setRosterTab('enrolled')}
-                className={`pb-2.5 text-xs font-bold transition-all relative ${rosterTab === 'enrolled' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                className={`pb-2.5 text-xs font-bold transition-all relative whitespace-nowrap ${rosterTab === 'enrolled' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
                   }`}
               >
                 Enrolled Members ({rosterGroup.members?.length || 0})
@@ -3113,7 +3116,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
               <button
                 onClick={() => setRosterTab('pending')}
-                className={`pb-2.5 text-xs font-bold transition-all relative flex items-center gap-1.5 ${rosterTab === 'pending' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
+                className={`pb-2.5 text-xs font-bold transition-all relative flex items-center gap-1.5 whitespace-nowrap ${rosterTab === 'pending' ? 'text-secondary' : 'text-on-surface-variant hover:text-on-surface'
                   }`}
               >
                 Pending Approvals ({rosterGroup.pendingRequests?.length || 0})
@@ -3130,24 +3133,24 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             {rosterTab === 'enrolled' && (
               <div className="flex-1 flex flex-col min-h-0 space-y-4 overflow-hidden">
                 {/* Add Member Form */}
-                <form onSubmit={handleAddMember} className="bg-surface-bright p-4 rounded-2xl border border-outline-variant/30 space-y-3 shrink-0">
+                <form onSubmit={handleAddMember} className="bg-surface-bright p-3.5 sm:p-4 rounded-2xl border border-outline-variant/30 space-y-3 shrink-0">
                   <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
-                    <UserPlus className="w-4 h-4 text-secondary" /> Add Member Directly
+                    <UserPlus className="w-4 h-4 text-secondary shrink-0" /> Add Member Directly
                   </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2.5">
                     <input
                       type="email"
                       required
                       placeholder="member@school.edu"
                       value={newMemberEmail}
                       onChange={(e) => setNewMemberEmail(e.target.value)}
-                      className="sm:col-span-4 px-3.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                      className="flex-1 px-3.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
                     />
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
+                      className="w-full sm:w-auto px-4 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-xs"
                     >
-                      <Plus className="w-4 h-4" /> Add
+                      <Plus className="w-4 h-4" /> Add Member
                     </button>
                   </div>
                 </form>
@@ -3157,32 +3160,30 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   {(rosterGroup.members || []).map((member) => (
                     <div
                       key={member.id}
-                      className="p-4 bg-white rounded-2xl border border-outline-variant/20 hover:border-outline-variant/50 transition-all space-y-3 shadow-xs"
+                      className="p-3.5 sm:p-4 bg-white rounded-2xl border border-outline-variant/20 hover:border-outline-variant/50 transition-all space-y-3 shadow-xs text-left"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-secondary/10 text-secondary font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-secondary/10 text-secondary font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
                             {member.avatar ? (
                               <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
                             ) : (
                               member.name.charAt(0)
                             )}
                           </div>
-                          <div>
-                            <h5 className="font-bold text-xs text-on-surface">{member.name}</h5>
-                            <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5">
-                              <span className="flex items-center gap-1">
-                                <Mail className="w-3 h-3 text-outline" /> {member.email}
-                              </span>
+                          <div className="min-w-0 flex-1">
+                            <h5 className="font-bold text-xs text-on-surface truncate">{member.name}</h5>
+                            <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5 truncate">
+                              <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 text-outline shrink-0" /> {member.email}</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant" title="Number of exams completed">
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                          <span className="text-[10px] sm:text-[11px] font-bold px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant" title="Number of exams completed">
                             Exams: {member.examsCompleted ?? 0}/{member.totalExamsAssigned ?? 0}
                           </span>
-                          <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800" title="Average score">
+                          <span className="text-[10px] sm:text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800" title="Average score">
                             AVG: {member.averageScore || 'N/A'}
                           </span>
                           <button
@@ -3195,7 +3196,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                         </div>
                       </div>
 
-                      {/* Exam Scores Breakdown (Display 3 latest in UI, export Excel for all) */}
+                      {/* Exam Scores Breakdown */}
                       {(member.examScores || []).length > 0 && (
                         <div className="pt-2 border-t border-outline-variant/15 space-y-1.5">
                           <div className="flex items-center justify-between text-[10px] text-on-surface-variant">
@@ -3204,7 +3205,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                             </span>
                             {(member.examScores?.length || 0) > 3 && (
                               <span className="italic text-secondary font-medium">
-                                +{(member.examScores?.length || 0) - 3} more (Export Excel for full report)
+                                +{(member.examScores?.length || 0) - 3} more
                               </span>
                             )}
                           </div>
@@ -3246,13 +3247,13 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
             {/* Tab 2: Pending Approvals */}
             {rosterTab === 'pending' && (
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-left">
                 <p className="text-xs text-on-surface-variant mb-1">
-                  Members who used Join Code <strong className="font-mono">{rosterGroup.joinCode || rosterGroup.id}</strong> requesting to join this group:
+                  Members who used Join Code <strong className="font-mono">{rosterGroup.joinCode || rosterGroup.id}</strong> requesting to join:
                 </p>
 
                 {rosterGroup.pendingRequests && rosterGroup.pendingRequests.length > 0 && (
-                  <div className="flex gap-3 mb-4 shrink-0">
+                  <div className="flex flex-col sm:flex-row gap-2.5 mb-4 shrink-0">
                     <button
                       onClick={handleBulkApprove}
                       className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
@@ -3271,37 +3272,35 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                 {(rosterGroup.pendingRequests || []).map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center justify-between p-4 bg-amber-50/40 rounded-2xl border border-amber-200/80 hover:border-amber-400 transition-all"
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 sm:p-4 bg-amber-50/40 rounded-2xl border border-amber-200/80 hover:border-amber-400 transition-all gap-3"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-amber-100 text-amber-800 font-extrabold text-xs flex items-center justify-center shrink-0 overflow-hidden">
                         {member.avatar ? (
                           <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
                         ) : (
                           member.name.charAt(0)
                         )}
                       </div>
-                      <div>
-                        <h5 className="font-bold text-xs text-on-surface">{member.name}</h5>
-                        <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5">
-                          <span className="flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-outline" /> {member.email}
-                          </span>
+                      <div className="min-w-0 flex-1">
+                        <h5 className="font-bold text-xs text-on-surface truncate">{member.name}</h5>
+                        <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-0.5 flex-wrap">
+                          <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3 text-outline shrink-0" /> {member.email}</span>
                           <span>• Requested {member.joinedDate}</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                       <button
                         onClick={() => handleApproveMember(member)}
-                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+                        className="flex-1 sm:flex-none px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-xs"
                       >
                         <UserCheck className="w-4 h-4" /> Approve
                       </button>
                       <button
                         onClick={() => handleRejectMember(member.id)}
-                        className="px-3.5 py-2 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+                        className="flex-1 sm:flex-none px-3.5 py-2 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5"
                       >
                         <UserX className="w-4 h-4" /> Decline
                       </button>
@@ -3320,10 +3319,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             )}
 
             {/* Footer */}
-            <div className="flex justify-between items-center border-t border-outline-variant/20 pt-4 shrink-0">
+            <div className="flex flex-col sm:flex-row justify-between items-center border-t border-outline-variant/20 pt-3 sm:pt-4 gap-2.5 shrink-0">
               <button
                 onClick={() => handleToggleLock(rosterGroup.id)}
-                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 ${rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-surface-container text-on-surface'
+                className={`w-full sm:w-auto px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${rosterGroup.isLocked ? 'bg-amber-100 text-amber-800' : 'bg-surface-container text-on-surface'
                   }`}
               >
                 {rosterGroup.isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
@@ -3332,7 +3331,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
 
               <button
                 onClick={() => setRosterGroup(null)}
-                className="px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all shadow-sm"
+                className="w-full sm:w-auto px-5 py-2 bg-secondary text-white text-xs font-bold rounded-xl hover:bg-secondary/90 transition-all shadow-sm"
               >
                 Done
               </button>

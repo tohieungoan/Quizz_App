@@ -69,6 +69,10 @@ def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) 
     ).all()
 
     for exam in active_exams:
+        # Do not assign exams to the host/creator of the exam
+        if exam.host_id == user_id:
+            continue
+
         exists = db.query(ExamAssignee).filter(
             ExamAssignee.exam_id == exam.id,
             ExamAssignee.user_id == user_id
@@ -268,7 +272,10 @@ def read_my_exams(
     assignees = (
         db.query(ExamAssignee)
         .join(Exam, ExamAssignee.exam_id == Exam.id)
-        .filter(ExamAssignee.user_id == current_user.id)
+        .filter(
+            ExamAssignee.user_id == current_user.id,
+            Exam.host_id != current_user.id
+        )
         .order_by(Exam.created_at.desc(), ExamAssignee.id.desc())
         .all()
     )
