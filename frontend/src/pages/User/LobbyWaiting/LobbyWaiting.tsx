@@ -77,12 +77,19 @@ export const LobbyWaiting: React.FC = () => {
     if (stored) {
       try {
         const u = JSON.parse(stored)
-        if (u && u.name) return u.name
+        if (u && (u.fullname || u.name)) return u.fullname || u.name
       } catch (e) {
         console.error(e)
       }
     }
-    return 'Guest'
+    // For unauthenticated guest accounts, generate a unique Guest nickname per session
+    let guestId = sessionStorage.getItem('guest_nickname')
+    if (!guestId) {
+      const randomNum = Math.floor(1000 + Math.random() * 9000)
+      guestId = `Guest_${randomNum}`
+      sessionStorage.setItem('guest_nickname', guestId)
+    }
+    return guestId
   })
   
   const [roomId, setRoomId] = useState(state?.roomId || 0)
@@ -104,7 +111,7 @@ export const LobbyWaiting: React.FC = () => {
   const [createdAt, setCreatedAt] = useState<string>('')
   const [qrCodeUrl, setQrCodeUrl] = useState<string>((location.state as any)?.qrCodeUrl || '')
 
-  // Fetch room details to get status, created_at, and qr_code_url
+  // 1. Fetch room details to get status, created_at, and qr_code_url
   useEffect(() => {
     if (!roomCode) return
     roomService.getRoom(roomCode)
@@ -174,23 +181,35 @@ export const LobbyWaiting: React.FC = () => {
     return () => clearInterval(timer)
   }, [createdAt, isHost, roomId, state?.roomId, navigate])
 
-  // If user came via notification URL (location.search has roomCode), we must perform joinRoom
+  // 2. If user came via direct URL (location.search has roomCode), perform joinRoom safely
+  const hasAttemptedJoin = useRef(false)
   useEffect(() => {
     if (isHost) return
-    if (urlRoomCode && !participantId && !isJoiningRoom) {
+    if (urlRoomCode && !participantId && !isJoiningRoom && !hasAttemptedJoin.current) {
+      hasAttemptedJoin.current = true
       setIsJoiningRoom(true)
-      roomService.joinRoom(urlRoomCode, nickname)
-        .then((res) => {
+
+      const doJoin = async (attemptsLeft = 2) => {
+        try {
+          const res = await roomService.joinRoom(urlRoomCode, nickname)
           setRoomId(res.room_id)
           setParticipantId(res.id)
           setIsJoiningRoom(false)
-        })
-        .catch((err) => {
-          setIsJoiningRoom(false)
-          const errorMsg = err.response?.data?.detail || err.message || 'Failed to join room'
-          alert(`Join Error: ${errorMsg}`)
-          navigate(localStorage.getItem('token') ? '/dashboard' : '/')
-        })
+        } catch (err: any) {
+          if (attemptsLeft > 1) {
+            // Retry once after 500ms in case of initial network/auth setup delay
+            setTimeout(() => doJoin(attemptsLeft - 1), 500)
+          } else {
+            setIsJoiningRoom(false)
+            hasAttemptedJoin.current = false
+            const errorMsg = err.response?.data?.detail || err.message || 'Failed to join room'
+            alert(`Join Error: ${errorMsg}`)
+            navigate(localStorage.getItem('token') ? '/dashboard' : '/')
+          }
+        }
+      }
+
+      doJoin()
     }
   }, [urlRoomCode, participantId, isHost, nickname, navigate, isJoiningRoom])
 

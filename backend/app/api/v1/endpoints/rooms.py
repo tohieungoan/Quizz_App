@@ -23,6 +23,7 @@ from app.schemas.room import (
     SubmitAnswerIn,
     SubmitAnswerResponse,
 )
+from app.services.user_notification_service import user_notification_service
 
 import asyncio
 import logging
@@ -203,29 +204,21 @@ def launch_room(
                     GroupMember.status == "APPROVED"
                 ).all()
                 
+                from app.services.user_notification_service import user_notification_service
+
                 for member in members:
                     # Skip the host
                     if member.user_id == current_user.id:
                         continue
                     
-                    # Create database notification entry
-                    notif = Notification(
-                        sender_id=current_user.id,
+                    user_notification_service.send_notification(
+                        db=db,
                         user_id=member.user_id,
-                        target_type="PERSONAL",
+                        sender_id=current_user.id,
                         target_group_id=room.group_id,
                         title="New Live Quiz Started",
                         content=f"{current_user.fullname or current_user.email} has started a live quiz '{quiz.title}'. Join now with code: {room.room_code}",
-                        type="GROUP_INVITE",
-                        action_url=f"/lobby?roomCode={room.room_code}"
-                    )
-                    db.add(notif)
-                    
-                    # Push WS notification real-time
-                    _send_sync_ws_notification(
-                        user_id=member.user_id,
-                        title="New Live Quiz Started",
-                        content=f"{current_user.fullname or current_user.email} has started a live quiz '{quiz.title}'. Join now with code: {room.room_code}",
+                        type="LIVE_ROOM_INVITE",
                         action_url=f"/lobby?roomCode={room.room_code}"
                     )
                 db.commit()

@@ -212,8 +212,11 @@ class CRUDRoom:
         ).first()
         
         if existing_nickname:
-            # If guest participant is re-entering or room has already started
-            if room.status != "WAITING" or existing_nickname.user_id is None:
+            if existing_nickname.user_id is None and user_id is None:
+                # If a new unauthenticated guest joins with a duplicate nickname, append a 4-digit code to generate a unique guest nickname
+                suffix = str(random.randint(1000, 9999))
+                nickname = f"{nickname}_{suffix}"
+            elif room.status != "WAITING":
                 existing_nickname.status = "JOINED"
                 db.add(existing_nickname)
                 db.commit()

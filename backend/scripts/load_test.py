@@ -177,27 +177,26 @@ async def bot_participant_task(
                             break
                         await asyncio.sleep(5.0)
 
-                import random
-
                 async def submit_bot_answer(qid: int):
                     if not participant_id:
                         return
-                    # Simulate human thinking/reading time before answering (0.5 to 2.5 seconds)
-                    await asyncio.sleep(random.uniform(0.5, 2.5))
-                    submit_url = f"{base_url}/api/v1/rooms/{room_code}/submit-answer"
-                    async with httpx.AsyncClient(timeout=10.0) as http_client:
-                        try:
-                            await http_client.post(
-                                submit_url,
-                                json={
-                                    "participant_id": participant_id,
-                                    "question_id": qid,
-                                    "selected_option_id": random.choice([1, 2, 3, 4]),
-                                    "streak": random.randint(1, 3),
-                                }
-                            )
-                        except Exception:
-                            pass
+                    # Simulate human thinking/reading time before answering (0.2 to 1.5 seconds)
+                    await asyncio.sleep(random.uniform(0.2, 1.5))
+                    try:
+                        ans_msg = json.dumps({
+                            "type": "SUBMIT_ANSWER",
+                            "t": "SA",
+                            "participant_id": participant_id,
+                            "pid": participant_id,
+                            "question_id": qid,
+                            "qid": qid,
+                            "selected_option_id": random.choice([1, 2, 3, 4]),
+                            "opt": random.choice([1, 2, 3, 4]),
+                            "streak": random.randint(1, 3),
+                        })
+                        await ws.send(ans_msg)
+                    except Exception:
+                        pass
 
                 async def listen_messages():
                     nonlocal last_ping_time

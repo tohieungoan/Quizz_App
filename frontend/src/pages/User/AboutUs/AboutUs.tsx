@@ -15,29 +15,29 @@ export const AboutUs: React.FC = () => {
       <AboutTeam />
 
       {/* Stats Section */}
-      <section className="py-20 px-margin-mobile md:px-margin-desktop bg-[#1e1b4b] text-white relative overflow-hidden text-center">
+      <section className="py-10 md:py-20 px-4 sm:px-6 md:px-margin-desktop bg-[#1e1b4b] text-white relative overflow-hidden text-center">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-secondary rounded-full blur-[100px] opacity-30" />
         <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-tertiary rounded-full blur-[100px] opacity-30" />
 
-        <div className="max-w-container-max mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 relative z-10">
-          <div className="p-4 space-y-1">
-            <div className="font-headline-xl text-4xl lg:text-5xl font-extrabold text-white">500K+</div>
-            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">Members</div>
+        <div className="max-w-container-max mx-auto grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-8 relative z-10">
+          <div className="p-2 sm:p-4 space-y-1">
+            <div className="font-headline-xl text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white">500K+</div>
+            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-[10px] sm:text-xs">Members</div>
           </div>
-          <div className="p-4 space-y-1">
-            <div className="font-headline-xl text-4xl lg:text-5xl font-extrabold text-white">50K+</div>
-            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">Hosts</div>
+          <div className="p-2 sm:p-4 space-y-1">
+            <div className="font-headline-xl text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white">50K+</div>
+            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-[10px] sm:text-xs">Hosts</div>
           </div>
-          <div className="p-4 space-y-1">
-            <div className="font-headline-xl text-4xl lg:text-5xl font-extrabold text-white">2M+</div>
-            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">
+          <div className="p-2 sm:p-4 space-y-1">
+            <div className="font-headline-xl text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white">2M+</div>
+            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-[10px] sm:text-xs">
               Quizzes Created
             </div>
           </div>
-          <div className="p-4 space-y-1">
-            <div className="font-headline-xl text-4xl lg:text-5xl font-extrabold text-white">150+</div>
-            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-xs">Countries</div>
+          <div className="p-2 sm:p-4 space-y-1">
+            <div className="font-headline-xl text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white">150+</div>
+            <div className="font-body-md text-indigo-200 font-medium tracking-wide uppercase text-[10px] sm:text-xs">Countries</div>
           </div>
         </div>
       </section>

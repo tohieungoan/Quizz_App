@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bell, Trophy, HelpCircle, Clock, Check, X } from 'lucide-react';
+import { Search, Bell, Trophy, HelpCircle, Clock, Check, X, Sparkles } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { AiSupportModal } from './AiSupportModal';
 import { groupService } from '@/services';
@@ -160,14 +160,15 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   return (
     <>
-      <header className="bg-white border-b border-outline-variant/30 sticky top-0 z-30 px-6 py-3.5 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-4 flex-1 max-w-md">
+      <header className="bg-white border-b border-outline-variant/30 sticky top-0 z-30 px-4 sm:px-6 py-3.5 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-xs sm:max-w-md">
+          {/* Search Input (Responsive for Mobile & Desktop) */}
           <div className="relative w-full">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-outline w-4 h-4" />
+            <Search className="absolute left-3 sm:left-3.5 top-1/2 -translate-y-1/2 text-outline w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <input
               type="text"
               placeholder="Search quizzes, subjects, exams..."
-              className="w-full pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/40 rounded-xl text-sm focus:outline-none focus:border-primary text-on-surface"
+              className="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-1.5 sm:py-2 bg-surface-container-lowest border border-outline-variant/40 rounded-xl text-xs sm:text-sm focus:outline-none focus:border-primary text-on-surface"
             />
           </div>
         </div>
@@ -181,10 +182,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
           )}
 
-          {/* AI Support Help Button (?) */}
+          {/* Header AI Support Help Button (Desktop only) */}
           <button
             onClick={() => setIsAiModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs rounded-xl transition-all"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs rounded-xl transition-all"
             title="AI Support Assistant"
           >
             <HelpCircle className="w-4 h-4" />
@@ -347,6 +348,20 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
       {/* AI Support Modal */}
       <AiSupportModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} />
+
+      {/* Floating AI Help Message Bubble Widget */}
+      <button
+        onClick={() => setIsAiModalOpen(true)}
+        className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-primary to-indigo-600 text-white p-3.5 sm:p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all duration-300 flex items-center gap-2 group ring-4 ring-primary/20 cursor-pointer"
+        title="AI Support Assistant"
+        aria-label="AI Help Assistant"
+      >
+        <div className="relative flex items-center justify-center">
+          <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:rotate-12 transition-transform" />
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full ring-2 ring-white animate-pulse" />
+        </div>
+        <span className="font-bold text-xs sm:text-sm pr-1 hidden sm:inline-block">AI Help</span>
+      </button>
     </>
   );
 };

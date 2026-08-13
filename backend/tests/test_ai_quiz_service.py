@@ -24,9 +24,9 @@ def test_document_parser_smart_chunk():
 
 def test_prompt_builder_system_and_user():
     sys_prompt = PromptBuilder.build_system_prompt()
-    assert "Bloom's Taxonomy" in sys_prompt
-    assert "ZERO-HALLUCINATION" in sys_prompt
-    assert "All of the above" in sys_prompt  # Prohibited rule
+    assert "RULES:" in sys_prompt
+    assert "Grounding:" in sys_prompt
+    assert "All/None of the above" in sys_prompt  # Prohibited rule
 
     user_prompt = PromptBuilder.build_user_prompt(
         document_content="Nội dung test",

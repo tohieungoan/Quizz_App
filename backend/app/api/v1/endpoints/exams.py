@@ -21,6 +21,8 @@ from app.schemas.exam import (
     AnswerGradeRequest,
 )
 import logging
+from app.services.user_notification_service import user_notification_service
+
 logger = logging.getLogger(__name__)
 
 def _send_sync_ws_notification(user_id: int, title: str, content: str, action_url: str | None = None) -> None:
@@ -67,6 +69,10 @@ def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) 
     ).all()
 
     for exam in active_exams:
+        # Do not assign exams to the host/creator of the exam
+        if exam.host_id == user_id:
+            continue
+
         exists = db.query(ExamAssignee).filter(
             ExamAssignee.exam_id == exam.id,
             ExamAssignee.user_id == user_id
@@ -80,25 +86,17 @@ def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) 
             )
             db.add(assignee)
 
-            notification = Notification(
+            from app.services.user_notification_service import user_notification_service
+
+            user_notification_service.send_notification(
+                db=db,
                 user_id=user_id,
                 sender_id=exam.host_id,
-                target_type="PERSONAL",
                 target_group_id=group_id,
                 title="NEW EXAM ASSIGNED (NEW MEMBER)",
                 content=f"You just joined the group and have an ongoing exam '{exam.title}' that must be completed before {exam.end_time.strftime('%Y-%m-%d %H:%M')}.",
-                type="EXAM_ASSIGNED",
+                type="QUIZ_ASSIGNED",
                 action_url=f"/exams/{exam.id}",
-                is_read=False,
-                created_at=datetime.utcnow()
-            )
-            db.add(notification)
-
-            _send_sync_ws_notification(
-                user_id=user_id,
-                title="NEW EXAM ASSIGNED (NEW MEMBER)",
-                content=f"You just joined the group and have an ongoing exam '{exam.title}'.",
-                action_url=f"/exams/{exam.id}"
             )
 
 
@@ -181,6 +179,10 @@ def assign_exam(
     assignees = []
     # 5. Create ExamAssignee and Notification for each member
     for member in members:
+        # Skip sending assignment notification to the Host who created the exam
+        if member.user_id == current_user.id:
+            continue
+
         # Check if already assigned (safety guard)
         exists = db.query(ExamAssignee).filter(
             ExamAssignee.exam_id == db_exam.id,
@@ -195,25 +197,15 @@ def assign_exam(
             db.add(assignee)
             assignees.append(assignee)
 
-            # Create notification
-            notification = Notification(
+            user_notification_service.send_notification(
+                db=db,
                 user_id=member.user_id,
                 sender_id=current_user.id,
-                target_type="PERSONAL",
                 target_group_id=group.id,
                 title="NEW EXAM ASSIGNED",
                 content=f"You have a new exam '{exam_title}' from the group '{group.name}'.",
-                type="EXAM_ASSIGNED",
+                type="QUIZ_ASSIGNED",
                 action_url=f"/exams/{db_exam.id}",
-            )
-            db.add(notification)
-
-            # Real-time WebSocket push event (Zero-latency notification)
-            _send_sync_ws_notification(
-                user_id=member.user_id,
-                title="NEW EXAM ASSIGNED",
-                content=f"You have a new exam '{exam_title}' from the group '{group.name}'.",
-                action_url=f"/exams/{db_exam.id}"
             )
 
     db.commit()
@@ -280,7 +272,10 @@ def read_my_exams(
     assignees = (
         db.query(ExamAssignee)
         .join(Exam, ExamAssignee.exam_id == Exam.id)
-        .filter(ExamAssignee.user_id == current_user.id)
+        .filter(
+            ExamAssignee.user_id == current_user.id,
+            Exam.host_id != current_user.id
+        )
         .order_by(Exam.created_at.desc(), ExamAssignee.id.desc())
         .all()
     )
@@ -494,6 +489,9 @@ def update_exam(
             ).all()
             
             for member in new_members:
+                if member.user_id == current_user.id:
+                    continue
+
                 assignee = ExamAssignee(
                     exam_id=exam.id,
                     user_id=member.user_id,
@@ -501,23 +499,15 @@ def update_exam(
                 )
                 db.add(assignee)
                 
-                # Create notification for new member
-                notification = Notification(
+                user_notification_service.send_notification(
+                    db=db,
                     user_id=member.user_id,
                     sender_id=current_user.id,
-                    target_type="PERSONAL",
                     target_group_id=new_group_id,
                     title="NEW EXAM ASSIGNED (GROUP UPDATED)",
                     content=f"You have a new exam '{exam.title}' assigned to your group '{new_group.name}'.",
-                    type="EXAM_ASSIGNED",
+                    type="QUIZ_ASSIGNED",
                     action_url=f"/exams/{exam.id}",
-                )
-                db.add(notification)
-                _send_sync_ws_notification(
-                    user_id=member.user_id,
-                    title="NEW EXAM ASSIGNED (GROUP UPDATED)",
-                    content=f"You have a new exam '{exam.title}' assigned to your group '{new_group.name}'.",
-                    action_url=f"/exams/{exam.id}"
                 )
     
     # Check duplicate active exam if quiz, group or time are modified to identical setup

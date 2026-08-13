@@ -12,26 +12,26 @@ export const AboutValues: React.FC = () => {
   ];
 
   return (
-    <section className="py-24 px-margin-mobile md:px-margin-desktop bg-surface-container-low text-left">
+    <section className="py-12 md:py-24 px-4 sm:px-6 md:px-margin-desktop bg-surface-container-low text-left">
       <div className="max-w-container-max mx-auto">
-        <div className="text-center mb-16 space-y-3">
-          <h2 className="font-headline-lg text-3xl font-bold text-on-surface">Our Core Values</h2>
-          <p className="font-body-lg text-on-surface-variant">The principles that guide every feature we build.</p>
+        <div className="text-center mb-10 md:mb-16 space-y-2 md:space-y-3">
+          <h2 className="font-headline-lg text-2xl sm:text-3xl font-bold text-on-surface">Our Core Values</h2>
+          <p className="font-body-lg text-sm sm:text-base text-on-surface-variant">The principles that guide every feature we build.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8">
           {values.map((v, i) => {
             const Icon = v.icon;
             return (
               <div
                 key={i}
-                className="bg-white p-8 rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border border-outline-variant/10"
+                className="bg-white p-5 sm:p-8 rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border border-outline-variant/10"
               >
-                <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${v.gradient} flex items-center justify-center text-white mb-6`}>
-                  <Icon className="w-6 h-6 text-white" />
+                <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br ${v.gradient} flex items-center justify-center text-white mb-4 sm:mb-6`}>
+                  <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
-                <h3 className="font-headline-md text-xl font-bold text-on-surface mb-3">{v.title}</h3>
-                <p className="font-body-md text-on-surface-variant text-sm leading-relaxed">{v.desc}</p>
+                <h3 className="font-headline-md text-lg sm:text-xl font-bold text-on-surface mb-2 sm:mb-3">{v.title}</h3>
+                <p className="font-body-md text-on-surface-variant text-xs sm:text-sm leading-relaxed">{v.desc}</p>
               </div>
             );
           })}

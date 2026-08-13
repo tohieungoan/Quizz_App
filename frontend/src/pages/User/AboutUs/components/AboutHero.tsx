@@ -3,32 +3,40 @@ import { PlayCircle, Brain, TrendingUp, Award, Zap } from 'lucide-react';
 
 export const AboutHero: React.FC = () => {
   return (
-    <section className="relative pt-20 pb-28 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto overflow-hidden text-left">
+    <section className="relative pt-10 pb-16 md:pt-20 md:pb-28 px-4 sm:px-6 md:px-margin-desktop max-w-container-max mx-auto overflow-hidden text-left">
       {/* Background Mesh Gradients */}
-      <div className="absolute top-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -z-10" />
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-secondary/5 rounded-full blur-3xl -z-10" />
+      <div className="absolute top-0 left-0 w-72 h-72 md:w-96 md:h-96 bg-primary/10 rounded-full blur-3xl -z-10" />
+      <div className="absolute bottom-0 right-0 w-72 h-72 md:w-96 md:h-96 bg-secondary/5 rounded-full blur-3xl -z-10" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 md:gap-16 items-center">
         {/* Hero Left Content */}
-        <div className="space-y-8 z-10 animate-fade-in-up">
-          <h1 className="font-headline-xl text-4xl lg:text-6xl font-extrabold text-on-surface leading-tight">
-            Building the Future of <br />
+        <div className="space-y-6 md:space-y-8 z-10 animate-fade-in-up">
+          <h1 className="font-headline-xl text-3xl sm:text-4xl lg:text-6xl font-extrabold text-on-surface leading-tight">
+            Building the Future of <br className="hidden sm:inline" />
             <span className="text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
               Learning Together
             </span>
           </h1>
-          <p className="font-body-lg text-xl text-on-surface-variant font-medium max-w-lg">
+          <p className="font-body-lg text-lg sm:text-xl text-on-surface-variant font-medium max-w-lg">
             Empowering hosts and inspiring members through gamified learning experiences.
           </p>
-          <p className="font-body-md text-base text-on-surface-variant max-w-lg leading-relaxed">
+          <p className="font-body-md text-sm sm:text-base text-on-surface-variant max-w-lg leading-relaxed">
             We believe learning shouldn't be a chore. QuizzApp merges high-stakes academic rigor with the dopamine rush of
             modern gaming, creating an ecosystem where progress is celebrated and anxiety is left behind.
           </p>
-          <div className="flex flex-wrap gap-4 pt-4">
-            <button className="font-button text-button text-white bg-primary px-8 py-4 rounded-xl hover:shadow-premium active:scale-95 transition-all duration-200 font-semibold text-lg">
+
+          {/* Quick Mobile Feature Badges */}
+          <div className="flex flex-wrap gap-2 pt-1 lg:hidden">
+            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold">⚡ Fast Setup</span>
+            <span className="px-3 py-1 bg-secondary/10 text-secondary rounded-full text-xs font-semibold">🎯 99% Engagement</span>
+            <span className="px-3 py-1 bg-tertiary/10 text-tertiary rounded-full text-xs font-semibold">🌐 Global Access</span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2 sm:pt-4">
+            <button className="w-full sm:w-auto font-button text-button text-white bg-primary px-8 py-3.5 sm:py-4 rounded-xl hover:shadow-premium active:scale-95 transition-all duration-200 font-semibold text-base sm:text-lg text-center">
               Join QuizzApp
             </button>
-            <button className="font-button text-button text-primary bg-white border-2 border-primary/20 px-8 py-4 rounded-xl hover:border-primary hover:bg-surface-container-low transition-all duration-200 font-semibold text-lg flex items-center gap-2">
+            <button className="w-full sm:w-auto font-button text-button text-primary bg-white border-2 border-primary/20 px-8 py-3.5 sm:py-4 rounded-xl hover:border-primary hover:bg-surface-container-low transition-all duration-200 font-semibold text-base sm:text-lg flex items-center justify-center gap-2">
               View Demo <PlayCircle className="w-5 h-5" />
             </button>
           </div>
