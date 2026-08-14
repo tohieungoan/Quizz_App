@@ -1,12 +1,10 @@
-import { Search, Download, Percent, Users as UsersIcon, Library, TrendingUp, Minus } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Search, Download, Percent, Users as UsersIcon, Library, TrendingUp } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { Pagination } from '@/components/ui/Pagination';
 import { reportService, ReportMetrics, ReportListItem } from '@/services/reportService';
 
 export function ReportsList() {
-  const navigate = useNavigate();
-
+  const [searchInput, setSearchInput] = useState('');
   const [globalSearch, setGlobalSearch] = useState('');
   const [reportTypeFilter, setReportTypeFilter] = useState('ALL');
   const [reportPage, setReportPage] = useState(1);
@@ -16,13 +14,27 @@ export function ReportsList() {
   const [reports, setReports] = useState<ReportListItem[]>([]);
   const [totalReports, setTotalReports] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const latestRequestId = useRef(0);
 
   useEffect(() => {
     reportService.getMetrics().then(setMetrics).catch(console.error);
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setGlobalSearch(searchInput.trim());
+      setReportPage(1);
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const requestId = ++latestRequestId.current;
     setLoading(true);
+    setLoadError(null);
     reportService.getReports({
       pageIndex: reportPage,
       pageSize: reportsPerPage,
@@ -30,11 +42,19 @@ export function ReportsList() {
       reportType: reportTypeFilter
     })
       .then(res => {
+        if (requestId !== latestRequestId.current) return;
         setReports(res.data);
         setTotalReports(res.total);
+        setHasLoaded(true);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch((error) => {
+        if (requestId !== latestRequestId.current) return;
+        console.error(error);
+        setLoadError(error instanceof Error ? error.message : 'Failed to load reports.');
+      })
+      .finally(() => {
+        if (requestId === latestRequestId.current) setLoading(false);
+      });
   }, [reportPage, reportsPerPage, globalSearch, reportTypeFilter]);
 
   const reportTotalPages = Math.max(1, Math.ceil(totalReports / reportsPerPage));
@@ -113,10 +133,9 @@ export function ReportsList() {
                   <input
                     type="text"
                     placeholder="Search reports..."
-                    value={globalSearch}
+                    value={searchInput}
                     onChange={(e) => {
-                      setGlobalSearch(e.target.value);
-                      setReportPage(1);
+                      setSearchInput(e.target.value);
                     }}
                     className="w-full pl-9 pr-4 py-2 bg-surface-container-lowest border border-outline-variant/40 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-on-surface"
                   />
@@ -144,7 +163,15 @@ export function ReportsList() {
               </div>
             </div>
 
-            <div className="bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col">
+            <div
+              className="relative bg-white border border-outline-variant/50 rounded-xl shadow-sm overflow-hidden flex flex-col"
+              aria-busy={loading}
+            >
+              {loading && hasLoaded && (
+                <div className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary/10">
+                  <div className="h-full w-1/2 animate-pulse rounded-full bg-primary" />
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[800px]">
                   <thead>
@@ -158,9 +185,13 @@ export function ReportsList() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/20">
-                    {loading ? (
+                    {loading && !hasLoaded ? (
                       <tr>
                         <td colSpan={6} className="text-center py-8 text-on-surface-variant">Loading reports...</td>
+                      </tr>
+                    ) : loadError && reports.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-error font-medium">{loadError}</td>
                       </tr>
                     ) : reports.length === 0 ? (
                       <tr>

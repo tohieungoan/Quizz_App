@@ -371,10 +371,8 @@ def delete_quiz(
     if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="Not enough permissions to delete this quiz")
         
-    if quiz.status and quiz.status.lower() == "published":
-        raise HTTPException(status_code=400, detail="Cannot delete a published quiz. Please change its status to Draft or Archived first.")
-
-    # A quiz may only be deleted when it is not being used by an active room.
+    # A quiz's publication status does not affect whether it can be deleted.
+    # It can only be deleted when it is not being used by an active room.
     # PLAYING is the current live status; RUNNING and LIVE are retained here
     # for compatibility with older room records/API clients.
     linked_rooms = db.query(Room).filter(Room.quiz_id == quiz_id).all()
