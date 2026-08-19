@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award } from 'lucide-react'
+import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award, ThumbsUp, Mic, MessageSquare, Volume2 } from 'lucide-react'
 import { roomService } from '../../../services/roomService'
 import { useAuth } from '../../../hooks/useAuth'
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
+import { useAudioListener, QAChatBox, TopVotedQuestionsList, ChatMessage, QuestionVoteItem } from '@/features/QA'
 
 interface Option {
   id: number
@@ -28,6 +29,17 @@ const AVATAR_COLORS = [
   { bg: 'bg-[#e3f2fd]', text: 'text-[#1565c0]' },
   { bg: 'bg-[#f3e5f5]', text: 'text-[#6a1b9a]' },
   { bg: 'bg-[#ffebee]', text: 'text-[#c62828]' },
+]
+
+const MOTIVATIONAL_MESSAGES = [
+  "Don't give up! Every mistake is a stepping stone to growth.",
+  "Keep your chin up! You'll bounce back on the next question.",
+  "Stay focused and positive! Learning is a journey.",
+  "Mistakes are proof that you are trying. Keep going!",
+  "Shake it off! You've got what it takes to succeed.",
+  "Believe in yourself! Every question makes you stronger.",
+  "Never back down! Focus on the next opportunity.",
+  "Great effort! Stay determined and keep pushing forward!",
 ]
 
 export const ParticipantAnswer: React.FC = () => {
@@ -101,6 +113,111 @@ export const ParticipantAnswer: React.FC = () => {
   const [allowShowRank, setAllowShowRank] = useState(true)
   const [leaderboardRoster, setLeaderboardRoster] = useState<any[]>([])
 
+  // Q&A & Voting states
+  const [isQAMode, setIsQAMode] = useState<boolean>(() => {
+    return sessionStorage.getItem(`qa_mode_${roomCode}`) === 'true'
+  })
+  const [currentQAQuestionId, setCurrentQAQuestionId] = useState<number | null>(null)
+  const [topVotedQuestions, setTopVotedQuestions] = useState<QuestionVoteItem[]>([])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [votedQuestionIds, setVotedQuestionIds] = useState<Set<number>>(new Set())
+  const [lastAudioChunk, setLastAudioChunk] = useState<string | null>(null)
+
+  const { isHostSpeaking } = useAudioListener({ lastAudioChunk })
+
+  const handleVoteQuestion = async (qId: number) => {
+    if (!qId || votedQuestionIds.has(qId)) return
+
+    // Immediately mark question as voted in local state
+    setVotedQuestionIds((prev) => new Set(prev).add(qId))
+
+    // 1. Fast-path: Send over WebSocket (<5ms)
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      try {
+        socketRef.current.send(
+          JSON.stringify({
+            type: 'VOTE_QUESTION',
+            t: 'VQ',
+            question_id: qId,
+            participant_id: participantId,
+            nickname,
+          })
+        )
+        return
+      } catch (wsErr) {
+        console.warn("WebSocket vote failed, using REST fallback:", wsErr)
+      }
+    }
+
+    // 2. HTTP REST fallback path
+    try {
+      const res = await roomService.voteQuestion(roomCode, qId, participantId, nickname)
+      if (res.top_voted_questions) {
+        setTopVotedQuestions(res.top_voted_questions)
+      }
+    } catch (err) {
+      console.error("Failed to vote question via HTTP REST:", err)
+    }
+  }
+
+  const [myAvatar, setMyAvatar] = useState<string | null>(null)
+
+  useEffect(() => {
+    const stateAvatar = (location.state as any)?.avatar
+    const savedAvatar = stateAvatar || sessionStorage.getItem('play_avatar') || sessionStorage.getItem('avatar')
+    if (savedAvatar) {
+      setMyAvatar(savedAvatar)
+      return
+    }
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr)
+        setMyAvatar(u.avatar || u.avatar_url || null)
+      } catch (e) {}
+    }
+  }, [location.state])
+
+  const handleSendChatMessage = async (msgContent: string) => {
+    const text = msgContent.trim()
+    if (!text) return
+
+    let sentViaWS = false
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      try {
+        socketRef.current.send(
+          JSON.stringify({
+            type: 'SEND_CHAT_MESSAGE',
+            t: 'SCM',
+            sender: nickname,
+            message: text,
+            avatar: myAvatar,
+          })
+        )
+        sentViaWS = true
+      } catch (wsErr) {
+        console.warn("WebSocket send chat message failed, using REST fallback:", wsErr)
+      }
+    }
+
+    if (!sentViaWS) {
+      try {
+        const res = await roomService.sendChatMessage(roomCode, nickname, text, myAvatar)
+        if (res && res.text) {
+          setChatMessages((prev) => {
+            const isDuplicate = prev.some(
+              (m) => m.text === res.text && m.sender === nickname
+            )
+            if (isDuplicate) return prev
+            return [...prev, { sender: nickname, text: res.text, avatar: myAvatar, timestamp: res.timestamp }]
+          })
+        }
+      } catch (err) {
+        console.error("Failed to send chat message via REST API:", err)
+      }
+    }
+  }
+
   const activeQuestionIdRef = useRef<number | null>(null)
   const resultTimeoutRef = useRef<any>(null)
 
@@ -142,6 +259,26 @@ export const ParticipantAnswer: React.FC = () => {
     setLoading(true)
     try {
       const roomData = await roomService.getRoom(roomCode)
+
+      if (roomData.qa_state) {
+        if (roomData.qa_state.is_active || String(roomData.qa_state.is_active) === 'true') {
+          setIsQAMode(true)
+          setShowResult(false)
+          sessionStorage.setItem(`qa_mode_${roomCode}`, 'true')
+        }
+        if (roomData.qa_state.current_question_id) {
+          setCurrentQAQuestionId(Number(roomData.qa_state.current_question_id))
+        }
+      }
+
+      if (roomData.top_voted_questions) {
+        setTopVotedQuestions(roomData.top_voted_questions)
+      }
+
+      if (roomData.chat_messages && Array.isArray(roomData.chat_messages)) {
+        setChatMessages(roomData.chat_messages)
+      }
+
       setQuestionIndex(roomData.current_question_index)
       if (roomData.mode) {
         setRoomMode(roomData.mode)
@@ -282,6 +419,58 @@ export const ParticipantAnswer: React.FC = () => {
                 if (data.idx || data.current_question_index) setQuestionIndex(data.idx || data.current_question_index)
                 if (data.tl !== undefined || data.time_left !== undefined) setTimeLeft(data.tl ?? data.time_left)
                 setLoading(false)
+              }
+              if (data.top_voted_questions) setTopVotedQuestions(data.top_voted_questions)
+              if (data.qa_state) {
+                if (data.qa_state.is_active) setIsQAMode(true)
+                if (data.qa_state.current_question_id) setCurrentQAQuestionId(data.qa_state.current_question_id)
+              }
+              return
+            }
+
+            if (msgType === "QUESTION_VOTED" || msgType === "QV") {
+              if (data.top_questions) setTopVotedQuestions(data.top_questions)
+              return
+            }
+
+            if (msgType === "QA_SESSION_STARTED" || msgType === "QAS") {
+              setIsQAMode(true)
+              setShowResult(false)
+              setLoading(false)
+              sessionStorage.setItem(`qa_mode_${roomCode}`, 'true')
+              if (data.current_question_id) setCurrentQAQuestionId(Number(data.current_question_id))
+              if (data.top_questions) setTopVotedQuestions(data.top_questions)
+              return
+            }
+
+            if (msgType === "QA_QUESTION_CHANGED" || msgType === "QC") {
+              const qid = data.current_question_id ?? data.question_id ?? data.qid
+              if (qid !== undefined && qid !== null) {
+                setCurrentQAQuestionId(Number(qid))
+              }
+              return
+            }
+
+            if (msgType === "CHAT_MESSAGE_RECEIVED" || msgType === "CMR") {
+              const msgText = data.text || data.message || ""
+              const msgSender = data.sender || "User"
+              const msgAvatar = data.avatar || null
+              if (msgText) {
+                setChatMessages((prev) => {
+                  const isDup = prev.some(
+                    (m) => m.sender === msgSender && m.text === msgText && (!data.timestamp || !m.timestamp || m.timestamp === data.timestamp)
+                  )
+                  if (isDup) return prev
+                  return [...prev, { sender: msgSender, text: msgText, avatar: msgAvatar, timestamp: data.timestamp }]
+                })
+              }
+              return
+            }
+
+            if (msgType === "AUDIO_STREAM" || msgType === "AS") {
+              const rawChunk = data.chunk || data.c
+              if (rawChunk) {
+                setLastAudioChunk(rawChunk)
               }
               return
             }
@@ -583,6 +772,138 @@ export const ParticipantAnswer: React.FC = () => {
     }
   }
 
+  if (isQAMode) {
+    return (
+      <div className="w-full min-h-screen bg-[#f9f9ff] text-on-surface font-body-md relative overflow-hidden flex flex-col">
+        {/* Background Dots */}
+        <div
+          className="absolute inset-0 pointer-events-none z-0"
+          style={{
+            backgroundImage: 'radial-gradient(#c3c0ff 1.2px, transparent 1.2px)',
+            backgroundSize: '20px 20px',
+            opacity: 0.35,
+          }}
+        />
+
+        <div className="relative z-10 flex-grow flex flex-col w-full max-w-6xl mx-auto px-4 py-6 gap-5">
+          {/* Q&A Header & Voice Indicator */}
+          <div className="bg-white rounded-2xl border-2 border-primary/30 p-4 shadow-md flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-black">
+                <HelpCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-base font-black text-slate-800">Live Q&A Session</h1>
+                <p className="text-xs text-slate-500">Host is answering participants' questions live</p>
+              </div>
+            </div>
+
+            {isHostSpeaking && (
+              <div className="flex items-center gap-2 bg-red-500 text-white px-3.5 py-1.5 rounded-full text-xs font-black animate-pulse shadow-sm">
+                <Mic className="w-3.5 h-3.5" />
+                <span>Host is Speaking Live...</span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-grow">
+            {/* Left 7 Cols: Currently Addressed Question + Top Voted Questions */}
+            <div className="lg:col-span-7 flex flex-col gap-4">
+              {/* Currently Addressed Question Box */}
+              <div className="bg-white rounded-2xl p-5 border-2 border-primary/30 shadow-md text-left flex flex-col gap-3">
+                <span className="text-[10px] font-black uppercase text-primary bg-primary/10 px-2.5 py-1 rounded-full w-fit">
+                  Currently Addressed Question
+                </span>
+
+                {(() => {
+                  const activeQAQ = topVotedQuestions.find((q) => String(q.question_id) === String(currentQAQuestionId))
+                  const text = activeQAQ?.text || (currentQAQuestionId ? `Question #${currentQAQuestionId}` : 'Waiting for host to select a question...')
+                  const mediaUrl = activeQAQ?.media_url
+                  const audioUrl = activeQAQ?.audio_url
+                  const options = activeQAQ?.options || []
+
+                  return (
+                    <>
+                      <h2 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                        {text}
+                      </h2>
+
+                      {/* Optional Question Media Image */}
+                      {mediaUrl && (
+                        <div className="rounded-xl overflow-hidden border border-slate-200 shadow-2xs max-h-48 w-full bg-slate-50 flex items-center justify-center">
+                          <img src={mediaUrl} alt="Question Media" className="max-h-48 object-contain w-full" />
+                        </div>
+                      )}
+
+                      {/* Optional Question Audio Player */}
+                      {audioUrl && (
+                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
+                          <audio controls src={audioUrl} className="w-full h-9 rounded-lg" />
+                        </div>
+                      )}
+
+                      {/* Question Answer Options Grid */}
+                      {options.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1 pt-3 border-t border-slate-100">
+                          {options.map((opt: any) => (
+                            <div
+                              key={opt.key || opt.id}
+                              className={`p-3 rounded-xl border text-xs font-extrabold flex items-center justify-between gap-2 shadow-2xs ${
+                                opt.is_correct
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 ring-1 ring-emerald-400/30'
+                                  : 'bg-slate-50 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center flex-shrink-0 shadow-2xs ${
+                                  opt.is_correct
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-700 text-white'
+                                }`}>
+                                  {opt.key}
+                                </span>
+                                <span className="truncate">{opt.label || opt.content}</span>
+                              </div>
+                              {opt.is_correct && (
+                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 flex-shrink-0">
+                                  Correct
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+
+              {/* Top Voted Questions List */}
+              <TopVotedQuestionsList
+                questions={topVotedQuestions.map((q) => ({
+                  ...q,
+                  hasVoted: votedQuestionIds.has(q.question_id),
+                }))}
+                currentActiveQuestionId={currentQAQuestionId}
+                onVote={(qid) => handleVoteQuestion(qid)}
+              />
+            </div>
+
+            {/* Right 5 Cols: Live Chat Box */}
+            <div className="lg:col-span-5 h-[520px]">
+              <QAChatBox
+                messages={chatMessages}
+                onSendMessage={handleSendChatMessage}
+                currentNickname={nickname}
+                currentAvatar={myAvatar}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="w-full min-h-screen bg-[#f9f9ff] flex flex-col items-center justify-center p-6 text-center">
@@ -704,9 +1025,23 @@ export const ParticipantAnswer: React.FC = () => {
 
         {/* Question Text */}
         <section className="bg-white rounded-3xl p-6 md:p-8 border-2 border-outline-variant/40 shadow-md text-left my-6 flex-grow flex flex-col justify-center">
-          <span className="text-[10px] font-black uppercase tracking-widest text-primary mb-2.5 block">
-            {activeQuestion.type === 'SHORT_ANSWER' ? 'Short Answer Quiz' : 'Multiple Choice Quiz'}
-          </span>
+          <div className="flex justify-between items-center mb-2.5">
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary block">
+              {activeQuestion.type === 'SHORT_ANSWER' ? 'Short Answer Quiz' : 'Multiple Choice Quiz'}
+            </span>
+            <button
+              onClick={() => activeQuestion && handleVoteQuestion(activeQuestion.id)}
+              disabled={activeQuestion ? votedQuestionIds.has(activeQuestion.id) : false}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black transition-all shadow-xs cursor-pointer ${
+                activeQuestion && votedQuestionIds.has(activeQuestion.id)
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300'
+              }`}
+            >
+              <ThumbsUp className="w-3.5 h-3.5" />
+              <span>{activeQuestion && votedQuestionIds.has(activeQuestion.id) ? 'Voted' : 'Vote Question'}</span>
+            </button>
+          </div>
           <h1 className="font-headline-md text-lg md:text-xl font-black text-on-surface leading-relaxed mb-4">
             {activeQuestion.text}
           </h1>
@@ -864,7 +1199,7 @@ export const ParticipantAnswer: React.FC = () => {
               <p className="text-xs text-slate-800 font-extrabold mb-6 leading-relaxed">
                 {isCorrect 
                   ? `You answered quickly and earned points + Speed Bonus!` 
-                  : `Correct answer was: "${correctOptionKey || 'N/A'}"`
+                  : MOTIVATIONAL_MESSAGES[questionIndex % MOTIVATIONAL_MESSAGES.length]
                 }
               </p>
 

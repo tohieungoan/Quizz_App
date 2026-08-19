@@ -17,6 +17,8 @@ export interface GroupUpdateData {
 export interface BackendGroupResponse {
   id: number;
   owner_id: number;
+  owner_name?: string;
+  owner_email?: string;
   name: string;
   description: string | null;
   icon: string;
@@ -30,6 +32,8 @@ export interface ExamScoreDetail {
   examTitle: string;
   score: string;
   status: string;
+  completedAt?: string;
+  timeTaken?: string;
 }
 
 export interface BackendRosterMember {

@@ -383,7 +383,7 @@ export const Dashboard: React.FC = () => {
                         : 'text-secondary font-bold hover:bg-surface-container hover:translate-x-1'
                     }`}
                   >
-                    <SlidersHorizontal className="w-4 h-4" /> Host Studio 🚀
+                    <SlidersHorizontal className="w-4 h-4" /> Host Studio
                   </button>
 
                   <button

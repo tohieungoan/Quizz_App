@@ -69,6 +69,9 @@ class RoomResponse(BaseModel):
     current_question_index: int = 0
     current_question_started_at: Optional[datetime] = None
     active_question: Optional[QuestionLive] = None
+    qa_state: Optional[dict] = None
+    top_voted_questions: Optional[List[dict]] = None
+    chat_messages: Optional[List[dict]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -124,6 +127,8 @@ class RoomLiveStatus(BaseModel):
     active_question: Optional[QuestionLive] = None
     participants: List[ParticipantLive]
     answer_distribution: dict[str, int]  # Option key (A, B, C, D) -> count of answers
+    top_voted_questions: Optional[List[dict]] = None
+    qa_state: Optional[dict] = None
 
 
 class SubmitAnswerIn(BaseModel):

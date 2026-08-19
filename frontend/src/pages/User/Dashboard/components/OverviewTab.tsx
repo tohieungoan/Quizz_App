@@ -264,7 +264,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </span>
 
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
-            Welcome back, {userName}! 👋
+            Welcome back, {userName}!
           </h1>
           <p className="text-indigo-100 text-xs sm:text-sm leading-relaxed">
             {pendingExams.length > 0 

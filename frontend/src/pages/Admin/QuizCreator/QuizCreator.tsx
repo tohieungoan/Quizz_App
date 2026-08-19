@@ -174,7 +174,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setQuickAIPrompt('');
     setAlertState({
       isOpen: true,
-      title: 'AI Generation Complete! 🎉',
+      title: 'AI Generation Complete!',
       message: `Successfully generated and added ${newQuestions.length} standard questions (${modelUsed}) to your quiz list.`,
       type: 'success'
     });

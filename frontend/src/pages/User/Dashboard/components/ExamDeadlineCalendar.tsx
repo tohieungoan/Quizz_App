@@ -296,7 +296,7 @@ export const ExamDeadlineCalendar: React.FC<ExamDeadlineCalendarProps> = ({ exam
 
           {selectedExams.length === 0 ? (
             <p className="text-xs text-on-surface-variant italic py-3 text-center bg-surface-container-lowest rounded-xl border border-dashed border-outline-variant/30">
-              No exam deadlines on this date. All clear! ✨
+              No exam deadlines on this date. All clear!
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -99,7 +99,7 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               (t) => (
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-bold text-xs">AI Quiz Ready! 🎉</p>
+                    <p className="font-bold text-xs">AI Quiz Ready!</p>
                     <p className="text-[11px] text-slate-500">
                       Generated {response.questions.length} questions.
                     </p>

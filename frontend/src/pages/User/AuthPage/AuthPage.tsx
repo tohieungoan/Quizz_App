@@ -27,14 +27,13 @@ export const AuthPage: React.FC = () => {
   const getHeading = () => {
     switch (mode) {
       case 'login':
-        return { title: 'Welcome back 👋', subtitle: 'Sign in to access your QuizzApp dashboard.' }
+        return { title: 'Welcome back', subtitle: 'Sign in to access your QuizzApp dashboard.' }
       case 'register':
-        return { title: 'Create your account ✨', subtitle: 'Join thousands of creators and hosts on QuizzApp today.' }
-
+        return { title: 'Create your account', subtitle: 'Join thousands of creators and hosts on QuizzApp today.' }
       case 'forgot-password':
-        return { title: 'Reset password 🔒', subtitle: 'Forgot your password? No worries, we got you covered.' }
+        return { title: 'Reset password', subtitle: 'Forgot your password? No worries, we got you covered.' }
       case 'reset-success':
-        return { title: 'Check your email 📧', subtitle: 'Reset instructions have been sent successfully.' }
+        return { title: 'Check your email', subtitle: 'Reset instructions have been sent successfully.' }
     }
   }
 

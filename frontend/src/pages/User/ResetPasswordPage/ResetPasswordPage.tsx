@@ -112,7 +112,7 @@ export const ResetPasswordPage: React.FC = () => {
               <CheckCircle2 className="w-14 h-14 text-emerald-600 dark:text-emerald-400" />
               <div>
                 <h3 className="font-heading-bold text-xl text-emerald-800 dark:text-emerald-300 mb-2">
-                  Password Reset Successfully! 🎉
+                  Password Reset Successfully!
                 </h3>
                 <p className="text-sm text-on-surface-variant leading-relaxed">
                   Your password has been updated successfully. Please sign in again to continue.

@@ -9,6 +9,7 @@ interface Player {
   id: string
   name: string
   initials: string
+  avatar?: string | null
   avatarBg: string
   avatarText: string
   isMe?: boolean
@@ -18,6 +19,7 @@ interface Player {
 
 interface HostMember {
   nickname: string
+  avatar?: string | null
   equipped_title?: string | null
 }
 
@@ -100,9 +102,32 @@ export const LobbyWaiting: React.FC = () => {
   const fromSource = state?.fromSource || (localStorage.getItem('token') ? 'dashboard' : 'landing')
   const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room'
 
+  // Helper to extract logged in user avatar
+  const getLoggedInUserAvatar = (): string | null => {
+    try {
+      const pStr = localStorage.getItem('user_profile')
+      if (pStr) {
+        const p = JSON.parse(pStr)
+        if (p?.avatar || p?.avatar_url) return p.avatar || p.avatar_url
+      }
+      const uStr = localStorage.getItem('user')
+      if (uStr) {
+        const u = JSON.parse(uStr)
+        if (u?.avatar || u?.avatar_url) return u.avatar || u.avatar_url
+      }
+    } catch (e) {}
+    return null
+  }
+
   // Common lobby states
   const [players, setPlayers] = useState<Player[]>([])
   const [copied, setCopied] = useState(false)
+  const roomIdRef = useRef(roomId || state?.roomId || 0)
+
+  useEffect(() => {
+    if (roomId) roomIdRef.current = roomId
+    else if (state?.roomId) roomIdRef.current = state.roomId
+  }, [roomId, state?.roomId])
 
   // Host specific states
   const [countdown, setCountdown] = useState(900) // 15 minutes (900 seconds)
@@ -224,9 +249,11 @@ export const LobbyWaiting: React.FC = () => {
         if (isHost) {
           setHostMembers(res.map((p: any): HostMember => ({
             nickname: p.nickname || 'Guest',
+            avatar: p.avatar || null,
             equipped_title: p.equipped_title ?? null,
           })))
         } else {
+          const loggedAvatar = getLoggedInUserAvatar()
           const mapped: Player[] = res.map((p: any): Player => {
             const nick = p.nickname || 'Guest'
             const isMe = nick === nickname
@@ -235,6 +262,7 @@ export const LobbyWaiting: React.FC = () => {
               id: String(p.id),
               name: nick,
               initials: getInitials(nick),
+              avatar: p.avatar || (isMe ? loggedAvatar : null),
               avatarBg: isMe ? 'bg-primary' : color.bg,
               avatarText: isMe ? 'text-on-primary' : color.text,
               isMe,
@@ -320,35 +348,43 @@ export const LobbyWaiting: React.FC = () => {
               const activePlayersList = data.p || data.players
               if (Array.isArray(activePlayersList)) {
                 if (isHost) {
-                  setHostMembers(activePlayersList.map((pName: string): HostMember => ({
-                    nickname: pName,
-                    equipped_title: null
-                  })))
+                  setHostMembers(prev => activePlayersList.map((pName: string): HostMember => {
+                    const existing = prev.find(m => m.nickname === pName)
+                    return {
+                      nickname: pName,
+                      avatar: existing?.avatar || null,
+                      equipped_title: existing?.equipped_title ?? null
+                    }
+                  }))
                 } else {
-                  const mapped: Player[] = data.players.map((pName: string, idx: number): Player => {
+                  const loggedAvatar = getLoggedInUserAvatar()
+                  setPlayers(prev => activePlayersList.map((pName: string, idx: number): Player => {
                     const isMe = pName === nickname
                     const color = getAvatarColor(String(idx) + pName)
+                    const existing = prev.find(p => p.name === pName)
                     return {
                       id: String(idx),
                       name: pName,
                       initials: getInitials(pName),
+                      avatar: existing?.avatar || (isMe ? loggedAvatar : null),
                       avatarBg: isMe ? 'bg-primary' : color.bg,
                       avatarText: isMe ? 'text-on-primary' : color.text,
                       isMe,
                     }
-                  })
-                  setPlayers(mapped)
+                  }))
                 }
               }
 
-              // 2. Re-fetch full participant details (with equipped titles) from API
-              const targetRoomId = roomId || state?.roomId
+              // 2. Re-fetch full participant details (with equipped titles and avatars) from API
+              const targetRoomId = roomIdRef.current || roomId || state?.roomId
               if (targetRoomId) {
                 roomService.getParticipants(targetRoomId)
                   .then((res: any[]) => {
+                    const loggedAvatar = getLoggedInUserAvatar()
                     if (isHost) {
                       setHostMembers(res.map((p: any): HostMember => ({
                         nickname: p.nickname || 'Guest',
+                        avatar: p.avatar || null,
                         equipped_title: p.equipped_title ?? null,
                       })))
                     } else {
@@ -360,6 +396,7 @@ export const LobbyWaiting: React.FC = () => {
                           id: String(p.id),
                           name: nick,
                           initials: getInitials(nick),
+                          avatar: p.avatar || (isMe ? loggedAvatar : null),
                           avatarBg: isMe ? 'bg-primary' : color.bg,
                           avatarText: isMe ? 'text-on-primary' : color.text,
                           isMe,
@@ -515,116 +552,127 @@ export const LobbyWaiting: React.FC = () => {
   // ─── RENDER 1: HOST LOBBY VIEW ──────────────────────────────────────────────
   if (isHost) {
     return (
-      <div className="w-full h-screen flex flex-col bg-gradient-to-br from-surface-container-low to-surface-container-highest relative overflow-hidden bg-surface-bright text-on-surface font-body-md">
+      <div className="w-full min-h-screen flex flex-col bg-gradient-to-br from-surface-container-low via-surface-bright to-surface-container-highest relative text-on-surface font-body-md">
         {/* Animated Background Blobs */}
-        <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary rounded-full blur-[120px]" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary rounded-full blur-[120px]" />
+        <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none overflow-hidden">
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] sm:w-[40%] h-[40%] bg-primary rounded-full blur-[100px] sm:blur-[120px]" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] sm:w-[40%] h-[40%] bg-secondary rounded-full blur-[100px] sm:blur-[120px]" />
         </div>
 
-        <div className="relative z-10 flex flex-col h-full w-full p-8 lg:p-12 overflow-y-auto">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-center sm:items-start gap-6 mb-12">
+        <div className="relative z-10 flex flex-col min-h-screen w-full max-w-7xl mx-auto p-4 sm:p-6 md:p-8 lg:p-12 overflow-y-auto">
+          {/* Header Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-6 mb-8 sm:mb-12">
             <button
               onClick={handleLeave}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-surface-container-high border border-outline-variant text-on-surface hover:bg-surface-dim hover:text-primary transition-all font-button text-sm shadow-sm group"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-full bg-surface-container-high border border-outline-variant/60 text-on-surface hover:bg-surface-dim hover:text-primary transition-all font-button text-xs sm:text-sm shadow-sm group"
             >
-              <span className="material-symbols-outlined text-[20px] transition-transform group-hover:-translate-x-1">arrow_back</span>
+              <span className="material-symbols-outlined text-[18px] sm:text-[20px] transition-transform group-hover:-translate-x-1">arrow_back</span>
               Back to Dashboard
             </button>
 
             <div className="text-center">
-              <h2 className="font-headline-xl text-primary mb-2 text-4xl lg:text-5xl tracking-tight font-extrabold">Room Lobby</h2>
-              <p className="font-headline-md text-on-surface italic opacity-85 text-base sm:text-lg">Waiting for participants to join the session...</p>
+              <h2 className="font-headline-xl text-primary mb-1 text-2xl sm:text-4xl lg:text-5xl tracking-tight font-extrabold">Room Lobby</h2>
+              <p className="font-headline-md text-on-surface-variant italic opacity-85 text-xs sm:text-base">Waiting for participants to join the session...</p>
             </div>
 
-            <div className="bg-error-container text-on-error-container px-6 py-3.5 rounded-2xl border border-error/20 flex items-center gap-3 shadow-lg shadow-error/10 animate-pulse">
-              <span className="material-symbols-outlined text-[32px]">timer</span>
+            <div className="w-full sm:w-auto bg-error-container text-on-error-container px-4 sm:px-6 py-2.5 sm:py-3.5 rounded-2xl border border-error/20 flex items-center justify-center sm:justify-start gap-3 shadow-lg shadow-error/10 animate-pulse">
+              <span className="material-symbols-outlined text-[24px] sm:text-[32px]">timer</span>
               <div className="flex flex-col text-left">
-                <span className="font-label-bold text-[10px] uppercase tracking-widest opacity-70">Lobby Closes in</span>
-                <span className="font-headline-md text-2xl font-bold">{formatTime(countdown)}</span>
+                <span className="font-label-bold text-[9px] sm:text-[10px] uppercase tracking-widest opacity-70">Lobby Closes in</span>
+                <span className="font-headline-md text-lg sm:text-2xl font-bold">{formatTime(countdown)}</span>
               </div>
             </div>
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center lg:gap-16 mb-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center lg:gap-12 mb-8 sm:mb-12">
             <div className="lg:col-span-7 flex flex-col items-center lg:items-start text-center lg:text-left">
-              <p className="font-label-bold text-outline uppercase tracking-[0.4em] mb-3 text-xs font-semibold">Room Access Code</p>
-              <h1 className="font-headline-xl text-6xl sm:text-7xl lg:text-8xl text-primary tracking-[0.15em] font-black mb-8 drop-shadow-sm flex justify-center lg:justify-start">
+              <p className="font-label-bold text-outline uppercase tracking-[0.25em] sm:tracking-[0.4em] mb-2 sm:mb-3 text-[10px] sm:text-xs font-bold">Room Access Code</p>
+              <h1 className="font-headline-xl text-4xl sm:text-6xl md:text-7xl lg:text-8xl text-primary tracking-[0.08em] sm:tracking-[0.15em] font-black mb-6 sm:mb-8 drop-shadow-xs flex justify-center lg:justify-start w-full">
                 {formatRoomCode(roomCode)}
               </h1>
-              <div className="flex flex-wrap gap-4 justify-center lg:justify-start w-full">
+              
+              <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start w-full">
                 <button
                   onClick={() => {
                     const lobbyUrl = `${window.location.origin}/lobby?roomCode=${roomCode}`
                     navigator.clipboard.writeText(lobbyUrl).catch(() => {})
                     alert('Invite link copied to clipboard!')
                   }}
-                  className="bg-primary text-on-primary px-8 py-3.5 rounded-full font-button text-base shadow-xl shadow-primary/20 hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-98 transition-all flex items-center justify-center gap-2 min-w-[200px]"
+                  className="w-full sm:w-auto bg-primary text-on-primary px-6 sm:px-8 py-3 sm:py-3.5 rounded-2xl sm:rounded-full font-button text-sm sm:text-base shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-98 transition-all flex items-center justify-center gap-2"
                 >
-                  <span className="material-symbols-outlined">share</span> Share Invite Link
+                  <span className="material-symbols-outlined text-[20px]">share</span> Share Invite Link
                 </button>
+
                 <button
                   onClick={handleCopy}
-                  className="border-2 border-primary/20 text-primary bg-white/50 backdrop-blur px-8 py-3.5 rounded-full font-button text-base hover:bg-primary/5 hover:border-primary transition-all flex items-center justify-center gap-2 min-w-[200px]"
+                  className="w-full sm:w-auto border-2 border-primary/20 text-primary bg-white/70 backdrop-blur px-6 sm:px-8 py-3 sm:py-3.5 rounded-2xl sm:rounded-full font-button text-sm sm:text-base hover:bg-primary/5 hover:border-primary transition-all flex items-center justify-center gap-2"
                 >
-                  <span className="material-symbols-outlined">{copied ? 'check' : 'content_copy'}</span>
+                  <span className="material-symbols-outlined text-[20px]">{copied ? 'check' : 'content_copy'}</span>
                   {copied ? 'Copied!' : 'Copy Code'}
                 </button>
+
                 <button
                   onClick={handleStartGame}
                   disabled={hostMembers.length === 0}
                   title={hostMembers.length === 0 ? "Waiting for participants to join before starting" : "Start Quiz Session"}
-                  className={`px-8 py-3.5 rounded-full font-button text-base transition-all flex items-center justify-center gap-2 min-w-[200px] cursor-pointer ${
+                  className={`w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-2xl sm:rounded-full font-button text-sm sm:text-base font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                     hostMembers.length === 0
                       ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none opacity-80'
-                      : 'bg-secondary text-on-secondary shadow-xl shadow-secondary/20 hover:shadow-secondary/35 hover:-translate-y-0.5 active:scale-98'
+                      : 'bg-gradient-to-r from-secondary to-emerald-600 text-on-secondary shadow-xl shadow-secondary/25 hover:shadow-secondary/40 hover:-translate-y-0.5 active:scale-98'
                   }`}
                 >
-                  Start Quiz Session <span className="material-symbols-outlined">rocket_launch</span>
+                  Start Quiz Session <span className="material-symbols-outlined text-[20px]">rocket_launch</span>
                 </button>
               </div>
             </div>
 
-            <div className="lg:col-span-5 flex flex-col items-center lg:items-center lg:translate-x-10">
-              <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl border border-surface-container-highest relative group transition-transform hover:scale-103">
-                <div className="w-56 h-56 bg-surface-container-low rounded-2xl flex items-center justify-center border-2 border-dashed border-primary/20 group-hover:border-primary transition-colors overflow-hidden">
+            <div className="lg:col-span-5 flex flex-col items-center justify-center">
+              <div className="bg-white p-4 sm:p-6 rounded-3xl sm:rounded-[2.5rem] shadow-xl border border-surface-container-highest relative group transition-transform hover:scale-102">
+                <div className="w-44 h-44 sm:w-56 sm:h-56 bg-surface-container-low rounded-2xl flex items-center justify-center border-2 border-dashed border-primary/20 group-hover:border-primary transition-colors overflow-hidden">
                   {qrCodeUrl ? (
                     <img src={qrCodeUrl} alt="Room QR Code" className="w-full h-full object-cover p-2" />
                   ) : (
-                    <span className="material-symbols-outlined text-[120px] text-primary/20 group-hover:text-primary transition-colors">qr_code_2</span>
+                    <span className="material-symbols-outlined text-[90px] sm:text-[120px] text-primary/20 group-hover:text-primary transition-colors">qr_code_2</span>
                   )}
                 </div>
-                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-secondary text-on-secondary px-5 py-2 rounded-full text-xs font-label-bold shadow-lg tracking-wider">
+                <div className="absolute -bottom-3 sm:-bottom-4 left-1/2 -translate-x-1/2 bg-secondary text-on-secondary px-4 sm:px-5 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-xs font-label-bold shadow-lg tracking-wider whitespace-nowrap">
                   SCAN TO JOIN
                 </div>
               </div>
-              <p className="mt-6 text-on-surface-variant font-body-lg font-medium text-sm text-center">Participants can scan to join instantly</p>
-
+              <p className="mt-4 sm:mt-6 text-on-surface-variant font-body-md font-medium text-xs sm:text-sm text-center">Participants can scan QR code to join instantly</p>
             </div>
           </div>
 
           {/* Participants Section */}
-          <div className="bg-white/50 backdrop-blur-xl rounded-[2.5rem] p-8 border border-white/60 shadow-sm w-full mb-8">
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
-              <div className="flex items-center gap-4 text-left">
-                <div className="w-12 h-12 bg-secondary/15 text-secondary rounded-xl flex items-center justify-center shadow-inner">
-                  <span className="material-symbols-outlined text-[28px] fill-icon">groups</span>
+          <div className="bg-white/70 backdrop-blur-xl rounded-3xl sm:rounded-[2.5rem] p-4 sm:p-8 border border-white/80 shadow-md w-full mb-6 sm:mb-8">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6 sm:mb-8">
+              <div className="flex items-center gap-3 sm:gap-4 text-center sm:text-left">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-secondary/15 text-secondary rounded-xl flex items-center justify-center shadow-inner flex-shrink-0">
+                  <span className="material-symbols-outlined text-[24px] sm:text-[28px] fill-icon">groups</span>
                 </div>
                 <div>
-                  <h3 className="font-headline-md text-2xl font-bold text-on-surface">{hostMembers.length} Members Joined</h3>
-                  <p className="text-on-surface-variant text-xs font-body-md">Participants currently in the room</p>
+                  <h3 className="font-headline-md text-xl sm:text-2xl font-bold text-on-surface">{hostMembers.length} Members Joined</h3>
+                  <p className="text-on-surface-variant text-[11px] sm:text-xs font-body-md">Participants currently in the room</p>
                 </div>
               </div>
-              <div className="flex -space-x-3">
+              <div className="flex -space-x-2.5 sm:-space-x-3">
                 {hostMembers.slice(0, 6).map((member, i) => (
-                  <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-surface-container-highest shadow-sm flex items-center justify-center text-[10px] font-bold text-on-surface-variant">
-                    {getInitials(member.nickname)}
-                  </div>
+                  member.avatar ? (
+                    <img
+                      key={i}
+                      src={member.avatar}
+                      alt={member.nickname}
+                      className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white object-cover shadow-xs flex-shrink-0"
+                    />
+                  ) : (
+                    <div key={i} className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white bg-surface-container-highest shadow-xs flex items-center justify-center text-[9px] sm:text-[10px] font-bold text-on-surface-variant flex-shrink-0">
+                      {getInitials(member.nickname)}
+                    </div>
+                  )
                 ))}
                 {hostMembers.length > 6 && (
-                  <div className="w-10 h-10 rounded-full border-2 border-white bg-primary text-on-primary flex items-center justify-center text-xs font-bold shadow-sm">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-white bg-primary text-on-primary flex items-center justify-center text-[10px] sm:text-xs font-bold shadow-xs">
                     +{hostMembers.length - 6}
                   </div>
                 )}
@@ -632,20 +680,28 @@ export const LobbyWaiting: React.FC = () => {
             </div>
 
             {/* Members Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
               {(showAllMembers ? hostMembers : hostMembers.slice(0, 8)).map((member, idx) => {
                 const color = getAvatarColor(String(idx) + member.nickname)
                 const badge = getPlayerBadge(member.nickname, member.equipped_title)
                 return (
-                  <div key={idx} className="bg-white/90 p-4 rounded-2xl border border-white/80 shadow-md hover:shadow-xl hover:scale-103 hover:border-primary/20 transition-all duration-300 flex items-center gap-4 cursor-default group relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-full blur-xl group-hover:bg-primary/10 transition-colors" />
-                    <div className={`w-12 h-12 rounded-full ${color.bg} flex items-center justify-center ${color.text} group-hover:scale-110 transition-transform font-black text-sm shadow-inner flex-shrink-0`}>
-                      {getInitials(member.nickname)}
-                    </div>
+                  <div key={idx} className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:scale-102 transition-all duration-300 flex items-center gap-3 cursor-default group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-12 h-12 bg-primary/5 rounded-full blur-xl group-hover:bg-primary/10 transition-colors" />
+                    {member.avatar ? (
+                      <img
+                        src={member.avatar}
+                        alt={member.nickname}
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover group-hover:scale-105 transition-transform shadow-inner flex-shrink-0 border border-slate-200"
+                      />
+                    ) : (
+                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full ${color.bg} flex items-center justify-center ${color.text} group-hover:scale-105 transition-transform font-black text-xs sm:text-sm shadow-inner flex-shrink-0`}>
+                        {getInitials(member.nickname)}
+                      </div>
+                    )}
                     <div className="flex flex-col text-left truncate flex-grow">
-                      <span className="font-bold text-on-surface truncate text-base mb-1">{member.nickname}</span>
+                      <span className="font-bold text-on-surface truncate text-sm sm:text-base mb-0.5">{member.nickname}</span>
                       <div className="flex">
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${getBadgeStyle(badge)}`}>
+                        <span className={`text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full border ${getBadgeStyle(badge)}`}>
                           {badge}
                         </span>
                       </div>
@@ -656,13 +712,13 @@ export const LobbyWaiting: React.FC = () => {
             </div>
 
             {hostMembers.length > 8 && (
-              <div className="mt-8 flex justify-center">
+              <div className="mt-6 sm:mt-8 flex justify-center">
                 <button
                   onClick={() => setShowAllMembers(!showAllMembers)}
-                  className="flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-primary text-on-primary font-button text-sm shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-98 transition-all group"
+                  className="flex items-center gap-2 px-6 sm:px-8 py-3 rounded-2xl bg-primary text-on-primary font-button text-xs sm:text-sm shadow-md hover:shadow-primary/30 hover:-translate-y-0.5 active:scale-98 transition-all group"
                 >
                   <span className="font-bold">{showAllMembers ? 'Show Less' : 'Show All'}</span>
-                  <span className={`material-symbols-outlined transition-transform ${showAllMembers ? 'rotate-180' : 'group-hover:translate-y-0.5'}`}>
+                  <span className={`material-symbols-outlined text-[18px] transition-transform ${showAllMembers ? 'rotate-180' : 'group-hover:translate-y-0.5'}`}>
                     expand_more
                   </span>
                 </button>
@@ -723,7 +779,7 @@ export const LobbyWaiting: React.FC = () => {
             </div>
 
             <h1 className="font-headline-md text-headline-md text-on-surface">
-              🎯 Waiting for the Game to Start
+              Waiting for the Game to Start
             </h1>
 
             {/* Room code */}
@@ -755,7 +811,7 @@ export const LobbyWaiting: React.FC = () => {
                   Waiting for the host to start the quiz...
                 </p>
               </div>
-              <p className="text-on-surface font-label-bold text-label-bold mt-1">Get ready! 🚀</p>
+              <p className="text-on-surface font-label-bold text-label-bold mt-1">Get ready to compete!</p>
             </div>
           </section>
 
@@ -774,20 +830,42 @@ export const LobbyWaiting: React.FC = () => {
             {/* Player grid - wide horizontal bar layout */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* "Me" chip — highlighted */}
-              <div className="bg-primary/5 border-2 border-primary ring-2 ring-primary/20 px-5 py-3.5 rounded-2xl flex items-center justify-between gap-4 shadow-sm relative overflow-hidden transition-all duration-300 animate-pulse">
-                <div className="flex items-center gap-3.5 min-w-0 flex-grow">
-                  <div className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-on-primary font-black text-sm flex-shrink-0 shadow-md">
-                    {myPlayer.initials}
+              {(() => {
+                const userStored = localStorage.getItem('user')
+                let loggedInAvatar: string | null = null
+                if (userStored) {
+                  try {
+                    const u = JSON.parse(userStored)
+                    loggedInAvatar = u.avatar || u.avatar_url || null
+                  } catch (e) {}
+                }
+                const myAvatar = myPlayer.avatar || loggedInAvatar
+
+                return (
+                  <div className="bg-primary/5 border-2 border-primary ring-2 ring-primary/20 px-5 py-3.5 rounded-2xl flex items-center justify-between gap-4 shadow-sm relative overflow-hidden transition-all duration-300 animate-pulse">
+                    <div className="flex items-center gap-3.5 min-w-0 flex-grow">
+                      {myAvatar ? (
+                        <img
+                          src={myAvatar}
+                          alt={nickname}
+                          className="w-11 h-11 rounded-full object-cover flex-shrink-0 shadow-md border-2 border-primary"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-primary flex items-center justify-center text-on-primary font-black text-sm flex-shrink-0 shadow-md">
+                          {myPlayer.initials}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="font-extrabold text-on-surface text-base truncate">{nickname}</span>
+                        <span className="text-[9px] bg-primary text-on-primary px-2 py-0.5 rounded-md font-black uppercase flex-shrink-0">You</span>
+                      </div>
+                    </div>
+                    <span className={`text-xs font-black px-3 py-1 rounded-full border flex-shrink-0 shadow-xs ${getBadgeStyle(getPlayerBadge(nickname))}`}>
+                      🏆 {getPlayerBadge(nickname)}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="font-extrabold text-on-surface text-base truncate">{nickname}</span>
-                    <span className="text-[9px] bg-primary text-on-primary px-2 py-0.5 rounded-md font-black uppercase flex-shrink-0">You</span>
-                  </div>
-                </div>
-                <span className={`text-xs font-black px-3 py-1 rounded-full border flex-shrink-0 shadow-xs ${getBadgeStyle(getPlayerBadge(nickname))}`}>
-                  🏆 {getPlayerBadge(nickname)}
-                </span>
-              </div>
+                )
+              })()}
 
               {/* Other players */}
               {players.filter(p => !p.isMe).map((player, index) => {
@@ -799,9 +877,17 @@ export const LobbyWaiting: React.FC = () => {
                     style={{ animationDelay: `${(player.animDelay ?? 0) || index * 0.05}s` }}
                   >
                     <div className="flex items-center gap-3.5 min-w-0 flex-grow">
-                      <div className={`w-11 h-11 rounded-full ${player.avatarBg} flex items-center justify-center ${player.avatarText} text-sm font-black flex-shrink-0 shadow-inner`}>
-                        {player.initials}
-                      </div>
+                      {player.avatar ? (
+                        <img
+                          src={player.avatar}
+                          alt={player.name}
+                          className="w-11 h-11 rounded-full object-cover flex-shrink-0 shadow-inner border border-slate-200"
+                        />
+                      ) : (
+                        <div className={`w-11 h-11 rounded-full ${player.avatarBg} flex items-center justify-center ${player.avatarText} text-sm font-black flex-shrink-0 shadow-inner`}>
+                          {player.initials}
+                        </div>
+                      )}
                       <span className="font-extrabold text-on-surface text-base truncate">{player.name}</span>
                     </div>
                     <span className={`text-xs font-black px-3 py-1 rounded-full border flex-shrink-0 shadow-xs ${getBadgeStyle(badge)}`}>

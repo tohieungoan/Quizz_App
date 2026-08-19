@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # AI Chatbot Configuration
     GOOGLE_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
     ASSISTANT_NAME: str = "Quizzy"
 
     # Google AI Studio (Gemini API) Configuration

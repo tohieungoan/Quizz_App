@@ -144,3 +144,4 @@ class LiveQAUpvote(Base):
     # Relationships
     qa_question = relationship("LiveQAQuestion", back_populates="upvotes")
     participant = relationship("Participant")
+
