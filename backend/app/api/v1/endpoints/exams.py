@@ -31,7 +31,7 @@ def _send_sync_ws_notification(user_id: int, title: str, content: str, action_ur
     """
     try:
         import asyncio
-        from app.api.v1.websockets.manager import manager
+        from app.api.v1.websockets.notification_manager import notification_manager
         payload = {
             "type": "NOTIFICATION",
             "title": title,
@@ -48,10 +48,10 @@ def _send_sync_ws_notification(user_id: int, title: str, content: str, action_ur
                 loop = None
 
         if loop and loop.is_running():
-            asyncio.run_coroutine_threadsafe(manager.send_personal_message(payload, user_id), loop)
+            asyncio.run_coroutine_threadsafe(notification_manager.send_personal_message(payload, user_id), loop)
         else:
             try:
-                asyncio.run(manager.send_personal_message(payload, user_id))
+                asyncio.run(notification_manager.send_personal_message(payload, user_id))
             except Exception as inner_e:
                 logger.warning(f"Could not run async WS dispatch: {inner_e}")
     except Exception as e:
@@ -113,7 +113,9 @@ def assign_exam(
     Creates an Exam record and links all approved group members as ExamAssignees.
     """
     # 1. Validate Quiz
-    quiz = db.query(Quiz).filter(Quiz.id == body.quiz_id).first()
+    # Serialize exam assignment with quiz authoring. Authoring uses the same
+    # row lock before checking active exams, preventing a check-then-insert race.
+    quiz = db.query(Quiz).filter(Quiz.id == body.quiz_id).with_for_update().first()
     if not quiz:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -123,6 +125,11 @@ def assign_exam(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to assign this quiz.",
+        )
+    if (quiz.status or "").strip().lower() != "published":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only a published quiz can be assigned as an exam.",
         )
 
     # 2. Validate Group
@@ -426,7 +433,7 @@ def update_exam(
     Update configuration of an exam (e.g. deadline, duration, title, status).
     Only the host (owner) or SUPER_ADMIN can modify settings.
     """
-    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    exam = db.query(Exam).filter(Exam.id == exam_id).with_for_update().first()
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -439,9 +446,26 @@ def update_exam(
         )
 
     update_data = body.model_dump(exclude_unset=True)
+
+    target_quiz_id = update_data.get("quiz_id", exam.quiz_id)
+    resulting_status = str(update_data.get("status", exam.status) or "").strip().upper()
+    quiz_id_changed = target_quiz_id != exam.quiz_id
+    if quiz_id_changed or resulting_status == "ACTIVE":
+        target_quiz = db.query(Quiz).filter(Quiz.id == target_quiz_id).with_for_update().first()
+        if not target_quiz:
+            raise HTTPException(status_code=404, detail="Quiz not found.")
+        if target_quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to assign this quiz.",
+            )
+        if (target_quiz.status or "").strip().lower() != "published":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An active exam must use a published quiz.",
+            )
     
     # Check if Quiz or Group is being modified
-    quiz_id_changed = "quiz_id" in update_data and update_data["quiz_id"] != exam.quiz_id
     group_id_changed = "group_id" in update_data and update_data["group_id"] != exam.group_id
     
     if quiz_id_changed or group_id_changed:
@@ -468,6 +492,11 @@ def update_exam(
             new_group = db.query(Group).filter(Group.id == new_group_id).first()
             if not new_group:
                 raise HTTPException(status_code=404, detail="New Study Group not found.")
+            if new_group.owner_id != current_user.id and current_user.role != "SUPER_ADMIN":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to assign exams to this group.",
+                )
             
             # 1. Delete all existing assignees and notifications for this exam
             db.query(ExamAssignee).filter(ExamAssignee.exam_id == exam.id).delete()

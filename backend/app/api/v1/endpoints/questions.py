@@ -9,8 +9,9 @@ from app.crud.crud_quiz import crud_quiz
 from app.schemas.question import QuestionCreate, QuestionUpdate, QuestionResponse, QuestionPageResponse, QuestionImport
 from app.services.media_asset_service import media_asset_service
 from app.services.quiz_authoring_policy import (
+    QuizInActiveExamError,
     QuizInActiveRoomError,
-    ensure_quiz_is_not_in_active_room,
+    ensure_quiz_authoring_is_unlocked,
 )
 
 router = APIRouter()
@@ -18,8 +19,8 @@ router = APIRouter()
 
 def _ensure_quiz_authoring_is_unlocked(db: Session, quiz_id: int) -> None:
     try:
-        ensure_quiz_is_not_in_active_room(db, quiz_id)
-    except QuizInActiveRoomError as error:
+        ensure_quiz_authoring_is_unlocked(db, quiz_id)
+    except (QuizInActiveRoomError, QuizInActiveExamError) as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
@@ -220,7 +221,12 @@ def delete_question(
         
     if quiz.status and quiz.status.lower() == "published":
         raise HTTPException(status_code=400, detail="Cannot delete a question in a published quiz. Please change the quiz status to Draft first.")
-        
+
+    # Keep ownership data before deleting and committing. Accessing a deleted,
+    # expired ORM instance afterward can raise ObjectDeletedInstanceError even
+    # though the database operation already succeeded.
+    quiz_owner_id = quiz.user_id
+
     urls_to_check = set()
     if question.media_url:
         urls_to_check.add(question.media_url)
@@ -242,7 +248,7 @@ def delete_question(
         if not crud_question.is_url_referenced(db, url)
     }
     media_asset_service.schedule_cleanup_by_urls(
-        db, question.quiz.user_id, cleanup_urls
+        db, quiz_owner_id, cleanup_urls
     )
         
     return {"detail": "Question deleted successfully"}

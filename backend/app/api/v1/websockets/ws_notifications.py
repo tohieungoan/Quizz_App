@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user_ws
-from app.api.v1.websockets.manager import manager
+from app.api.v1.websockets.notification_manager import notification_manager
 from app.models.user import User
 
 router = APIRouter()
@@ -15,13 +15,13 @@ async def websocket_notifications(
     WebSocket endpoint for real-time notifications.
     Clients connect here to receive system broadcasts instantly.
     """
-    await manager.connect(websocket, current_user.id)
+    await notification_manager.connect(websocket, current_user.id)
     try:
         while True:
             # We keep the connection open and wait for any messages from client (if needed)
             # Currently just a one-way street (Server -> Client) for broadcasts, but we need to receive to keep connection alive
             data = await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket, current_user.id)
+        notification_manager.disconnect(websocket, current_user.id)
     except Exception as e:
-        manager.disconnect(websocket, current_user.id)
+        notification_manager.disconnect(websocket, current_user.id)

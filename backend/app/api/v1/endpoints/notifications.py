@@ -1,33 +1,39 @@
 import logging
-import asyncio
 import uuid
-from typing import Optional
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_current_active_user, get_current_active_admin
 from app.models.user import User
 from app.models.notification import Notification
 from app.models.broadcast import BroadcastLog
-from app.schemas.notification import NotificationListResponse
-from app.schemas.broadcast import BroadcastRequest, BroadcastResponse, BroadcastHistoryResponse
+from app.schemas.notification import NotificationListResponse, NotificationResponse
+from app.schemas.broadcast import (
+    BroadcastHistoryResponse,
+    BroadcastLogSchema,
+    BroadcastRequest,
+    BroadcastResponse,
+)
 from app.crud.crud_notification import crud_notification
-from app.api.v1.websockets.manager import manager
+from app.api.v1.websockets.notification_manager import notification_manager
 from app.db.session import SessionLocal
 from app.core.scheduler import scheduler
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# -----------------------------------------
-# USER NOTIFICATION ENDPOINTS
-# -----------------------------------------
+BroadcastStatus = Literal["PENDING", "SENT", "CANCELLED", "FAILED"]
+MIN_SCHEDULE_DELAY = timedelta(minutes=1)
+MAX_SCHEDULE_DELAY = timedelta(days=365)
+
 
 @router.get("/", response_model=NotificationListResponse, summary="Get current user notifications")
 def get_notifications(
-    skip: int = Query(0, description="Skip N records"),
-    limit: int = Query(20, description="Limit records"),
+    skip: int = Query(0, ge=0, description="Skip N records"),
+    limit: int = Query(20, ge=1, le=100, description="Limit records"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -38,7 +44,7 @@ def get_notifications(
     notifications, unread_count = crud_notification.get_user_notifications(db, current_user.id, skip, limit)
     
     return NotificationListResponse(
-        data=notifications,
+        data=[NotificationResponse.model_validate(n) for n in notifications],
         unread_count=unread_count
     )
 
@@ -99,73 +105,137 @@ def delete_notification(
 # ADMIN BROADCAST ENDPOINTS
 # -----------------------------------------
 
-def save_broadcast_to_db(job_id: Optional[str], admin_id: int, request_data: dict):
-    """
-    Sync function to insert global notification and update scheduled job status.
-    Safe to use with FastAPI BackgroundTasks and APScheduler.
-    """
+def _build_global_notification(admin_id: int, request_data: dict) -> Notification:
+    """Build the durable notification record for a broadcast."""
+    parsed_scheduled_at = None
+    if request_data.get("scheduledAt"):
+        try:
+            parsed_scheduled_at = datetime.fromisoformat(
+                request_data["scheduledAt"].replace("Z", "+00:00")
+            )
+            parsed_scheduled_at = parsed_scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            # scheduledAt is validated before scheduling; keep this helper defensive
+            # for jobs restored from older payloads.
+            parsed_scheduled_at = None
+
+    return Notification(
+        sender_id=admin_id,
+        user_id=None,
+        target_type="ALL_USERS",
+        title=request_data["title"],
+        content=request_data["content"],
+        type=request_data["type"],
+        action_url=request_data.get("actionUrl"),
+        scheduled_at=parsed_scheduled_at,
+    )
+
+
+def save_broadcast_to_db(
+    job_id: Optional[str],
+    admin_id: int,
+    request_data: dict,
+) -> bool:
+    """Persist a scheduled notification and its status transition atomically."""
     db = SessionLocal()
     try:
-        if job_id:
-            log = db.query(BroadcastLog).filter(BroadcastLog.job_id == job_id).first()
-            if log:
-                log.status = "SENT"
-                
-        parsed_scheduled_at = None
-        if request_data.get("scheduledAt"):
-            try:
-                parsed_scheduled_at = datetime.fromisoformat(request_data["scheduledAt"].replace('Z', '+00:00'))
-                parsed_scheduled_at = parsed_scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
-            except ValueError:
-                pass
+        if not job_id:
+            logger.error("Scheduled broadcast delivery requires a job_id.")
+            return False
 
-        new_notif = Notification(
-            sender_id=admin_id,
-            user_id=None,
-            target_type="ALL_USERS",
-            title=request_data["title"],
-            content=request_data["content"],
-            type=request_data["type"],
-            action_url=request_data.get("actionUrl"),
-            scheduled_at=parsed_scheduled_at
+        # Serialize scheduled delivery against cancellation. Only one transaction
+        # may perform the PENDING -> terminal-state transition.
+        broadcast_log = (
+            db.query(BroadcastLog)
+            .filter(BroadcastLog.job_id == job_id)
+            .with_for_update()
+            .first()
         )
-        db.add(new_notif)
+        if not broadcast_log:
+            logger.warning("Scheduled broadcast job %s does not exist.", job_id)
+            return False
+        if broadcast_log.status != "PENDING":
+            logger.info(
+                "Skipping scheduled broadcast %s because its status is %s.",
+                job_id,
+                broadcast_log.status,
+            )
+            return False
+
+        broadcast_log.status = "SENT"
+        db.add(_build_global_notification(admin_id, request_data))
         db.commit()
-            
-    except Exception as e:
-        logger.error(f"Error saving broadcast to DB: {e}", exc_info=True)
+        return True
+    except Exception as exc:
+        logger.error(
+            "Failed to persist scheduled broadcast %s: %s",
+            job_id,
+            exc,
+            exc_info=True,
+        )
         db.rollback()
+
+        # Use a separate transaction after rollback and never overwrite a
+        # concurrent CANCELLED or SENT terminal state.
         if job_id:
             try:
-                log = db.query(BroadcastLog).filter(BroadcastLog.job_id == job_id).first()
-                if log:
-                    log.status = "FAILED"
+                failure_log = (
+                    db.query(BroadcastLog)
+                    .filter(BroadcastLog.job_id == job_id)
+                    .with_for_update()
+                    .first()
+                )
+                if failure_log and failure_log.status == "PENDING":
+                    failure_log.status = "FAILED"
                     db.commit()
-            except Exception:
-                pass
+            except Exception as status_exc:
+                db.rollback()
+                logger.error(
+                    "Failed to mark scheduled broadcast %s as FAILED: %s",
+                    job_id,
+                    status_exc,
+                    exc_info=True,
+                )
+        return False
     finally:
         db.close()
 
 
-async def push_scheduled_broadcast(job_id: Optional[str], admin_id: int, ws_payload: dict, request_data: dict):
+async def push_scheduled_broadcast(
+    job_id: Optional[str],
+    admin_id: int,
+    ws_payload: dict,
+    request_data: dict,
+) -> None:
     """
     Async function for APScheduler scheduled jobs.
     Inserts notification into DB and pushes real-time WebSocket to all users.
     """
-    save_broadcast_to_db(job_id, admin_id, request_data)
+    if not save_broadcast_to_db(job_id, admin_id, request_data):
+        logger.info(
+            "Scheduled broadcast %s was not published because persistence "
+            "failed or it was no longer PENDING.",
+            job_id,
+        )
+        return
+
     try:
-        await manager.broadcast(ws_payload)
-    except Exception as e:
-        logger.error(f"Error pushing WS broadcast: {e}", exc_info=True)
+        await notification_manager.broadcast(ws_payload)
+    except Exception as exc:
+        logger.error(
+            "Failed to publish scheduled broadcast %s: %s",
+            job_id,
+            exc,
+            exc_info=True,
+        )
 
 
 @router.post("/broadcast", response_model=BroadcastResponse, summary="Send System Broadcast (Admin)")
 async def send_broadcast(
     request: BroadcastRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_active_admin)
-):
+) -> BroadcastResponse:
     # 1. Validation for isScheduled & scheduledAt
     parsed_scheduled_at_aware = None
     parsed_scheduled_at_naive = None
@@ -173,28 +243,29 @@ async def send_broadcast(
         if not request.scheduledAt or not request.scheduledAt.strip():
             raise HTTPException(status_code=400, detail="scheduledAt is required when isScheduled is True.")
         try:
-            parsed_scheduled_at_aware = datetime.fromisoformat(request.scheduledAt.replace('Z', '+00:00'))
+            parsed_scheduled_at_aware = datetime.fromisoformat(
+                request.scheduledAt.replace("Z", "+00:00")
+            )
             if parsed_scheduled_at_aware.tzinfo is None:
                 parsed_scheduled_at_aware = parsed_scheduled_at_aware.replace(tzinfo=timezone.utc)
-        except Exception:
+        except ValueError:
             raise HTTPException(status_code=400, detail="Invalid scheduledAt ISO datetime format.")
 
         now_utc = datetime.now(timezone.utc)
-        min_allowed_time = now_utc + timedelta(seconds=45) # Must be at least ~1 minute into future
+        min_allowed_time = now_utc + MIN_SCHEDULE_DELAY
         if parsed_scheduled_at_aware < min_allowed_time:
             raise HTTPException(
                 status_code=400,
                 detail="Scheduled time must be at least 1 minute in the future. Past or immediate times are not permitted for scheduled broadcasts."
             )
-        max_allowed_time = now_utc + timedelta(days=365)
+        max_allowed_time = now_utc + MAX_SCHEDULE_DELAY
         if parsed_scheduled_at_aware > max_allowed_time:
             raise HTTPException(
                 status_code=400,
                 detail="Scheduled time cannot exceed 1 year in the future."
             )
         parsed_scheduled_at_naive = parsed_scheduled_at_aware.astimezone(timezone.utc).replace(tzinfo=None)
-    else:
-        request.scheduledAt = None
+    scheduled_at_value = request.scheduledAt if request.isScheduled else None
 
     # 2. Create Broadcast Log
     job_id = None
@@ -203,6 +274,14 @@ async def send_broadcast(
         job_id = f"job_{uuid.uuid4().hex}"
         status = "PENDING"
         
+    request_data = {
+        "title": request.title,
+        "content": request.content,
+        "type": request.type,
+        "actionUrl": request.actionUrl,
+        "scheduledAt": scheduled_at_value,
+    }
+
     broadcast_log = BroadcastLog(
         admin_id=current_admin.id,
         title=request.title,
@@ -216,8 +295,25 @@ async def send_broadcast(
         job_id=job_id
     )
     db.add(broadcast_log)
-    db.commit()
-    db.refresh(broadcast_log)
+
+    # Instant notification and audit log are committed in one transaction.
+    # WebSocket is best-effort and must only run after durable persistence.
+    if status == "SENT":
+        db.add(_build_global_notification(current_admin.id, request_data))
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.error(
+            "Failed to commit broadcast before realtime publish: %s",
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Broadcast could not be saved and was not published.",
+        ) from exc
 
     ws_payload = {
         "event": "NEW_BROADCAST",
@@ -227,45 +323,54 @@ async def send_broadcast(
             "type": request.type,
             "actionUrl": request.actionUrl,
             "isScheduled": request.isScheduled,
-            "scheduledAt": request.scheduledAt
+            "scheduledAt": scheduled_at_value,
         }
-    }
-    
-    request_data = {
-        "title": request.title,
-        "content": request.content,
-        "type": request.type,
-        "actionUrl": request.actionUrl,
-        "scheduledAt": request.scheduledAt
     }
 
     # 3. If scheduled, add APScheduler job
     if status == "PENDING":
-        scheduler.add_job(
-            push_scheduled_broadcast,
-            'date',
-            run_date=parsed_scheduled_at_aware,
-            id=job_id,
-            args=[job_id, current_admin.id, ws_payload, request_data]
-        )
+        try:
+            scheduler.add_job(
+                push_scheduled_broadcast,
+                "date",
+                run_date=parsed_scheduled_at_aware,
+                id=job_id,
+                args=[job_id, current_admin.id, ws_payload, request_data],
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to register scheduled broadcast %s: %s",
+                job_id,
+                exc,
+                exc_info=True,
+            )
+            try:
+                broadcast_log.status = "FAILED"
+                db.commit()
+            except Exception as status_exc:
+                db.rollback()
+                logger.error(
+                    "Failed to mark unscheduled broadcast %s as FAILED: %s",
+                    job_id,
+                    status_exc,
+                    exc_info=True,
+                )
+            raise HTTPException(
+                status_code=500,
+                detail="Broadcast was saved but could not be scheduled.",
+            ) from exc
+
         return BroadcastResponse(
             success=True,
-            message=f"Broadcast scheduled successfully for {request.scheduledAt}!",
+            message=f"Broadcast scheduled successfully for {scheduled_at_value}!",
             job_id=job_id
         )
 
-    # 4. Instant Broadcast: Push WS immediately & save to DB via background task
+    # 4. Instant broadcast: persistence succeeded, so realtime publish is safe.
     try:
-        await manager.broadcast(ws_payload)
-    except Exception as e:
-        logger.error(f"Error pushing instant WS broadcast: {e}", exc_info=True)
-
-    background_tasks.add_task(
-        save_broadcast_to_db,
-        None,
-        current_admin.id,
-        request_data
-    )
+        await notification_manager.broadcast(ws_payload)
+    except Exception as exc:
+        logger.error("Failed to publish instant broadcast: %s", exc, exc_info=True)
 
     return BroadcastResponse(
         success=True,
@@ -273,43 +378,82 @@ async def send_broadcast(
         job_id=job_id
     )
 
-@router.delete("/broadcast/{job_id}", summary="Cancel/Delete a scheduled broadcast")
+@router.delete("/broadcast/{job_id}", summary="Cancel a pending scheduled broadcast")
 def cancel_broadcast(
     job_id: str,
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_active_admin)
-):
-    log = db.query(BroadcastLog).filter(BroadcastLog.job_id == job_id).first()
+) -> dict:
+    log = (
+        db.query(BroadcastLog)
+        .filter(BroadcastLog.job_id == job_id)
+        .with_for_update()
+        .first()
+    )
     if not log and job_id.isdigit():
-        log = db.query(BroadcastLog).filter(BroadcastLog.id == int(job_id)).first()
-        
+        log = (
+            db.query(BroadcastLog)
+            .filter(BroadcastLog.id == int(job_id))
+            .with_for_update()
+            .first()
+        )
+
     if not log:
         raise HTTPException(status_code=404, detail="Scheduled broadcast not found.")
-        
-    # Remove from APScheduler if job exists
-    target_job_id = log.job_id or job_id
+
+    if not log.is_scheduled:
+        raise HTTPException(
+            status_code=409,
+            detail="Instant broadcasts cannot be cancelled.",
+        )
+    if log.status != "PENDING":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only PENDING broadcasts can be cancelled; current status is {log.status}.",
+        )
+
+    target_job_id = log.job_id
+    log.status = "CANCELLED"
     try:
-        scheduler.remove_job(target_job_id)
-    except Exception:
-        pass # Ignore if job is not in memory or already fired
-        
-    db.delete(log)
-    db.commit()
-    
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.error("Failed to cancel broadcast %s: %s", job_id, exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Broadcast cancellation could not be saved.",
+        ) from exc
+
+    # Database state is authoritative. Even if an in-memory job cannot be
+    # removed, the worker refuses to deliver a non-PENDING broadcast.
+    if target_job_id:
+        try:
+            scheduler.remove_job(target_job_id)
+        except Exception as exc:
+            logger.info(
+                "Scheduled job %s was already absent during cancellation: %s",
+                target_job_id,
+                exc,
+            )
+
     return {
-        "success": True, 
-        "message": "Scheduled broadcast cancelled and deleted successfully."
+        "success": True,
+        "message": "Scheduled broadcast cancelled successfully.",
+        "status": "CANCELLED",
     }
 
 @router.get("/broadcast/history", response_model=BroadcastHistoryResponse, summary="Get broadcast history")
 def get_broadcast_history(
-    skip: int = Query(0, description="Skip N records"),
-    limit: int = Query(20, description="Limit records"),
-    status: Optional[str] = Query(None, description="Filter by status (PENDING, SENT, CANCELLED)"),
+    skip: int = Query(0, ge=0, description="Skip N records"),
+    limit: int = Query(20, ge=1, le=100, description="Limit records"),
+    status: Optional[BroadcastStatus] = Query(
+        None,
+        description="Filter by status (PENDING, SENT, CANCELLED, FAILED)",
+    ),
     is_scheduled: Optional[bool] = Query(None, description="Filter by is_scheduled"),
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_active_admin)
-):
+) -> BroadcastHistoryResponse:
     query = db.query(BroadcastLog)
     if status:
         query = query.filter(BroadcastLog.status == status)
@@ -325,7 +469,7 @@ def get_broadcast_history(
     data = query.offset(skip).limit(limit).all()
     
     return BroadcastHistoryResponse(
-        data=data,
+        data=[BroadcastLogSchema.model_validate(item) for item in data],
         total=total,
         pageIndex=(skip // limit) + 1,
         pageSize=limit

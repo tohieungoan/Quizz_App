@@ -50,12 +50,12 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
             if room.current_question_index == expected_question_index:
                 updated_room = crud_room.next_question(db=db, room=room)
                 if updated_room.status == "ENDED":
-                    await room_websocket_manager.broadcast_to_room(
+                    await room_websocket_notification_manager.broadcast_to_room(
                         room.room_code,
                         {"type": "GAME_ENDED", "status": "ENDED"}
                     )
                 else:
-                    await room_websocket_manager.broadcast_to_room(
+                    await room_websocket_notification_manager.broadcast_to_room(
                         room.room_code,
                         {
                             "type": "NEXT_QUESTION",
@@ -101,7 +101,7 @@ def _send_sync_ws_notification(user_id: int, title: str, content: str, action_ur
     """
     try:
         import asyncio
-        from app.api.v1.websockets.manager import manager
+        from app.api.v1.websockets.notification_manager import notification_manager
         payload = {
             "type": "NOTIFICATION",
             "title": title,
@@ -118,10 +118,10 @@ def _send_sync_ws_notification(user_id: int, title: str, content: str, action_ur
                 loop = None
 
         if loop and loop.is_running():
-            asyncio.run_coroutine_threadsafe(manager.send_personal_message(payload, user_id), loop)
+            asyncio.run_coroutine_threadsafe(notification_manager.send_personal_message(payload, user_id), loop)
         else:
             try:
-                asyncio.run(manager.send_personal_message(payload, user_id))
+                asyncio.run(notification_manager.send_personal_message(payload, user_id))
             except Exception as inner_e:
                 logger.warning(f"Could not run async WS dispatch: {inner_e}")
     except Exception as e:
@@ -179,6 +179,16 @@ def launch_room(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Quiz with id {room_in.quiz_id} not found."
         )
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to launch a room with this quiz.",
+        )
+    if (quiz.status or "").strip().lower() != "published":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only a published quiz can be launched in a live room.",
+        )
 
     # (Optional) Verify if group exists if group_id is provided
     if room_in.group_id is not None:
@@ -188,6 +198,11 @@ def launch_room(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Group with id {room_in.group_id} not found."
+            )
+        if group.owner_id != current_user.id and current_user.role != "SUPER_ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to launch a room for this group.",
             )
 
     try:
@@ -417,7 +432,7 @@ async def end_room(
     from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.update_status(db=db, room=room, status="ENDED")
     # Broadcast game ended to all websocket clients
-    await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
+    await room_websocket_notification_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
     # Batch flush cached Redis answers to PostgreSQL database
     await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
     return updated_room
@@ -463,7 +478,7 @@ async def join_room_by_code(
         active_nicknames = await run_in_threadpool(
             lambda: [row[0] for row in db.query(Participant.nickname).filter(Participant.room_id == room.id).all()]
         )
-        await room_websocket_manager.broadcast_to_room(
+        await room_websocket_notification_manager.broadcast_to_room(
             room_code,
             {
                 "type": "PLAYER_JOINED",
@@ -569,7 +584,7 @@ async def start_room(
 
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast game started to all websocket clients in room
-    await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
+    await room_websocket_notification_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -737,7 +752,7 @@ async def next_question(
     from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast NEXT_QUESTION to all client WebSockets in room
-    await room_websocket_manager.broadcast_to_room(
+    await room_websocket_notification_manager.broadcast_to_room(
         room.room_code,
         {
             "type": "NEXT_QUESTION",
@@ -817,7 +832,7 @@ async def submit_answer(
         )
 
         # Real-time WebSocket notification to host panel
-        await room_websocket_manager.broadcast_to_room(
+        await room_websocket_notification_manager.broadcast_to_room(
             room.room_code,
             {
                 "type": "ANSWER_SUBMITTED",
@@ -898,7 +913,7 @@ async def leave_room_endpoint(
     if room_code and nickname:
         db_room = crud_room.get_by_code(db=db, room_code=room_code)
         active_nicknames = [p.nickname for p in db_room.participants] if db_room else []
-        await room_websocket_manager.broadcast_to_room(
+        await room_websocket_notification_manager.broadcast_to_room(
             room_code,
             {
                 "type": "PLAYER_LEFT",

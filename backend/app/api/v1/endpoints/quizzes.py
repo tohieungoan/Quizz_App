@@ -19,11 +19,12 @@ from app.schemas.quiz import (
 from app.services.media_asset_service import media_asset_service
 from app.services.quiz_authoring_policy import (
     ACTIVE_ROOM_STATUSES,
+    QuizInActiveExamError,
     QuizInActiveRoomError,
-    ensure_quiz_is_not_in_active_room,
+    ensure_quiz_authoring_is_unlocked,
 )
 from app.services.quiz_draft_service import (
-    QuizActiveRoomError,
+    QuizAuthoringLockedError,
     QuizDraftError,
     QuizNotFoundError,
     QuizPermissionError,
@@ -70,7 +71,7 @@ def _raise_draft_http_error(error: QuizDraftError) -> None:
         raise HTTPException(status_code=404, detail=str(error))
     if isinstance(error, QuizPermissionError):
         raise HTTPException(status_code=403, detail=str(error))
-    if isinstance(error, QuizActiveRoomError):
+    if isinstance(error, QuizAuthoringLockedError):
         raise HTTPException(status_code=409, detail=str(error))
     if isinstance(error, QuizVersionConflictError):
         raise HTTPException(
@@ -97,8 +98,8 @@ def _raise_draft_http_error(error: QuizDraftError) -> None:
 
 def _ensure_quiz_authoring_is_unlocked(db: Session, quiz_id: int) -> None:
     try:
-        ensure_quiz_is_not_in_active_room(db, quiz_id)
-    except QuizInActiveRoomError as error:
+        ensure_quiz_authoring_is_unlocked(db, quiz_id)
+    except (QuizInActiveRoomError, QuizInActiveExamError) as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
