@@ -212,6 +212,44 @@ export const LiveLeaderboard: React.FC = () => {
     fetchLeaderboard();
   }, [roomId, roomCode, nickname, myStreak]);
 
+  // WebSocket listener to automatically redirect member to /play when Host launches Q&A Mode
+  useEffect(() => {
+    if (!roomCode) return;
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+    const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
+    const token = localStorage.getItem('token');
+    const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=false${token ? `&token=${token}` : ''}`;
+
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(wsUrl);
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const msgType = data.t || data.type;
+          if (msgType === 'QA_SESSION_STARTED' || msgType === 'QAS') {
+            socket?.close();
+            navigate('/play', {
+              state: {
+                nickname,
+                roomCode,
+                roomId,
+                fromSource,
+                activeTab,
+              },
+            });
+          }
+        } catch (e) {}
+      };
+    } catch (e) {}
+
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [roomCode, nickname, roomId, navigate, fromSource, activeTab]);
+
   // Trigger podium reveal animation phases with count-up ticks
   useEffect(() => {
     if (loading || players.length === 0) return;

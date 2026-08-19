@@ -183,8 +183,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setQuickAIPrompt('');
     setAlertState({
       isOpen: true,
-      title: 'AI Questions Imported',
-      message: `Successfully reviewed and imported ${newQuestions.length} questions (${modelUsed}) into your quiz.`,
+      title: 'AI Generation Complete!',
+      message: `Successfully generated and added ${newQuestions.length} standard questions (${modelUsed}) to your quiz list.`,
       type: 'success'
     });
 

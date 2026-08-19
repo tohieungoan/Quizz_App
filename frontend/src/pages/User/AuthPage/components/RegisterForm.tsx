@@ -115,10 +115,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchLogin }) => 
     if (/[^A-Za-z0-9]/.test(pwd)) score++
     const levels = [
       { score: 0, label: '', color: '' },
-      { score: 1, label: 'Weak 🔴', color: 'bg-error' },
-      { score: 2, label: 'Fair 🟡', color: 'bg-tertiary-fixed-dim' },
-      { score: 3, label: 'Good 🟢', color: 'bg-secondary-container' },
-      { score: 4, label: 'Strong 💪', color: 'bg-secondary' },
+      { score: 1, label: 'Weak', color: 'bg-error' },
+      { score: 2, label: 'Fair', color: 'bg-tertiary-fixed-dim' },
+      { score: 3, label: 'Good', color: 'bg-secondary-container' },
+      { score: 4, label: 'Strong', color: 'bg-secondary' },
     ]
     return levels[score] || levels[0]
   }

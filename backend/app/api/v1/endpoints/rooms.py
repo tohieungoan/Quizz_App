@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.crud.crud_quiz import crud_quiz
 from app.crud.crud_room import crud_room
 from app.crud.crud_user import crud_user
 from app.api.v1.websockets.room_manager import room_websocket_manager
+from app.services.redis_room_service import redis_room_service
 from app.schemas.room import (
     ParticipantJoin,
     ParticipantResponse,
@@ -334,7 +335,7 @@ def get_my_active_rooms(
 
 
 @router.get("/{room_code}", response_model=RoomResponse, summary="Get active room by code")
-def get_room_by_code(
+async def get_room_by_code(
     room_code: str,
     db: Session = Depends(get_db),
 ) -> Any:
@@ -388,6 +389,16 @@ def get_room_by_code(
 
     # Populate room fields dynamically
     room.active_question = active_q
+
+    # Attach live Q&A state, top voted questions & chat messages
+    try:
+        from app.services.redis_room_service import redis_room_service
+        setattr(room, "top_voted_questions", await redis_room_service.get_top_voted_questions(room.room_code))
+        setattr(room, "qa_state", await redis_room_service.get_qa_session_state(room.room_code))
+        setattr(room, "chat_messages", await redis_room_service.get_chat_messages(room.room_code))
+    except Exception as e_qa:
+        logger.warning(f"Failed to load live qa_state for room {room.room_code}: {e_qa}")
+
     return room
 
 
@@ -575,7 +586,7 @@ async def start_room(
 
 
 @router.get("/{room_id}/live-session", response_model=RoomLiveStatus, summary="Get real-time live session data (Host Panel)")
-def get_live_session(
+async def get_live_session(
     room_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
@@ -700,6 +711,18 @@ def get_live_session(
                 "equipped_title": _get_equipped_title(p.user_id),
             })
 
+    from app.services.redis_room_service import redis_room_service
+    top_votes = []
+    qa_state = {"is_active": False, "current_question_id": None}
+    chat_messages = []
+    if room.room_code:
+        try:
+            top_votes = await redis_room_service.get_top_voted_questions(room.room_code)
+            qa_state = await redis_room_service.get_qa_session_state(room.room_code)
+            chat_messages = await redis_room_service.get_chat_messages(room.room_code)
+        except Exception as e_live:
+            logger.warning(f"Failed to fetch live votes/qa state for room {room.room_code}: {e_live}")
+
     return {
         "room_id": room.id,
         "room_code": room.room_code or "",
@@ -713,7 +736,10 @@ def get_live_session(
         "total_questions": len(room.quiz.questions) if room.quiz and room.quiz.questions else 0,
         "active_question": active_question,
         "participants": participants_live,
-        "answer_distribution": distribution
+        "answer_distribution": distribution,
+        "top_voted_questions": top_votes,
+        "qa_state": qa_state,
+        "chat_messages": chat_messages
     }
 
 
@@ -908,3 +934,150 @@ async def leave_room_endpoint(
         )
         
     return {"message": "Successfully left the room."}
+@router.post("/{room_code}/vote-question", summary="Vote for a question in a room (HTTP Fallback)")
+async def vote_question_endpoint(
+    room_code: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+) -> Any:
+    question_id = payload.get("question_id")
+    participant_id = payload.get("participant_id") or 0
+    voter_nickname = payload.get("nickname") or "guest"
+    if not question_id:
+        raise HTTPException(status_code=400, detail="question_id is required")
+
+    voter_key = str(participant_id) if participant_id and int(participant_id) > 0 else voter_nickname
+    new_votes = await redis_room_service.vote_question_redis(
+        room_code=room_code,
+        question_id=int(question_id),
+        voter_id=voter_key,
+    )
+
+    top_questions = await redis_room_service.get_top_voted_questions(room_code)
+
+    await room_websocket_manager.broadcast_to_room(
+        room_code,
+        {
+            "type": "QUESTION_VOTED",
+            "t": "QV",
+            "question_id": question_id,
+            "vote_count": new_votes,
+            "top_questions": top_questions,
+        }
+    )
+
+    return {
+        "status": "ok",
+        "question_id": question_id,
+        "vote_count": new_votes,
+        "top_voted_questions": top_questions
+    }
+
+
+@router.post("/{room_code}/start-qa", summary="Start Q&A Mode in room (WS + HTTP Fallback)")
+async def start_qa_endpoint(
+    room_code: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    first_top_q = None
+    all_top_qs = await redis_room_service.get_top_voted_questions(room_code)
+    if all_top_qs:
+        first_top_q = all_top_qs[0].get("question_id")
+
+    await redis_room_service.set_qa_session_state(
+        room_code,
+        is_active=True,
+        current_question_id=first_top_q
+    )
+
+    await room_websocket_manager.broadcast_to_room(
+        room_code,
+        {
+            "type": "QA_SESSION_STARTED",
+            "t": "QAS",
+            "current_question_id": first_top_q,
+            "top_questions": all_top_qs,
+        }
+    )
+
+    return {
+        "status": "ok",
+        "qa_state": {
+            "is_active": True,
+            "current_question_id": first_top_q
+        },
+        "top_voted_questions": all_top_qs
+    }
+
+
+@router.post("/{room_code}/chat-message", summary="Send live Q&A chat message (WS + HTTP Fallback)")
+async def send_chat_message_endpoint(
+    room_code: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+) -> Any:
+    sender = payload.get("sender") or "User"
+    text = (payload.get("message") or payload.get("text") or "").strip()
+    avatar = payload.get("avatar")
+
+    if not text:
+        raise HTTPException(
+            status_code=400,
+            detail="message content is required"
+        )
+
+    msg_item = await redis_room_service.add_chat_message(
+        room_code,
+        sender=sender,
+        text=text,
+        avatar=avatar,
+        timestamp=payload.get("timestamp")
+    )
+
+    await room_websocket_manager.broadcast_to_room(
+        room_code,
+        {
+            "type": "CHAT_MESSAGE_RECEIVED",
+            "t": "CMR",
+            "sender": msg_item["sender"],
+            "text": msg_item["text"],
+            "message": msg_item["text"],
+            "avatar": msg_item["avatar"],
+            "timestamp": msg_item["timestamp"],
+        }
+    )
+
+    return {
+        "status": "ok",
+        "sender": sender,
+        "text": text
+    }
+
+
+@router.post("/{room_code}/select-qa-question", summary="Select active Q&A question in room (WS + HTTP Fallback)")
+async def select_qa_question_endpoint(
+    room_code: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+) -> Any:
+    target_qid = payload.get("question_id") or payload.get("qid")
+
+    await redis_room_service.set_qa_session_state(
+        room_code,
+        is_active=True,
+        current_question_id=target_qid
+    )
+
+    await room_websocket_manager.broadcast_to_room(
+        room_code,
+        {
+            "type": "QA_QUESTION_CHANGED",
+            "t": "QC",
+            "current_question_id": target_qid,
+        }
+    )
+
+    return {
+        "status": "ok",
+        "current_question_id": target_qid
+    }

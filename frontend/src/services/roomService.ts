@@ -69,6 +69,18 @@ export const roomService = {
   }): Promise<any> =>
     apiClient.post<any>(`/rooms/${roomCode}/submit-answer`, params),
 
+  voteQuestion: (roomCode: string, questionId: number, participantId: number, nickname?: string): Promise<any> =>
+    apiClient.post<any>(`/rooms/${roomCode}/vote-question`, { question_id: questionId, participant_id: participantId, nickname }),
+
+  startQA: (roomCode: string): Promise<any> =>
+    apiClient.post<any>(`/rooms/${roomCode}/start-qa`, {}),
+
+  sendChatMessage: (roomCode: string, sender: string, message: string, avatar?: string | null): Promise<any> =>
+    apiClient.post<any>(`/rooms/${roomCode}/chat-message`, { sender, message, avatar }),
+
+  selectQAQuestion: (roomCode: string, questionId: number): Promise<any> =>
+    apiClient.post<any>(`/rooms/${roomCode}/select-qa-question`, { question_id: questionId }),
+
   updateSettings: (roomId: number | string, settings: { progression_mode?: 'manual' | 'auto'; allow_show_rank?: boolean }): Promise<any> =>
     apiClient.patch<any>(`/rooms/${roomId}/settings`, settings),
 }

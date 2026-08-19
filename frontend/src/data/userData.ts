@@ -87,7 +87,9 @@ export interface MemberExamRecord {
   examTitle: string;
   score: string;
   date: string;
-  status: 'Completed' | 'In Progress' | 'Missed';
+  status: 'Completed' | 'In Progress' | 'Missed' | 'Not Started';
+  completedAt?: string;
+  timeTaken?: string;
 }
 
 export interface GroupMember {
@@ -110,6 +112,8 @@ export interface HostGroup {
   membersCount: number;
   description?: string;
   icon?: string;
+  ownerName?: string;
+  ownerEmail?: string;
   members?: GroupMember[];
   pendingRequests?: GroupMember[];
 }

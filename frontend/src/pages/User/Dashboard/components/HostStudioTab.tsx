@@ -228,6 +228,12 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       setIsLoadingGroups(true);
       setGroupsError(null);
       const data = await groupService.getMyGroups();
+      const savedUserStr = localStorage.getItem('user');
+      let currentUser: { name?: string; email?: string } | null = null;
+      try {
+        if (savedUserStr) currentUser = JSON.parse(savedUserStr);
+      } catch (e) {}
+
       const hostGroups = data.map((bg): HostGroup => ({
         id: String(bg.id),
         name: bg.name,
@@ -236,6 +242,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
         membersCount: 0,
         description: bg.description || '',
         icon: bg.icon || 'GraduationCap',
+        ownerName: bg.owner_name || currentUser?.name || currentUser?.email || 'Unknown Host',
+        ownerEmail: bg.owner_email || currentUser?.email || '',
         members: [],
         pendingRequests: []
       }));
@@ -383,8 +391,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             examId: es.examTitle,
             examTitle: es.examTitle,
             score: es.score,
-            date: '',
+            date: es.completedAt || '',
             status: es.status as any,
+            completedAt: es.completedAt || '',
+            timeTaken: es.timeTaken || '',
           })),
         }));
       } catch (err) {
@@ -392,7 +402,18 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
       }
     }
 
-    // Collect all unique exam titles for this group (both from assigned exams state and member records)
+    // Determine Group Owner info
+    let currentUser: { name?: string; email?: string } | null = null;
+    try {
+      const savedUserStr = localStorage.getItem('user');
+      if (savedUserStr) currentUser = JSON.parse(savedUserStr);
+    } catch (e) {}
+
+    const ownerNameDisplay = group.ownerName || currentUser?.name || currentUser?.email || 'Unknown Host';
+    const ownerEmailDisplay = group.ownerEmail || (group.ownerName ? '' : (currentUser?.email || ''));
+    const ownerFullString = ownerEmailDisplay ? `${ownerNameDisplay} (${ownerEmailDisplay})` : ownerNameDisplay;
+
+    // Collect all unique exam titles for this group
     const uniqueExams: string[] = [];
 
     // 1. Add all exams assigned to this group in the system
@@ -447,6 +468,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           td { border: 1px solid #e5e7eb; padding: 6px; vertical-align: middle; }
           .title { font-size: 16pt; font-weight: bold; color: #047857; text-align: center; }
           .header-bg { background-color: #ecfdf5; font-weight: bold; }
+          .meta-label { font-weight: bold; color: #065f46; background-color: #d1fae5; }
         </style>
       </head>
       <body>
@@ -455,20 +477,22 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           <tr><td colspan="${totalCols}" style="text-align: center; font-style: italic; color: #6b7280;">Study Group Grade Summary Report - Export Time: ${exportTimestamp}</td></tr>
           <tr></tr>
           <tr class="header-bg">
-            <td>Group Name:</td>
+            <td class="meta-label">Group Name:</td>
             <td colspan="2"><b>${group.name}</b></td>
-            <td>Export Time:</td>
+            <td class="meta-label">Group Owner:</td>
+            <td colspan="${Math.max(totalCols - 4, 1)}"><b>${ownerFullString}</b></td>
+          </tr>
+          <tr class="header-bg">
+            <td class="meta-label">Join Code:</td>
+            <td colspan="2"><b>${group.joinCode || group.id}</b></td>
+            <td class="meta-label">Export Time:</td>
             <td colspan="${Math.max(totalCols - 4, 1)}"><b>${exportTimestamp}</b></td>
           </tr>
           <tr class="header-bg">
-            <td>Join Code:</td>
-            <td colspan="2"><b>${group.joinCode || group.id}</b></td>
-            <td>Total Members:</td>
-            <td colspan="${Math.max(totalCols - 4, 1)}"><b>${membersToExport.length} Members</b></td>
-          </tr>
-          <tr class="header-bg">
-            <td>Description:</td>
-            <td colspan="${totalCols - 1}">${group.description || 'No description provided'}</td>
+            <td class="meta-label">Total Members:</td>
+            <td colspan="2"><b>${membersToExport.length} Members</b></td>
+            <td class="meta-label">Description:</td>
+            <td colspan="${Math.max(totalCols - 4, 1)}">${group.description || 'No description provided'}</td>
           </tr>
           <tr></tr>
           <thead>
@@ -476,26 +500,46 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
               <th style="width: 45px;">No.</th>
               <th style="width: 180px;">Full Name</th>
               <th style="width: 220px;">Member Email</th>
-              <th style="width: 130px;">Exams Completed</th>
+              <th style="width: 140px;">Joined Date</th>
               <th style="width: 110px;">Average Score</th>
               ${uniqueExams.length > 0
-                ? uniqueExams.map((title) => `<th style="min-width: 140px;">${title}</th>`).join('')
+                ? uniqueExams.map((title) => `<th style="min-width: 160px;">${title}</th>`).join('')
                 : '<th style="width: 180px;">Detailed Scores</th>'}
             </tr>
           </thead>
           <tbody>
             ${membersToExport.length > 0 ? membersToExport.map((m, idx) => {
-              // Build lookup dictionary of examTitle -> score
-              const scoreMap: Record<string, string> = {};
+              // Build lookup dictionary of examTitle -> details
+              const scoreMap: Record<string, { score: string; status: string; completedAt?: string; timeTaken?: string }> = {};
               (m.examScores || []).forEach((es) => {
-                if (es.examTitle) scoreMap[es.examTitle] = es.score;
+                if (es.examTitle) {
+                  scoreMap[es.examTitle] = {
+                    score: es.score,
+                    status: es.status,
+                    completedAt: es.completedAt || es.date,
+                    timeTaken: es.timeTaken
+                  };
+                }
               });
 
               const examCells = uniqueExams.length > 0
                 ? uniqueExams.map((title) => {
-                    const val = scoreMap[title];
-                    const isPassed = val && val !== 'N/A' && val !== 'Pending' && !val.includes('Missed');
-                    return `<td style="text-align: center; font-weight: bold; ${isPassed ? 'color: #047857;' : 'color: #6b7280;'}">${val || '—'}</td>`;
+                    const item = scoreMap[title];
+                    const val = item?.score;
+                    const isPassed = val && val !== 'N/A' && val !== '--' && val !== 'Pending' && !val.includes('Missed');
+                    
+                    let detailsText = '';
+                    if (item?.completedAt) {
+                      detailsText += `<br/><span style="font-size: 8pt; font-weight: normal; color: #4b5563;">Done: ${item.completedAt}</span>`;
+                    }
+                    if (item?.timeTaken) {
+                      detailsText += `<br/><span style="font-size: 8pt; font-weight: normal; color: #6b7280;">Time: ${item.timeTaken}</span>`;
+                    }
+
+                    return `<td style="text-align: center; font-weight: bold; ${isPassed ? 'color: #047857;' : 'color: #6b7280;'}">
+                      <div>${val || '—'}</div>
+                      ${detailsText}
+                    </td>`;
                   }).join('')
                 : '<td style="text-align: center; color: #9ca3af;">No exams taken</td>';
 
@@ -504,7 +548,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <td style="text-align: center;">${idx + 1}</td>
                   <td><b>${m.name}</b></td>
                   <td>${m.email}</td>
-                  <td style="text-align: center; font-weight: bold;">${m.examsCompleted ?? 0} / ${uniqueExams.length || m.totalExamsAssigned || 0}</td>
+                  <td style="text-align: center;">${m.joinedDate || '—'}</td>
                   <td style="text-align: center; font-weight: bold; color: #047857;">${m.averageScore || 'N/A'}</td>
                   ${examCells}
                 </tr>
@@ -858,8 +902,10 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           examId: es.examTitle,
           examTitle: es.examTitle,
           score: es.score,
-          date: '',
-          status: es.status as any
+          date: es.completedAt || '',
+          status: es.status as any,
+          completedAt: es.completedAt || '',
+          timeTaken: es.timeTaken || ''
         }))
       }));
 
@@ -1429,7 +1475,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             onClick={onOpenHostRoomModal}
             className="w-full sm:w-auto px-6 py-2.5 sm:py-3 bg-white text-secondary hover:bg-emerald-50 font-extrabold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 active:scale-95"
           >
-            <Play className="w-4 h-4 fill-current" /> Launch Live Room 🚀
+            <Play className="w-4 h-4 fill-current" /> Launch Live Room
           </button>
         </div>
       </div>
@@ -1469,7 +1515,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           </div>
         ) : activeRooms.length === 0 ? (
           <div className="py-6 text-center text-xs text-slate-400 bg-white/5 rounded-2xl border border-white/10 px-3">
-            No active live rooms running right now. Click <strong>"Launch Live Room 🚀"</strong> above to start a new session.
+            No active live rooms running right now. Click <strong>"Launch Live Room"</strong> above to start a new session.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">

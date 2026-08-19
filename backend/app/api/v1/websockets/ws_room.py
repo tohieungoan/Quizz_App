@@ -1,12 +1,14 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Union, Dict, Any, List
 import asyncio
+import datetime
 import logging
 
 from app.api.v1.websockets.room_manager import room_websocket_manager
 from app.api.deps import get_db
 from app.crud.crud_room import crud_room
+from app.services.redis_room_service import redis_room_service
 
 logger = logging.getLogger(__name__)
 
@@ -241,13 +243,133 @@ async def websocket_room(
 
                         sync_payload = await run_in_threadpool(_get_sync_state)
                         if sync_payload:
+                            qa_state = await redis_room_service.get_qa_session_state(room_code)
+                            top_votes = await redis_room_service.get_top_voted_questions(room_code)
                             await websocket.send_json({
                                 "type": "SYNC_STATE_RESPONSE",
                                 "t": "SSR",
                                 **sync_payload,
                                 "q": sync_payload.get("active_question"),
                                 "tl": sync_payload.get("time_left"),
+                                "qa_state": qa_state,
+                                "top_voted_questions": top_votes,
                             })
+                    except Exception as sync_err:
+                        logger.error(f"Error handling SYNC_STATE: {sync_err}")
+
+                elif msg_type in ["VOTE_QUESTION", "VQ"]:
+                    try:
+                        question_id = data.get("question_id") or data.get("qid")
+                        participant_id = data.get("participant_id") or data.get("pid") or 0
+
+                        if question_id:
+                            voter_key = str(participant_id) if (participant_id and int(participant_id) > 0) else (nickname or "guest")
+                            # 1. Update Redis RAM state (<1ms)
+                            new_votes = await redis_room_service.vote_question_redis(
+                                room_code=room_code,
+                                question_id=int(question_id),
+                                voter_id=voter_key,
+                            )
+
+                            # 2. Fetch updated top voted questions list
+                            top_questions = await redis_room_service.get_top_voted_questions(room_code)
+
+                            # 4. Broadcast QUESTION_VOTED to room host and members
+                            await room_websocket_manager.broadcast_to_room(
+                                room_code,
+                                {
+                                    "type": "QUESTION_VOTED",
+                                    "t": "QV",
+                                    "question_id": question_id,
+                                    "vote_count": new_votes,
+                                    "top_questions": top_questions,
+                                }
+                            )
+                    except Exception as vote_err:
+                        logger.error(f"Error handling VOTE_QUESTION: {vote_err}")
+
+                elif msg_type in ["START_QA_SESSION", "SQS"]:
+                    try:
+                        first_top_q = None
+                        all_top_qs = await redis_room_service.get_top_voted_questions(room_code)
+                        if all_top_qs:
+                            first_top_q = all_top_qs[0].get("question_id")
+
+                        await redis_room_service.set_qa_session_state(room_code, is_active=True, current_question_id=first_top_q)
+
+                        # Broadcast to room
+                        await room_websocket_manager.broadcast_to_room(
+                            room_code,
+                            {
+                                "type": "QA_SESSION_STARTED",
+                                "t": "QAS",
+                                "current_question_id": first_top_q,
+                                "top_questions": all_top_qs,
+                            }
+                        )
+                    except Exception as qa_start_err:
+                        logger.error(f"Error starting QA session: {qa_start_err}")
+
+                elif msg_type in ["NEXT_QA_QUESTION", "NQQ", "SELECT_QA_QUESTION", "SQAQ"]:
+                    try:
+                        target_qid = data.get("question_id") or data.get("qid")
+                        await redis_room_service.set_qa_session_state(room_code, is_active=True, current_question_id=target_qid)
+
+                        # Broadcast QA_QUESTION_CHANGED to room
+                        await room_websocket_manager.broadcast_to_room(
+                            room_code,
+                            {
+                                "type": "QA_QUESTION_CHANGED",
+                                "t": "QC",
+                                "current_question_id": target_qid,
+                            }
+                        )
+                    except Exception as qa_q_err:
+                        logger.error(f"Error updating QA question: {qa_q_err}")
+
+                elif msg_type in ["SEND_CHAT_MESSAGE", "SCM"]:
+                    try:
+                        sender = data.get("sender") or decoded_nickname or "User"
+                        text = data.get("message") or data.get("text") or ""
+                        avatar = data.get("avatar")
+                        if text.strip():
+                            msg_item = await redis_room_service.add_chat_message(
+                                room_code,
+                                sender=sender,
+                                text=text.strip(),
+                                avatar=avatar,
+                                timestamp=data.get("timestamp")
+                            )
+
+                            await room_websocket_manager.broadcast_to_room(
+                                room_code,
+                                {
+                                    "type": "CHAT_MESSAGE_RECEIVED",
+                                    "t": "CMR",
+                                    "sender": msg_item["sender"],
+                                    "text": msg_item["text"],
+                                    "avatar": msg_item["avatar"],
+                                    "timestamp": msg_item["timestamp"],
+                                }
+                            )
+                    except Exception as chat_err:
+                        logger.error(f"Error handling CHAT_MESSAGE: {chat_err}")
+
+                elif msg_type in ["AUDIO_STREAM", "AS"]:
+                    try:
+                        chunk = data.get("chunk") or data.get("c")
+                        if chunk:
+                            await room_websocket_manager.broadcast_to_room(
+                                room_code,
+                                {
+                                    "type": "AUDIO_STREAM",
+                                    "t": "AS",
+                                    "chunk": chunk,
+                                    "sender": decoded_nickname,
+                                }
+                            )
+                    except Exception as audio_err:
+                        logger.error(f"Error handling AUDIO_STREAM: {audio_err}")
                     except Exception as sync_err:
                         logger.error(f"Error handling SYNC_STATE: {sync_err}")
                 else:

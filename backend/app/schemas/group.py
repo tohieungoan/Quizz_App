@@ -38,6 +38,8 @@ class GroupMemberResponse(BaseModel):
 class GroupResponse(GroupBase):
     id: int
     owner_id: int
+    owner_name: Optional[str] = None
+    owner_email: Optional[str] = None
     group_code: str
     created_at: datetime
     updated_at: datetime
@@ -71,6 +73,8 @@ class ExamScoreDetail(BaseModel):
     examTitle: str
     score: str
     status: str
+    completedAt: Optional[str] = ""
+    timeTaken: Optional[str] = ""
 
 
 class RosterMemberResponse(BaseModel):

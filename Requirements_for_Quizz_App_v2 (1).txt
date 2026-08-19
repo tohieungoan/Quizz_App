@@ -1,0 +1,190 @@
+Quizz App Requirements (v2 - Role Update):
+I want to host live quiz sessions for my students. Instead of just assigning static quizzes,
+I want to create a "room" where users can join with a code, and they will all see the same questions at the same time, in the same order, controlled by the host.
+
+1. Business Goals
+
+	Provide a platform for users to create and host quizzes.
+
+	Engage users in both live sessions (game mode) and formal assessments (exam mode).
+
+	Allow Super Admins to manage quizzes, users, and results from a management dashboard.
+
+2. User Roles
+
+User
+
+	Create/manage their own quizzes and questions.
+
+	Host live rooms (with code) or assign scheduled quizzes — any User can act as Host for their own quiz.
+
+	Join quiz rooms with a code or access assigned quizzes (as a participant, when not hosting).
+
+	Answer questions within time limits.
+
+	View results, progress, and feedback.
+
+	Monitor participation and performance for rooms they host.
+
+	Export results and track progress for rooms they host.
+
+Super Admin
+
+	Full oversight of the platform: manage all Users, quizzes, and rooms system-wide.
+
+	Access the Management Dashboard across all quizzes/rooms, not just their own.
+
+	Manage user accounts (create, suspend, delete, assign permissions).
+
+	View platform-wide reports and analytics across all Users' quizzes.
+
+	Configure system-level settings, notifications, and integrations.
+
+Guest (Non-User / Anonymous)
+
+	Join a live quiz room (Game Mode) using only a room code and nickname — no account or login required.
+
+	Cannot host, cannot create/manage quizzes, cannot access any dashboard.
+
+	Cannot access Exam Mode, which requires an authenticated User login/user ID.
+
+	Results are session-only: no persistent history, progress tracking, or badges are saved after the room closes.
+
+Note: Every User can be a Host of their own quiz room or assigned quiz. The Super Admin role is an elevated, platform-wide administrative role layered on top of the User role — Super Admins retain all User capabilities plus system-wide management. The Guest role is a lightweight, unauthenticated role limited to joining live Game Mode rooms — it has no account, no persistence, and no hosting/exam access.
+
+3. Core Features
+3.1 Quiz Creation & Management
+
+	Create quizzes with title, subject, description, and difficulty.
+
+	Add multiple question types: MCQ, True/False, Short Answer.
+
+	Randomize question order (optional).
+
+	Save quizzes in a Question Bank for reuse.
+
+3.2 Live Quiz (Game Mode)
+
+	Host (any User) creates a Room with a unique code.
+
+	Users join with code and nickname/user ID.
+
+	Host pushes questions one by one (synchronized).
+
+	Users answer in real-time with visible countdown timer.
+
+	Show answer stats and leaderboard after each question.
+
+	Display final leaderboard at session end.
+
+3.3 Exam Mode (Formal Assessment)
+
+	Host assigns a quiz with start/end schedule.
+
+	Users access quiz via login/user ID.
+
+	Questions shown in order; navigation rules configurable (next/back allowed or locked).
+
+	Strict timer (per quiz or per question).
+
+	Results hidden until Host (or Super Admin) publishes.
+
+3.4 Management Dashboard
+
+	Dashboard Overview: Total quizzes, active rooms, recent sessions, quick actions (scoped to the User's own quizzes, or platform-wide for Super Admin).
+
+	Quiz Management: Search, filter, edit, duplicate, delete quizzes.
+
+	Room Management: View active/past rooms, participants, close/reopen sessions.
+
+	User Management (Super Admin only): Import user list (CSV), assign quizzes, view history, manage accounts and permissions.
+
+	Reports: Quiz-level analytics (average, question difficulty), user-level progress, export to CSV/PDF. Super Admin can view reports across all Users.
+
+	Notifications: Send reminders and announcements (before/after quiz).
+
+3.5 User Dashboard
+
+	View upcoming quizzes with schedule.
+
+	Review past quizzes with scores and feedback.
+
+	Track progress (performance chart).
+
+	Earn badges/rewards (if game mode enabled).
+
+	Access quiz-hosting tools to create/host their own rooms.
+
+4. Non-Functional Requirements
+
+	Performance: Support at least 200 concurrent users per room.
+
+	Real-Time: WebSocket/Socket.IO for live synchronization.
+
+	Security: Room codes expire; answers hidden until allowed; user login for exams; role-based access control between Guest, User, and Super Admin — Guests are restricted to Game Mode rooms only and have no access to Exam Mode or dashboards.
+
+	Scalability: Expandable to thousands of users.
+
+	Usability: Mobile-friendly, simple, user-friendly UI.
+
+	Accessibility: Cross-browser, support for low-bandwidth environments.
+
+5. Future Enhancements
+
+	Team Mode: Users grouped; scores combined.
+
+	AI Question Suggestions: Generate or recommend questions.
+
+	Integration: Google Classroom, Moodle, LMS.
+
+	Offline Mode: Attempt quiz without internet, sync later.
+
+Non-Functional Requirements
+	Real-time updates: WebSocket/Socket.IO or similar to push questions and answers instantly.
+
+	Scalability: Should handle 50–100 users in a room without lag.
+
+	Security: Room code should expire after session ends.
+
+	Mobile-Friendly: Users should be able to join easily from a phone browser.
+
+Future Enhancements (Nice-to-have)
+	Host can show live stats (percentage of users choosing each option).
+
+	Fun mode with sounds, animations, or countdown music (like Kahoot).
+
+	Teams mode (users grouped, scores combined).
+
+	Anonymous "practice rooms" for revision without tracking.
+
+6. QR Live Session Q&A
+
+	Host generates a unique QR code for each live session, displayed on screen alongside (or instead of) the text room code — participants scan to join instantly from their phone, no manual code typing needed.
+
+	Dedicated "Ask a Question" panel: Guests/Users in a live room can submit questions to the Host in real time during the session (separate from quiz answers), without interrupting question flow.
+
+	Upvote system: Other participants can upvote submitted questions so the Host sees the most relevant ones rise to the top.
+
+	Host view: A live moderation queue where the Host can see incoming questions, mark them as answered, pin one to highlight it, or dismiss/hide inappropriate submissions.
+
+	Anonymous toggle: Host can allow questions to be submitted anonymously (name hidden from other participants) or require nicknames to be shown, configurable per session.
+
+	Optional voice-to-text: Allow participants to submit a question by speaking instead of typing (accessibility/mobile-friendly).
+
+	Post-session export: Host can export the full list of submitted Q&A (with upvote counts) as CSV/PDF for follow-up after class, similar to the existing Reports export.
+
+	Works independently of quiz flow: the QR Q&A panel can be toggled on for any session — Game Mode, Exam Mode intermission, or a standalone Q&A-only room (no quiz questions at all).
+
+7. AI Support
+
+AI Question Generator:
+	Host (User) inputs a topic/lesson content (text, or uploads a PDF/DOCX/slide file) → AI automatically generates MCQ, True/False, and Short Answer questions along with correct answers.
+
+AI Difficulty Estimator:
+	Automatically suggests a difficulty level (easy/medium/hard) for each question based on the content and actual user response data.
+
+AI Rephraser/Variant Generator:
+	Generates multiple variants of the same question (changing numbers, rewording phrasing) to prevent answer copying between users in exam mode.
+
+AI Answer Validator for Short Answer:
+	Automatically grades free-text answers using semantic matching instead of simple exact string matching.

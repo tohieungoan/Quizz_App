@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DoorOpen, ArrowRight, ShieldCheck, User, Users, PlusCircle, CheckCircle2, BookOpen, Trash2 } from 'lucide-react';
+import { DoorOpen, ArrowRight, ShieldCheck, User, Users, PlusCircle, CheckCircle2, BookOpen, Trash2, LogIn } from 'lucide-react';
 import { groupService, roomService } from '@/services';
 import { recordDailyActivity } from '@/utils/streakTracker';
 
@@ -250,9 +250,11 @@ export const JoinRoomTab: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full py-4 bg-gradient-to-r from-primary to-secondary text-white font-extrabold text-base rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 active:scale-98"
+              className="group w-full py-4 bg-gradient-to-r from-primary to-primary-container text-white font-extrabold text-base rounded-2xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 active:scale-98"
             >
-              Enter Live Room Lobby 🚀 <ArrowRight className="w-5 h-5" />
+              <LogIn className="w-5 h-5" />
+              <span>Enter Live Room Lobby</span>
+              <ArrowRight className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-1" />
             </button>
           </form>
 

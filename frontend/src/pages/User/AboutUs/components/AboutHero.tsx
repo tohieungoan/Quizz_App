@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlayCircle, Brain, TrendingUp, Award, Zap } from 'lucide-react';
+import { PlayCircle, Brain, TrendingUp, Award, Zap, Target, Globe } from 'lucide-react';
 
 export const AboutHero: React.FC = () => {
   return (
@@ -13,23 +13,20 @@ export const AboutHero: React.FC = () => {
         <div className="space-y-6 md:space-y-8 z-10 animate-fade-in-up">
           <h1 className="font-headline-xl text-3xl sm:text-4xl lg:text-6xl font-extrabold text-on-surface leading-tight">
             Building the Future of <br className="hidden sm:inline" />
-            <span className="text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-              Learning Together
+            <span className="bg-gradient-to-r from-primary via-primary-container to-secondary bg-clip-text text-transparent">
+              Interactive Learning
             </span>
           </h1>
-          <p className="font-body-lg text-lg sm:text-xl text-on-surface-variant font-medium max-w-lg">
-            Empowering hosts and inspiring members through gamified learning experiences.
-          </p>
-          <p className="font-body-md text-sm sm:text-base text-on-surface-variant max-w-lg leading-relaxed">
-            We believe learning shouldn't be a chore. QuizzApp merges high-stakes academic rigor with the dopamine rush of
-            modern gaming, creating an ecosystem where progress is celebrated and anxiety is left behind.
+
+          <p className="font-body-lg text-base sm:text-lg text-on-surface-variant max-w-xl font-normal leading-relaxed">
+            QuizzApp is a next-generation study platform engineered to combine gamified learning with precision analytics. We blend proven cognitive science with modern gaming, creating an ecosystem where progress is celebrated and anxiety is left behind.
           </p>
 
           {/* Quick Mobile Feature Badges */}
           <div className="flex flex-wrap gap-2 pt-1 lg:hidden">
-            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold">⚡ Fast Setup</span>
-            <span className="px-3 py-1 bg-secondary/10 text-secondary rounded-full text-xs font-semibold">🎯 99% Engagement</span>
-            <span className="px-3 py-1 bg-tertiary/10 text-tertiary rounded-full text-xs font-semibold">🌐 Global Access</span>
+            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-semibold flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Fast Setup</span>
+            <span className="px-3 py-1 bg-secondary/10 text-secondary rounded-full text-xs font-semibold flex items-center gap-1"><Target className="w-3.5 h-3.5" /> 99% Engagement</span>
+            <span className="px-3 py-1 bg-tertiary/10 text-tertiary rounded-full text-xs font-semibold flex items-center gap-1"><Globe className="w-3.5 h-3.5" /> Global Access</span>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2 sm:pt-4">

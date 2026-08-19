@@ -361,7 +361,7 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
               type="submit"
               className="px-6 py-2.5 rounded-xl bg-secondary hover:bg-secondary/90 text-white font-extrabold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
             >
-              <Play className="w-4 h-4 fill-current" /> Launch Room 🚀
+              <Play className="w-4 h-4 fill-current" /> Launch Room
             </button>
           </div>
         </form>

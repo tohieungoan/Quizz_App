@@ -103,7 +103,14 @@ def read_my_groups(
         return []
 
     groups = db.query(Group).filter(Group.id.in_(all_ids)).order_by(Group.created_at.desc()).all()
-    return groups
+    result = []
+    for g in groups:
+        owner = db.query(User).filter(User.id == g.owner_id).first()
+        g_dict = GroupResponse.model_validate(g).model_dump()
+        g_dict["owner_name"] = (owner.fullname or owner.email) if owner else "Unknown Host"
+        g_dict["owner_email"] = owner.email if owner else ""
+        result.append(g_dict)
+    return result
 
 
 
@@ -984,9 +991,12 @@ def read_group_roster(
 
         assignees_dict = {a.exam_id: a for a in assignees}
 
-        exams_completed = sum(1 for a in assignees if a.submitted_at is not None)
+        def is_completed_assignee(a):
+            return a.submitted_at is not None or a.status in ["COMPLETED", "SUBMITTED"] or a.score is not None
 
-        completed_scores = [a.score for a in assignees if a.score is not None and a.submitted_at is not None]
+        exams_completed = sum(1 for a in assignees if is_completed_assignee(a))
+
+        completed_scores = [a.score for a in assignees if a.score is not None and is_completed_assignee(a)]
         avg_score_str = "N/A"
         if completed_scores:
             avg_score_val = sum(completed_scores) / len(completed_scores)
@@ -997,15 +1007,28 @@ def read_group_roster(
             score_item = assignees_dict.get(ex.id)
             if score_item:
                 score_str = f"{round(score_item.score)}%" if score_item.score is not None else "--"
-                status_str = "Completed" if score_item.submitted_at is not None else ("In Progress" if score_item.started_at is not None else "Not Started")
+                is_comp = is_completed_assignee(score_item)
+                status_str = "Completed" if is_comp else ("In Progress" if (score_item.started_at is not None or score_item.status == "STARTED") else "Not Started")
+                
+                completed_at_str = score_item.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if score_item.submitted_at else ""
+                time_taken_str = ""
+                if score_item.started_at and score_item.submitted_at:
+                    duration_sec = int((score_item.submitted_at - score_item.started_at).total_seconds())
+                    mins = duration_sec // 60
+                    secs = duration_sec % 60
+                    time_taken_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
             else:
                 score_str = "--"
                 status_str = "Not Started"
+                completed_at_str = ""
+                time_taken_str = ""
 
             exam_scores.append({
                 "examTitle": ex.title,
                 "score": score_str,
-                "status": status_str
+                "status": status_str,
+                "completedAt": completed_at_str,
+                "timeTaken": time_taken_str
             })
 
         result.append({

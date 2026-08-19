@@ -25,18 +25,34 @@ class RAGChatbotService:
     def initialize(self):
         """
         Lazily initialize LangChain embeddings, document loaders, vector store, and LLM chain.
+        Supports both OpenAI (OPENAI_API_KEY) and Google Gemini (GEMINI_API_KEY).
         """
         if self._initialized:
             return
 
-        api_key = getattr(settings, "GOOGLE_API_KEY", None) or getattr(settings, "GEMINI_API_KEY", None) or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        if api_key:
-            os.environ["GOOGLE_API_KEY"] = api_key
+        openai_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
+        gemini_key = getattr(settings, "GEMINI_API_KEY", None) or os.getenv("GEMINI_API_KEY")
+        google_key = getattr(settings, "GOOGLE_API_KEY", None) or os.getenv("GOOGLE_API_KEY")
+
+        # Detect OpenAI key (starts with sk-)
+        sk_key = None
+        for k in [openai_key, google_key, gemini_key]:
+            if k and k.strip().startswith("sk-"):
+                sk_key = k.strip()
+                break
+
+        # Detect Google Gemini key
+        g_key = None
+        for k in [gemini_key, google_key]:
+            if k and k.strip() and not k.strip().startswith("sk-"):
+                g_key = k.strip()
+                break
+        if not g_key and (gemini_key or google_key):
+            g_key = (gemini_key or google_key or "").strip()
 
         try:
             from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
             from langchain_text_splitters import RecursiveCharacterTextSplitter
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
             from langchain_community.vectorstores import FAISS
             from langchain_community.vectorstores.utils import DistanceStrategy
             from langchain_community.retrievers import BM25Retriever
@@ -48,17 +64,19 @@ class RAGChatbotService:
             
             docs = []
             if os.path.exists(papers_dir):
-                loader = DirectoryLoader(
-                    path=papers_dir,
-                    glob="**/*.pdf",
-                    loader_cls=PyPDFLoader,  # type: ignore[arg-type]
-                    show_progress=False,
-                    use_multithreading=True,
-                )
-                docs = loader.load()
+                try:
+                    loader = DirectoryLoader(
+                        path=papers_dir,
+                        glob="**/*.pdf",
+                        loader_cls=PyPDFLoader,  # type: ignore[arg-type]
+                        show_progress=False,
+                        use_multithreading=True,
+                    )
+                    docs = loader.load()
+                except Exception as loader_err:
+                    print(f"[RAGChatbotService] PDF loader error: {loader_err}")
 
             if not docs:
-                # Fallback document if no PDFs found
                 from langchain_core.documents import Document
                 docs = [
                     Document(
@@ -89,24 +107,57 @@ class RAGChatbotService:
             )
             splits = text_splitter.split_documents(docs)
 
-            # 3. Embeddings & Retrievers
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-2")
+            # 3. BM25 Keyword Retriever (offline safe)
+            try:
+                self.bm25_retriever = BM25Retriever.from_documents(splits)
+                self.bm25_retriever.k = 3
+            except Exception as bm_err:
+                print(f"[RAGChatbotService] BM25 retriever setup error: {bm_err}")
 
-            self.vectorstore = FAISS.from_documents(
-                documents=splits,
-                embedding=embeddings,
-                distance_strategy=DistanceStrategy.COSINE,
-            )
-            self.vector_retriever = self.vectorstore.as_retriever(search_kwargs={"k": 3})
+            # 4. Initialize Provider (OpenAI or Gemini)
+            if sk_key:
+                os.environ["OPENAI_API_KEY"] = sk_key
+                try:
+                    from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+                    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+                    self.vectorstore = FAISS.from_documents(
+                        documents=splits,
+                        embedding=embeddings,
+                        distance_strategy=DistanceStrategy.COSINE,
+                    )
+                    self.vector_retriever = self.vectorstore.as_retriever(search_kwargs={"k": 3})
+                except Exception as emb_err:
+                    print(f"[RAGChatbotService] OpenAI embeddings error: {emb_err}")
+                    self.vectorstore = None
+                    self.vector_retriever = None
 
-            self.bm25_retriever = BM25Retriever.from_documents(splits)
-            self.bm25_retriever.k = 3
+                try:
+                    from langchain_openai import ChatOpenAI
+                    self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+                except Exception as llm_err:
+                    print(f"[RAGChatbotService] OpenAI LLM error: {llm_err}")
 
-            # 4. LLM & Prompts setup
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3.5-flash-lite",
-                temperature=0,
-            )
+            elif g_key:
+                os.environ["GOOGLE_API_KEY"] = g_key
+                try:
+                    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+                    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+                    self.vectorstore = FAISS.from_documents(
+                        documents=splits,
+                        embedding=embeddings,
+                        distance_strategy=DistanceStrategy.COSINE,
+                    )
+                    self.vector_retriever = self.vectorstore.as_retriever(search_kwargs={"k": 3})
+                except Exception as emb_err:
+                    print(f"[RAGChatbotService] Gemini embeddings error: {emb_err}")
+                    self.vectorstore = None
+                    self.vector_retriever = None
+
+                try:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    self.llm = ChatGoogleGenerativeAI(model="models/gemini-3.5-flash", temperature=0)
+                except Exception as llm_err:
+                    print(f"[RAGChatbotService] Gemini LLM error: {llm_err}")
 
             prompts_dir = os.path.join(base_dir, "prompts")
             contextualize_path = os.path.join(prompts_dir, "contextualize_prompt.txt")
@@ -145,7 +196,10 @@ class RAGChatbotService:
         """
         Retrieves top relevant documents using vector search + BM25 keyword search.
         """
-        self.initialize()
+        try:
+            self.initialize()
+        except Exception:
+            pass
         
         vector_docs = []
         if self.vector_retriever:
@@ -174,48 +228,74 @@ class RAGChatbotService:
         from langchain_core.output_parsers import StrOutputParser
         if not chat_history:
             return question
-        self.initialize()
+        try:
+            self.initialize()
+        except Exception:
+            return question
+
         if not self.contextualize_q_prompt or not self.llm:
             return question
-        chain = self.contextualize_q_prompt | self.llm | StrOutputParser()
-        return chain.invoke({"question": question, "chat_history": chat_history})
+        try:
+            chain = self.contextualize_q_prompt | self.llm | StrOutputParser()
+            return chain.invoke({"question": question, "chat_history": chat_history})
+        except Exception:
+            return question
 
     def process_chat(self, question: str, session_id: str = "default", user_context: str = "") -> str:
         """
         Process a user question, query RAG documents + real-time user DB context, and return AI response.
         """
-        self.initialize()
+        try:
+            self.initialize()
+        except Exception as init_err:
+            err_str = str(init_err)
+            if "API_KEY_INVALID" in err_str or "API key not valid" in err_str or "INVALID_ARGUMENT" in err_str or "400" in err_str:
+                return "Dịch vụ AI Chatbot hiện tại không thể kết nối tới Google Gemini API do API Key (GEMINI_API_KEY) trong cấu hình backend (.env) chưa đúng hoặc không hợp lệ. Vui lòng cập nhật API Key chính xác từ Google AI Studio."
+            return f"Không thể khởi tạo dịch vụ AI Chatbot: {err_str}"
+
+        if not self.llm:
+            return "Dịch vụ AI Chatbot chưa sẵn sàng do chưa được cấu hình API Key (GEMINI_API_KEY) hợp lệ trong file .env."
+
         from langchain_core.messages import HumanMessage, AIMessage
         from langchain_core.output_parsers import StrOutputParser
 
         history = _chat_sessions.get(session_id, [])
 
-        standalone_q = self._get_standalone_question(question, history)
-        retrieved_docs = self.hybrid_retrieve(standalone_q)
-        rag_context = "\n\n".join(doc.page_content for doc in retrieved_docs)
+        try:
+            standalone_q = self._get_standalone_question(question, history)
+            retrieved_docs = self.hybrid_retrieve(standalone_q)
+            rag_context = "\n\n".join(doc.page_content for doc in retrieved_docs)
 
-        combined_context = f"[PLATFORM_GUIDE]\n{rag_context}"
-        if user_context.strip():
-            combined_context += f"\n\n[USER_ACCOUNT_DATA]\n{user_context.strip()}"
+            combined_context = f"[PLATFORM_GUIDE]\n{rag_context}"
+            if user_context.strip():
+                combined_context += f"\n\n[USER_ACCOUNT_DATA]\n{user_context.strip()}"
 
-        if not self.prompt or not self.llm:
-            return "AI Assistant is currently unavailable. Please check backend initialization."
+            if not self.prompt or not self.llm:
+                return "AI Assistant is currently unavailable."
 
-        qa_chain = self.prompt | self.llm | StrOutputParser()
-        answer = qa_chain.invoke({
-            "context": combined_context,
-            "chat_history": history,
-            "question": question
-        })
+            qa_chain = self.prompt | self.llm | StrOutputParser()
+            answer = qa_chain.invoke({
+                "context": combined_context,
+                "chat_history": history,
+                "question": question
+            })
 
-        # Append to history (keep max 10 recent messages)
-        history.append(HumanMessage(content=question))
-        history.append(AIMessage(content=answer))
-        if len(history) > 10:
-            history = history[-10:]
-        _chat_sessions[session_id] = history
+            # Append to history (keep max 10 recent messages)
+            history.append(HumanMessage(content=question))
+            history.append(AIMessage(content=answer))
+            if len(history) > 10:
+                history = history[-10:]
+            _chat_sessions[session_id] = history
 
-        return answer
+            return answer
+        except Exception as err:
+            err_msg = str(err)
+            if "insufficient_quota" in err_msg or "credit_balance_exhausted" in err_msg or "429" in err_msg:
+                return "Dịch vụ AI Chatbot: Key OpenAI hiện tại đã hết dung lượng/credit sử dụng (Lỗi 429 Insufficient Quota). Vui lòng kiểm tra tài khoản OpenAI hoặc cung cấp GEMINI_API_KEY miễn phí từ Google AI Studio (https://aistudio.google.com/) vào file `backend/.env`."
+            if any(k in err_msg for k in ["API_KEY_INVALID", "API key not valid", "INVALID_ARGUMENT", "NOT_FOUND", "400", "404"]):
+                return "Dịch vụ AI Chatbot hiện tại chưa thể phản hồi do API Key trong file cấu hình `.env` chưa chính xác hoặc không hợp lệ. Vui lòng cung cấp API Key chuẩn từ Google AI Studio (https://aistudio.google.com/) hoặc OpenAI vào `backend/.env`."
+            print(f"[RAGChatbotService] process_chat error: {err}")
+            return f"Đã xảy ra lỗi khi xử lý câu hỏi từ AI Chatbot: {err_msg}"
 
     def clear_history(self, session_id: str = "default"):
         """

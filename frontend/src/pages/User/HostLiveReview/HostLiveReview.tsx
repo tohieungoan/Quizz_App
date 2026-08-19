@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, BarChart2, LogOut, Flame, ArrowLeft } from 'lucide-react'
+import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, BarChart2, LogOut, Flame, ArrowLeft, Mic, MicOff, MessageSquare, ThumbsUp, HelpCircle } from 'lucide-react'
 import { roomService } from '@/services'
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
+import { useHostAudioStream, QAChatBox, TopVotedQuestionsList, ChatMessage, QuestionVoteItem } from '@/features/QA'
 
 interface ParticipantAnswerState {
   id: string
@@ -75,6 +76,18 @@ export const HostLiveReview: React.FC = () => {
     type: 'MULTIPLE_CHOICE',
     options: [],
     correctKey: ''
+  })
+
+  // Q&A & Voting states
+  const [isQAMode, setIsQAMode] = useState(false)
+  const [topVotedQuestions, setTopVotedQuestions] = useState<QuestionVoteItem[]>([])
+  const [currentQAQuestionId, setCurrentQAQuestionId] = useState<number | null>(null)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [wsSocket, setWsSocket] = useState<WebSocket | null>(null)
+
+  const { isMicOn, toggleMic, micError } = useHostAudioStream({
+    socket: wsSocket,
+    isConnected: !!wsSocket && wsSocket.readyState === WebSocket.OPEN,
   })
 
   // Real-time updates via WebSocket + 10s polling fallback for Host Panel
@@ -150,6 +163,19 @@ export const HostLiveReview: React.FC = () => {
           if (data.answer_distribution) {
             setDistribution(data.answer_distribution)
           }
+
+          if (data.top_voted_questions) {
+            setTopVotedQuestions(data.top_voted_questions)
+          }
+
+          if (data.chat_messages && Array.isArray(data.chat_messages)) {
+            setChatMessages(data.chat_messages)
+          }
+
+          if (data.qa_state) {
+            if (data.qa_state.is_active) setIsQAMode(true)
+            if (data.qa_state.current_question_id) setCurrentQAQuestionId(data.qa_state.current_question_id)
+          }
       } catch (err) {
         console.error("Failed to fetch live session:", err)
       }
@@ -175,6 +201,7 @@ export const HostLiveReview: React.FC = () => {
         socket = new WebSocket(wsUrl)
         socket.onopen = () => {
           reconnectAttempt = 0
+          setWsSocket(socket)
           pingTimer = setInterval(() => {
             if (socket && socket.readyState === WebSocket.OPEN) {
               socket.send(JSON.stringify({ type: "PING" }))
@@ -188,6 +215,29 @@ export const HostLiveReview: React.FC = () => {
             if (msg.type === "PONG") return
             if (["ANSWER_SUBMITTED", "PLAYER_JOINED", "PLAYER_LEFT", "NEXT_QUESTION"].includes(msg.type)) {
               fetchLiveSession()
+            }
+            if (msg.type === "QUESTION_VOTED") {
+              if (msg.top_questions) setTopVotedQuestions(msg.top_questions)
+            }
+            if (msg.type === "QA_SESSION_STARTED") {
+              setIsQAMode(true)
+              if (msg.current_question_id) setCurrentQAQuestionId(msg.current_question_id)
+            }
+            if (msg.type === "QA_QUESTION_CHANGED") {
+              if (msg.current_question_id) setCurrentQAQuestionId(msg.current_question_id)
+            }
+            if (msg.type === "CHAT_MESSAGE_RECEIVED" || msg.t === "CMR") {
+              const msgText = msg.text || msg.message || ""
+              const msgSender = msg.sender || "User"
+              if (msgText) {
+                setChatMessages((prev) => {
+                  const isDup = prev.some(
+                    (m) => m.sender === msgSender && m.text === msgText && (!msg.timestamp || !m.timestamp || m.timestamp === msg.timestamp)
+                  )
+                  if (isDup) return prev
+                  return [...prev, { sender: msgSender, text: msgText, avatar: msg.avatar, timestamp: msg.timestamp }]
+                })
+              }
             }
           } catch (e) {
             console.error("Failed to parse WS message in Host Panel:", e)
@@ -331,6 +381,79 @@ export const HostLiveReview: React.FC = () => {
     }
   }
 
+  const handleStartQA = async () => {
+    setIsQAMode(true)
+    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+      try {
+        wsSocket.send(JSON.stringify({ type: "START_QA_SESSION", t: "SQS" }))
+      } catch (wsErr) {
+        console.warn("WebSocket START_QA_SESSION failed, using REST fallback:", wsErr)
+      }
+    }
+    try {
+      const res = await roomService.startQA(roomCode)
+      if (res.top_voted_questions) setTopVotedQuestions(res.top_voted_questions)
+      if (res.qa_state?.current_question_id) setCurrentQAQuestionId(res.qa_state.current_question_id)
+    } catch (err) {
+      console.error("Failed to start QA mode via HTTP REST:", err)
+    }
+  }
+
+  const handleNextQAQuestion = async (targetQId?: number) => {
+    let nextId = targetQId
+    if (!nextId && topVotedQuestions.length > 0) {
+      const currentIdx = topVotedQuestions.findIndex(q => String(q.question_id) === String(currentQAQuestionId))
+      if (currentIdx !== -1 && currentIdx + 1 < topVotedQuestions.length) {
+        nextId = topVotedQuestions[currentIdx + 1].question_id
+      } else {
+        nextId = topVotedQuestions[0].question_id
+      }
+    }
+    if (!nextId) return
+
+    setCurrentQAQuestionId(nextId)
+    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+      try {
+        wsSocket.send(JSON.stringify({ type: "NEXT_QA_QUESTION", t: "NQQ", question_id: nextId }))
+      } catch (e) {}
+    }
+    try {
+      await roomService.selectQAQuestion(roomCode, nextId)
+    } catch (e) {}
+  }
+
+  const handleSendChatMessage = async (msgContent: string) => {
+    const text = msgContent.trim()
+    if (!text) return
+
+    let sentViaWS = false
+    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+      try {
+        wsSocket.send(JSON.stringify({ type: "SEND_CHAT_MESSAGE", t: "SCM", sender: "Host", message: text }))
+        sentViaWS = true
+      } catch (wsErr) {
+        console.warn("WebSocket send chat message failed, using REST fallback:", wsErr)
+      }
+    }
+
+    if (!sentViaWS) {
+      try {
+        const res = await roomService.sendChatMessage(roomCode, "Host", text)
+        if (res && res.text) {
+          setChatMessages((prev) => {
+            const isDuplicate = prev.some(
+              (m) => m.text === res.text && m.sender === "Host"
+            )
+            if (isDuplicate) return prev
+            return [...prev, { sender: "Host", text: res.text, avatar: res.avatar, timestamp: res.timestamp }]
+          })
+        }
+      } catch (err) {
+        console.error("Failed to send chat message via REST API:", err)
+      }
+    }
+  }
+
   const getOptionColorProps = (key: string, isCorrect: boolean, isRevealed: boolean) => {
     let textStyle = 'text-slate-800'
     let keyBg = 'bg-slate-500'
@@ -382,89 +505,266 @@ export const HostLiveReview: React.FC = () => {
       />
 
       {/* Main Container */}
-      <div className="relative z-10 flex-grow flex flex-col w-full max-w-[1280px] mx-auto px-6 py-6 justify-between gap-6">
+      <div className="relative z-10 flex-grow flex flex-col w-full max-w-[1340px] mx-auto px-3 sm:px-6 py-4 sm:py-6 justify-between gap-4 sm:gap-6">
         
         {/* Top Control Bar */}
-        <header className="bg-white rounded-2xl border-2 border-outline-variant/30 shadow-md p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3 text-left">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border-2 border-primary/20">
-              <BarChart2 className="w-5.5 h-5.5" />
+        <header className="bg-white/90 backdrop-blur-xl rounded-3xl border-2 border-slate-200/80 shadow-lg p-4 sm:p-5 flex flex-col gap-3 sm:gap-4 transition-all">
+          {/* Top Row: Title + PIN + Action buttons */}
+          <div className="flex flex-wrap justify-between items-center gap-3 pb-3 border-b border-slate-100 sm:border-none sm:pb-0">
+            <div className="flex items-center gap-3 text-left">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-primary via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md shadow-primary/20 flex-shrink-0">
+                <BarChart2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight line-clamp-1">{quizTitle}</h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500">Host Dashboard</span>
+                  <span className="text-slate-300">•</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(roomCode).catch(() => {})
+                      alert(`Room PIN ${roomCode} copied to clipboard!`)
+                    }}
+                    className="flex items-center gap-1 bg-primary/10 text-primary hover:bg-primary/20 transition-colors px-2.5 py-0.5 rounded-full font-black text-xs border border-primary/20 cursor-pointer"
+                    title="Click to copy PIN"
+                  >
+                    PIN: {roomCode}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div>
-              <h1 className="text-base font-black text-on-surface leading-tight">{quizTitle}</h1>
-              <p className="text-[10px] text-slate-800 font-extrabold mt-0.5 uppercase tracking-wide">Host Dashboard • PIN: <strong className="text-primary font-black">{roomCode}</strong></p>
+
+            <div className="flex items-center gap-2 ml-auto sm:ml-0">
+              {/* Start Q&A Mode Button (Only enabled after completing all quiz questions) */}
+              <button
+                disabled={questionNumber < totalQuestions && !isQAMode}
+                onClick={() => (isQAMode ? setIsQAMode(false) : handleStartQA())}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                  isQAMode
+                    ? 'bg-slate-900 text-white hover:bg-slate-800 border border-slate-700 cursor-pointer active:scale-98'
+                    : questionNumber >= totalQuestions
+                    ? 'bg-gradient-to-r from-indigo-600 via-primary to-purple-600 text-white hover:opacity-95 shadow-md shadow-indigo-500/20 cursor-pointer active:scale-98'
+                    : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                }`}
+                title={questionNumber < totalQuestions && !isQAMode ? 'Finish all quiz questions first to start Q&A' : 'Start live Q&A session'}
+              >
+                <HelpCircle className="w-4 h-4" />
+                <span>{isQAMode ? 'Quiz View' : questionNumber >= totalQuestions ? 'Start Q&A' : 'Q&A (Finish Quiz First)'}</span>
+              </button>
+
+              {/* Exit to Dashboard */}
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-1 px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all rounded-xl border border-slate-250 text-xs font-black shadow-xs cursor-pointer active:scale-98"
+                title="Return to Dashboard while keeping this live room running"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Dashboard</span>
+              </button>
+
+              {/* End session block */}
+              <button
+                onClick={handleEndSession}
+                className="flex items-center gap-1 px-3.5 py-2 bg-rose-50 text-rose-700 rounded-xl hover:bg-rose-100 transition-all border border-rose-200 text-xs font-black shadow-xs cursor-pointer active:scale-98"
+              >
+                <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">End Room</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          {/* Bottom Status Row (Auto Advance + Members + Clock) */}
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-4 pt-1 sm:pt-0 border-t border-slate-100/80">
             {/* Auto Advance Toggle */}
-            <div className="flex items-center gap-3 bg-[#f5f5fa] border-2 border-outline-variant/30 px-4 py-2 rounded-xl text-xs font-black text-slate-800 shadow-sm">
+            <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200/80 px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-extrabold text-slate-700 shadow-2xs">
               <span>Auto Advance:</span>
               <button
                 type="button"
                 onClick={() => handleAutoAdvanceChange(!autoAdvance)}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  autoAdvance ? 'bg-primary' : 'bg-slate-200'
+                className={`relative inline-flex h-5 w-9 sm:h-6 sm:w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  autoAdvance ? 'bg-primary' : 'bg-slate-300'
                 }`}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    autoAdvance ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-4 w-4 sm:h-5 sm:w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    autoAdvance ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'
                   }`}
                 />
               </button>
             </div>
 
             {/* Active Members Count */}
-            <div className="flex items-center gap-2 bg-[#eaeaff]/40 px-4 py-2 rounded-xl border-2 border-outline-variant/30 text-xs font-black text-slate-850 shadow-sm">
-              <Users className="w-4 h-4 text-primary" />
-              <span>{participants.length} Members Active</span>
+            <div className="flex items-center gap-2 bg-emerald-50 px-3.5 py-1.5 sm:py-2 rounded-xl border border-emerald-200 text-xs font-extrabold text-emerald-800 shadow-2xs">
+              <Users className="w-4 h-4 text-emerald-600" />
+              <span>{participants.length} Active</span>
             </div>
 
             {/* Countdown Clock */}
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 text-xs font-black transition-all ${
-              timeLeft <= 5 ? 'bg-error-container/30 border-error text-error animate-pulse shadow-sm' : 'bg-primary/10 border-primary text-primary shadow-sm'
+            <div className={`flex items-center gap-2 px-3.5 py-1.5 sm:py-2 rounded-xl border text-xs font-black transition-all ${
+              timeLeft <= 5 ? 'bg-rose-50 border-rose-300 text-rose-700 animate-pulse shadow-xs' : 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-xs'
             }`}>
               <Clock className="w-4 h-4 animate-spin-slow" />
               <span>{timeLeft > 0 ? `${timeLeft}s left` : 'Time Up!'}</span>
             </div>
-
-            {/* Exit to Dashboard (Keep Room Running) */}
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all border-2 border-slate-300 text-xs font-black shadow-sm cursor-pointer"
-              title="Return to Dashboard while keeping this live room running"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" /> Dashboard
-            </button>
-
-            {/* End session block */}
-            <button
-              onClick={handleEndSession}
-              className="flex items-center gap-1.5 px-4 py-2 bg-red-100 text-red-700 rounded-xl hover:bg-red-200 transition-all border-2 border-red-300 text-xs font-black shadow-md cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" /> End Room
-            </button>
           </div>
         </header>
 
         {/* Dashboard Grid Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow">
+        {isQAMode ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 flex-grow">
+            {/* Left 8 Cols: Active Q&A Question + Top Voted Questions List */}
+            <div className="lg:col-span-8 flex flex-col gap-4">
+              {/* Active Q&A Question Hero Box */}
+              <div className="bg-white rounded-3xl p-6 border-2 border-indigo-100 shadow-lg text-left flex flex-col justify-between">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-3.5">
+                  <div className="flex items-center gap-2">
+                    <HelpCircle className="w-5 h-5 text-primary" />
+                    <h2 className="font-extrabold text-slate-800 text-sm">Currently Addressing Question</h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Voice Mic Toggle Button */}
+                    <button
+                      onClick={toggleMic}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black transition-all shadow-xs cursor-pointer active:scale-98 ${
+                        isMicOn
+                          ? 'bg-rose-600 text-white animate-pulse border border-rose-700'
+                          : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300'
+                      }`}
+                      title={isMicOn ? 'Stop voice mic streaming' : 'Stream live microphone audio to members'}
+                    >
+                      {isMicOn ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                      <span>{isMicOn ? 'Mic Live (ON)' : 'Voice Mic'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleNextQAQuestion()}
+                      className="px-4 py-2 bg-primary hover:bg-primary/90 text-on-primary font-black text-xs rounded-xl transition-all shadow-md flex items-center gap-1 cursor-pointer active:scale-98"
+                    >
+                      Next Question <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {currentQAQuestionId ? (() => {
+                  const activeQAQ = topVotedQuestions.find((q) => String(q.question_id) === String(currentQAQuestionId))
+                  const text = activeQAQ?.text || `Question #${currentQAQuestionId}`
+                  const mediaUrl = activeQAQ?.media_url || null
+                  const audioUrl = activeQAQ?.audio_url || null
+                  const options = activeQAQ?.options || []
+
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <span className="text-[10px] font-black uppercase text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20 w-fit">
+                        Question #{currentQAQuestionId}
+                      </span>
+
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                        {text}
+                      </h3>
+
+                      {/* Optional Question Media Image */}
+                      {mediaUrl && (
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-2xs max-h-52 w-full bg-slate-50 flex items-center justify-center">
+                          <img src={mediaUrl} alt="Question Media" className="max-h-52 object-contain w-full" />
+                        </div>
+                      )}
+
+                      {/* Optional Question Audio Player */}
+                      {audioUrl && (
+                        <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+                          <audio controls src={audioUrl} className="w-full h-10 rounded-xl" />
+                        </div>
+                      )}
+
+                      {/* Question Answer Options Grid */}
+                      {options.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-3 border-t border-slate-100">
+                          {options.map((opt: any) => (
+                            <div
+                              key={opt.key || opt.id}
+                              className={`p-3 rounded-xl border text-xs font-extrabold flex items-center justify-between gap-2 shadow-2xs ${
+                                opt.is_correct
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 ring-1 ring-emerald-400/30'
+                                  : 'bg-slate-50 border-slate-200 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center flex-shrink-0 shadow-2xs ${
+                                  opt.is_correct
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-700 text-white'
+                                }`}>
+                                  {opt.key}
+                                </span>
+                                <span className="truncate">{opt.label || opt.content}</span>
+                              </div>
+                              {opt.is_correct && (
+                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 flex-shrink-0">
+                                  Correct
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })() : (
+                  <div className="py-6 text-center text-slate-500 font-semibold text-xs">
+                    Select a top-voted question below or click "Next Question" to start answering.
+                  </div>
+                )}
+              </div>
+
+              {/* Top Voted Questions List */}
+              <TopVotedQuestionsList
+                questions={topVotedQuestions}
+                currentActiveQuestionId={currentQAQuestionId}
+                isHost={true}
+                onSelectQuestion={(qid) => handleNextQAQuestion(qid)}
+              />
+            </div>
+
+            {/* Right 4 Cols: Live Q&A Chat Box */}
+            <div className="lg:col-span-4 flex flex-col gap-4 h-[580px]">
+              {/* End Q&A Session CTA */}
+              <div className="bg-white rounded-3xl p-4 border-2 border-rose-100 shadow-md flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-full">Q&A Active</span>
+                  <p className="text-xs text-slate-600 font-bold mt-1">Finished answering questions?</p>
+                </div>
+                <button
+                  onClick={handleEndSession}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-2xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-98"
+                >
+                  <LogOut className="w-4 h-4" /> End Room
+                </button>
+              </div>
+
+              <div className="flex-grow">
+                <QAChatBox
+                  messages={chatMessages}
+                  onSendMessage={handleSendChatMessage}
+                  currentNickname="Host"
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 flex-grow">
           
           {/* LEFT COLUMN: Question and Answers Statistics (8 cols) */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
+          <div className="lg:col-span-8 flex flex-col gap-5 sm:gap-6">
             
             {/* Active Question Box */}
-            <div className="bg-white rounded-3xl p-6 border-2 border-outline-variant/30 shadow-md text-left flex flex-col justify-between">
-              <div className="flex justify-between items-center mb-3">
-                <span className="bg-primary text-white px-3.5 py-1 rounded-full text-xs font-black shadow-sm">
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200/80 shadow-lg text-left flex flex-col justify-between transition-all">
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                <span className="bg-gradient-to-r from-primary to-indigo-600 text-white px-3.5 py-1 rounded-full text-xs font-black shadow-xs">
                   Question {questionNumber} of {totalQuestions}
                 </span>
-                <span className="text-xs text-slate-700 font-extrabold">
+                <span className="text-xs text-slate-600 font-black bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
                   Type: {activeQuestion.type === 'SHORT_ANSWER' ? 'Short Answer' : 'Multiple Choice'}
                 </span>
               </div>
-              <h2 className="font-headline-md text-lg md:text-xl font-black text-on-surface leading-relaxed mb-4">
+              <h2 className="font-headline-md text-base sm:text-lg md:text-xl font-black text-slate-900 leading-snug sm:leading-relaxed mb-4">
                 {activeQuestion.text}
               </h2>
 
@@ -474,54 +774,54 @@ export const HostLiveReview: React.FC = () => {
                     <video 
                       src={activeQuestion.media_url} 
                       controls 
-                      className="max-h-48 md:max-h-64 rounded-2xl border border-slate-200 shadow-sm"
+                      className="max-h-48 sm:max-h-64 rounded-2xl border border-slate-200 shadow-xs object-cover"
                     />
                   ) : (
                     <img 
                       src={activeQuestion.media_url} 
                       alt="Question Media" 
-                      className="max-h-48 md:max-h-64 object-contain rounded-2xl border border-slate-200 shadow-sm"
+                      className="max-h-48 sm:max-h-64 object-contain rounded-2xl border border-slate-200 shadow-xs"
                     />
                   )}
                 </div>
               )}
 
               {activeQuestion.audio_url && (
-                <div className="w-full flex flex-col items-center gap-2 mb-4 bg-slate-50 p-3 rounded-2xl border border-slate-200/60">
+                <div className="w-full flex flex-col items-center gap-2 mb-4 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Audio Track</span>
                   <audio 
                     src={activeQuestion.audio_url} 
                     controls 
-                    className="w-full max-w-sm"
+                    className="w-full max-w-sm h-9"
                   />
                 </div>
               )}
             </div>
 
             {/* Live Chart Distribution */}
-            <div className="bg-white rounded-3xl p-6 border-2 border-outline-variant/30 shadow-md flex-grow flex flex-col justify-between">
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200/80 shadow-lg flex-grow flex flex-col justify-between">
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-4 sm:mb-6">
                 <div>
-                  <h3 className="font-headline-md text-sm font-extrabold text-on-surface">Live Answer Analytics</h3>
-                  <p className="text-[10px] text-slate-800 font-bold mt-0.5">Real-time answers distribution chart</p>
+                  <h3 className="font-headline-md text-sm sm:text-base font-extrabold text-slate-900">Live Answer Analytics</h3>
+                  <p className="text-[10px] text-slate-500 font-bold mt-0.5">Real-time answer distribution breakdown</p>
                 </div>
                 <button
                   onClick={() => setRevealAnswer(!revealAnswer)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-amber-100 hover:bg-amber-200 border-2 border-amber-350 text-amber-955 transition-all rounded-xl text-xs font-black shadow-md cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 transition-all rounded-xl text-xs font-black shadow-2xs cursor-pointer active:scale-98"
                 >
                   {revealAnswer ? (
-                    <><EyeOff className="w-3.5 h-3.5" /> Hide Correct Option</>
+                    <><EyeOff className="w-3.5 h-3.5 text-amber-700" /> Hide Correct</>
                   ) : (
-                    <><Eye className="w-3.5 h-3.5" /> Show Correct Option</>
+                    <><Eye className="w-3.5 h-3.5 text-amber-700" /> Show Correct</>
                   )}
                 </button>
               </div>
 
               {/* Bar Chart Bars / Short Answer Text Grid */}
               {activeQuestion.type === 'SHORT_ANSWER' ? (
-                <div className="flex flex-col gap-4 text-left overflow-y-auto max-h-[300px] pr-2">
+                <div className="flex flex-col gap-3.5 text-left overflow-y-auto max-h-[260px] sm:max-h-[310px] pr-1.5">
                   {Object.entries(distribution).length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 font-extrabold italic text-sm">
+                    <div className="text-center py-10 text-slate-400 font-extrabold italic text-xs sm:text-sm">
                       No text answers submitted yet.
                     </div>
                   ) : (
@@ -531,7 +831,6 @@ export const HostLiveReview: React.FC = () => {
                         const maxCount = Math.max(...Object.values(distribution), 1)
                         const percentWidth = Math.round((count / maxCount) * 100)
                         
-                        // Short answer is correct if it matches any correct option from DB
                         const isCorrect = activeQuestion.options.some(
                           opt => opt.label.trim().toLowerCase() === answer.trim().toLowerCase()
                         )
@@ -539,30 +838,30 @@ export const HostLiveReview: React.FC = () => {
                         return (
                           <div key={idx} className="flex flex-col gap-1.5">
                             <div className="flex justify-between items-center text-xs font-black">
-                              <span className="flex items-center gap-2">
+                              <span className="flex items-center gap-2 truncate max-w-[80%]">
                                 <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white ${
                                   isCorrect && revealAnswer ? 'bg-emerald-500' : 'bg-slate-400'
-                                } shadow-sm`}>
+                                } shadow-xs flex-shrink-0`}>
                                   {idx + 1}
                                 </span>
-                                <span className={`text-sm ${
+                                <span className={`text-xs sm:text-sm truncate ${
                                   isCorrect && revealAnswer ? 'text-emerald-800 font-black' : 'text-slate-800'
                                 }`}>
                                   "{answer}" {(isCorrect && revealAnswer) && (
-                                    <span className="text-[9px] bg-emerald-100 text-emerald-850 px-2 py-0.5 rounded-full border border-emerald-350 font-black ml-2">CORRECT</span>
+                                    <span className="text-[9px] bg-emerald-100 text-emerald-850 px-2 py-0.5 rounded-full border border-emerald-300 font-black ml-1.5">CORRECT</span>
                                   )}
                                 </span>
                               </span>
-                              <span className="text-slate-800 font-extrabold">{count} responses</span>
+                              <span className="text-slate-800 font-extrabold text-xs flex-shrink-0">{count} ans</span>
                             </div>
 
                             {/* Response Bar representation */}
-                            <div className="w-full bg-[#f3f3f9] h-7 rounded-xl overflow-hidden border border-outline-variant/30 relative flex items-center shadow-inner">
+                            <div className="w-full bg-slate-100 h-7 sm:h-8 rounded-xl overflow-hidden border border-slate-200 relative flex items-center shadow-inner">
                               <div
                                 className={`h-full transition-all duration-500 rounded-r-xl border-r-2 ${
                                   isCorrect && revealAnswer 
-                                    ? 'bg-emerald-500/25 border-emerald-450 ring-2 ring-emerald-500/5 animate-pulse'
-                                    : 'bg-slate-500/10 border-slate-400'
+                                    ? 'bg-emerald-500/25 border-emerald-500 ring-2 ring-emerald-500/10 animate-pulse'
+                                    : 'bg-slate-500/15 border-slate-400'
                                 }`}
                                 style={{ width: `${percentWidth}%` }}
                               />
@@ -573,7 +872,7 @@ export const HostLiveReview: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3.5">
                   {activeQuestion.options.map((opt) => {
                     const count = distribution[opt.key as keyof typeof distribution] || 0
                     const maxCount = Math.max(...Object.values(distribution), 1)
@@ -585,19 +884,19 @@ export const HostLiveReview: React.FC = () => {
                     return (
                       <div key={opt.key} className="flex flex-col gap-1.5 text-left">
                         <div className="flex justify-between items-center text-xs font-extrabold">
-                          <span className={`flex items-center gap-2 ${colors.textStyle}`}>
-                            <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black text-white ${colors.keyBg} shadow-md`}>
+                          <span className={`flex items-center gap-2 truncate max-w-[80%] ${colors.textStyle}`}>
+                            <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black text-white ${colors.keyBg} shadow-xs flex-shrink-0`}>
                               {opt.key}
                             </span>
-                            {opt.label} {(revealAnswer && isCorrectOption) && '✓ (Correct)'}
+                            <span className="truncate text-xs sm:text-sm font-bold">{opt.label}</span> {(revealAnswer && isCorrectOption) && <span className="text-[11px] text-emerald-700 font-black ml-1 flex-shrink-0">✓ Correct</span>}
                           </span>
-                          <span className="text-slate-800 font-black">{count} answers</span>
+                          <span className="text-slate-800 font-black text-xs flex-shrink-0">{count} ans</span>
                         </div>
 
                         {/* Bar body */}
-                        <div className="h-6.5 w-full bg-slate-100 border-2 border-outline-variant/30 rounded-lg overflow-hidden relative flex items-center">
+                        <div className="h-6 sm:h-7 w-full bg-slate-100 border border-slate-200/80 rounded-xl overflow-hidden relative flex items-center shadow-inner">
                           <div 
-                            className={`h-full transition-all duration-500 rounded-r-md border-r-2 ${colors.barBg}`}
+                            className={`h-full transition-all duration-500 rounded-r-lg border-r-2 ${colors.barBg}`}
                             style={{ width: `${percentWidth}%` }}
                           />
                         </div>
@@ -608,84 +907,127 @@ export const HostLiveReview: React.FC = () => {
               )}
 
               {/* Progress Summary info */}
-              <div className="mt-6 pt-4 border-t-2 border-outline-variant/20 flex justify-between items-center">
+              <div className="mt-5 sm:mt-6 pt-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-black text-slate-800">Response Status:</span>
-                  <span className="text-xs text-primary font-black bg-primary/5 border border-primary/20 px-2.5 py-1 rounded-full shadow-inner">{answeredTotal} / {participants.length} Responded</span>
+                  <span className="text-xs text-primary font-black bg-primary/10 border border-primary/20 px-3 py-1 rounded-full shadow-inner">
+                    {answeredTotal} / {participants.length} Responded
+                  </span>
                 </div>
 
-                <div className="w-1/3 bg-slate-200 h-2.5 rounded-full overflow-hidden border border-outline-variant shadow-inner">
+                <div className="w-full sm:w-1/3 bg-slate-200 h-2.5 rounded-full overflow-hidden border border-slate-300 shadow-inner">
                   <div 
-                    className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-300 rounded-full"
+                    className="h-full bg-gradient-to-r from-primary via-indigo-600 to-purple-600 transition-all duration-300 rounded-full"
                     style={{ width: `${pctAnswered}%` }}
                   />
                 </div>
               </div>
-
             </div>
+
+            {/* Top Voted Questions Live Panel for Host */}
+            <TopVotedQuestionsList
+              questions={topVotedQuestions}
+              currentActiveQuestionId={activeQuestion?.id}
+              isHost={false}
+            />
 
           </div>
 
-          {/* RIGHT COLUMN: Active Roster Status (4 cols) */}
-          <div className="lg:col-span-4 bg-white rounded-3xl p-5 border-2 border-outline-variant/30 shadow-md flex flex-col justify-between max-h-[500px]">
-            <div className="mb-4">
-              <h3 className="font-headline-md text-sm font-extrabold text-on-surface">Participant Roster</h3>
-              <p className="text-[10px] text-slate-850 font-bold mt-0.5">Submissions tracking</p>
-            </div>
+          {/* RIGHT COLUMN: Host Controls & Active Roster Status (4 cols) */}
+          <div className="lg:col-span-4 flex flex-col gap-5">
+            {/* Primary Action Card: Next Question CTA or Quiz Completed Choices */}
+            <div className="bg-white rounded-3xl p-5 border-2 border-indigo-100 shadow-lg text-left">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Host Control Action</span>
+                <span className="text-xs font-black text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+                  Q{questionNumber} / {totalQuestions}
+                </span>
+              </div>
+              
+              {questionNumber >= totalQuestions ? (
+                <div className="flex flex-col gap-2.5">
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl mb-1">
+                    <span className="text-[11px] font-black text-indigo-900 block">🎉 Quiz Questions Finished!</span>
+                    <span className="text-[10px] text-indigo-700 font-extrabold">Choose to start Q&A or end the live room session:</span>
+                  </div>
 
-            <div className="flex-grow overflow-y-auto flex flex-col gap-2.5 pr-1.5">
-              {participants.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 font-bold text-xs italic">
-                  No players in the room.
+                  <button
+                    onClick={handleStartQA}
+                    className="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-primary to-purple-600 text-white rounded-2xl font-button text-xs font-black hover:opacity-95 transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer shadow-md shadow-indigo-500/25"
+                  >
+                    <HelpCircle className="w-4 h-4" /> Start Q&A Session
+                  </button>
+
+                  <button
+                    onClick={handleEndSession}
+                    className="w-full py-3 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-2xl font-button text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer shadow-xs"
+                  >
+                    <LogOut className="w-4 h-4" /> End Room Session
+                  </button>
                 </div>
               ) : (
-                <>
-                  {participants.slice(0, 50).map((p) => (
-                    <div key={p.id} className="flex justify-between items-center p-3 rounded-xl border border-outline-variant bg-surface-container-lowest/30 shadow-xs">
-                      <span className="text-xs font-black text-slate-850 truncate max-w-[150px]">
-                        {p.name}
-                      </span>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-600 font-extrabold">{Math.round(p.score)} pts</span>
-                        {p.answered ? (
-                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                            Answered
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
-                            Thinking...
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {participants.length > 50 && (
-                    <div className="py-2 text-center text-xs font-extrabold text-primary bg-primary/5 rounded-xl border border-primary/20">
-                      + {participants.length - 50} more active participants
-                    </div>
-                  )}
-                </>
+                <button
+                  onClick={handleNextQuestion}
+                  className="w-full py-4 bg-gradient-to-r from-primary via-indigo-600 to-purple-600 text-white rounded-2xl font-button text-sm font-black hover:opacity-95 transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer shadow-md shadow-indigo-500/25"
+                >
+                  Advance Next Question <ChevronRight className="w-5 h-5" />
+                </button>
               )}
             </div>
 
-            {/* Action Advance Bar Footer */}
-            <div className="mt-4 pt-4 border-t-2 border-outline-variant/20">
-              <button
-                onClick={handleNextQuestion}
-                className="w-full py-3.5 bg-gradient-to-r from-primary to-secondary text-white rounded-2xl font-button text-sm font-extrabold hover:shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer shadow-md"
-              >
-                {questionNumber >= totalQuestions ? (
-                  <>End Quiz Session <Award className="w-4 h-4" /></>
+            {/* Participant Roster Card */}
+            <div className="bg-white rounded-3xl p-5 border-2 border-slate-200/80 shadow-lg flex flex-col justify-between flex-grow max-h-[520px]">
+              <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
+                <div>
+                  <h3 className="font-headline-md text-sm font-extrabold text-slate-900">Participant Roster</h3>
+                  <p className="text-[10px] text-slate-500 font-bold mt-0.5">Live submission status</p>
+                </div>
+                <span className="text-xs font-black bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200">
+                  {participants.length} Total
+                </span>
+              </div>
+
+              <div className="flex-grow overflow-y-auto flex flex-col gap-2.5 pr-1">
+                {participants.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 font-bold text-xs italic">
+                    No players in the room yet.
+                  </div>
                 ) : (
-                  <>Advance Next Question <ChevronRight className="w-4.5 h-4.5" /></>
+                  <>
+                    {participants.slice(0, 50).map((p) => (
+                      <div key={p.id} className="flex justify-between items-center p-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 shadow-2xs hover:bg-slate-100/80 transition-all">
+                        <span className="text-xs font-black text-slate-900 truncate max-w-[130px] sm:max-w-[150px]">
+                          {p.name}
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-600 font-extrabold">{Math.round(p.score)} pts</span>
+                          {p.answered ? (
+                            <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full shadow-2xs flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                              Answered
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-200/70 border border-slate-300 px-2 py-0.5 rounded-full">
+                              Thinking...
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {participants.length > 50 && (
+                      <div className="py-2 text-center text-xs font-extrabold text-primary bg-primary/5 rounded-xl border border-primary/20">
+                        + {participants.length - 50} more active participants
+                      </div>
+                    )}
+                  </>
                 )}
-              </button>
+              </div>
             </div>
           </div>
 
         </div>
+      )}
 
       </div>
 
