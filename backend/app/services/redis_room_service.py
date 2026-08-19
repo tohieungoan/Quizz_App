@@ -8,6 +8,7 @@ and flushes batches to PostgreSQL on demand or upon room completion.
 import json
 import logging
 import time
+import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.core.redis import redis_client, _redis_available
@@ -56,9 +57,9 @@ class RedisRoomService:
         selected_option_id: Optional[int],
         answer_text: Optional[str],
         is_correct: bool,
-        score: int,
+        score: float,
         correct_option_key: Optional[str],
-    ) -> Tuple[int, Dict[str, Any]]:
+    ) -> Tuple[float, Dict[str, Any]]:
         """
         Record a participant's answer in Redis memory (< 1ms).
         Updates answer hash, leaderboard sorted set, and option distribution counters.
@@ -98,7 +99,7 @@ class RedisRoomService:
                     await redis_client.hincrby(dist_key, clean_text, 1)
                     await redis_client.expire(dist_key, 7200)
 
-                return int(total_score), answer_data
+                return float(total_score or 0.0), answer_data
         except Exception as e:
             logger.warning(f"Redis submit_answer failed, reverting to in-memory fallback: {e}")
 
@@ -111,23 +112,23 @@ class RedisRoomService:
             rdata["answers"][ans_key] = {}
         rdata["answers"][ans_key][str(participant_id)] = answer_data
 
-        curr_score = rdata["scores"].get(str(participant_id), 0) + score
+        curr_score = rdata["scores"].get(str(participant_id), 0.0) + score
         rdata["scores"][str(participant_id)] = curr_score
 
-        return curr_score, answer_data
+        return float(curr_score), answer_data
 
     @classmethod
-    async def get_redis_leaderboard(cls, room_code: str) -> Dict[int, int]:
+    async def get_redis_leaderboard(cls, room_code: str) -> Dict[int, float]:
         """Fetch real-time scores for all room participants from Redis Sorted Set."""
         leaderboard_key = f"room:{room_code}:leaderboard"
-        scores_map: Dict[int, int] = {}
+        scores_map: Dict[int, float] = {}
 
         try:
             if cls._is_redis_active():
                 # Get all items with scores from sorted set (highest to lowest)
                 results = await redis_client.zrevrange(leaderboard_key, 0, -1, withscores=True)
                 for pid_str, score_val in results:
-                    scores_map[int(pid_str)] = int(score_val)
+                    scores_map[int(pid_str)] = float(score_val)
                 return scores_map
         except Exception as e:
             logger.warning(f"Failed to fetch Redis leaderboard for room {room_code}: {e}")
@@ -135,7 +136,7 @@ class RedisRoomService:
         # Fallback to local memory
         rdata = _in_memory_rooms.get(room_code, {}).get("scores", {})
         for pid_str, score_val in rdata.items():
-            scores_map[int(pid_str)] = int(score_val)
+            scores_map[int(pid_str)] = float(score_val)
 
         return scores_map
 
@@ -227,7 +228,7 @@ class RedisRoomService:
                     await redis_client.expire(voters_key, 7200)
                     new_votes = await redis_client.zincrby(key, 1, str(question_id))
                     await redis_client.expire(key, 7200)
-                    return int(new_votes)
+                    return int(new_votes) if new_votes is not None else 1
                 else:
                     curr_votes = await redis_client.zscore(key, str(question_id))
                     return int(curr_votes) if curr_votes else 1
@@ -251,7 +252,16 @@ class RedisRoomService:
         raw_items: List[Tuple[str, float]] = []
         try:
             if cls._is_redis_active():
-                raw_items = await redis_client.zrevrange(key, 0, -1, withscores=True)
+                res = await redis_client.zrevrange(key, 0, -1, withscores=True)
+                if res and isinstance(res, list):
+                    raw_items = [
+                        (
+                            item[0].decode("utf-8") if isinstance(item[0], bytes) else str(item[0]),
+                            float(item[1]),
+                        )
+                        for item in res
+                        if isinstance(item, (tuple, list)) and len(item) == 2
+                    ]
         except Exception as e:
             logger.warning(f"Failed to fetch Redis top voted questions: {e}")
 
@@ -356,9 +366,11 @@ class RedisRoomService:
         return _in_memory_rooms.get(room_code, {}).get("qa_state", {"is_active": False, "current_question_id": None})
 
     @classmethod
-    async def add_chat_message(cls, room_code: str, sender: str, text: str, avatar: Optional[str] = None, timestamp: Optional[str] = None) -> Dict[str, Any]:
+    async def add_chat_message(cls, room_code: str, sender: str, text: str, avatar: Optional[str] = None, timestamp: Optional[str] = None, msg_id: Optional[str] = None) -> Dict[str, Any]:
         """Save a live Q&A chat message into Redis RAM."""
+        unique_id = msg_id or f"msg_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
         msg_obj = {
+            "id": unique_id,
             "sender": sender,
             "text": text,
             "message": text,

@@ -100,7 +100,6 @@ async def websocket_room(
                         streak = data.get("streak") or data.get("st") or 0
 
                         from starlette.concurrency import run_in_threadpool
-                        from app.services.redis_room_service import redis_room_service
                         from app.models.room import Participant
                         from app.crud.crud_user import crud_user
                         import datetime
@@ -346,6 +345,7 @@ async def websocket_room(
                                 {
                                     "type": "CHAT_MESSAGE_RECEIVED",
                                     "t": "CMR",
+                                    "id": msg_item.get("id"),
                                     "sender": msg_item["sender"],
                                     "text": msg_item["text"],
                                     "avatar": msg_item["avatar"],

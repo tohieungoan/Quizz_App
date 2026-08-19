@@ -229,13 +229,11 @@ export const HostLiveReview: React.FC = () => {
             if (msg.type === "CHAT_MESSAGE_RECEIVED" || msg.t === "CMR") {
               const msgText = msg.text || msg.message || ""
               const msgSender = msg.sender || "User"
+              const msgId = msg.id || null
               if (msgText) {
                 setChatMessages((prev) => {
-                  const isDup = prev.some(
-                    (m) => m.sender === msgSender && m.text === msgText && (!msg.timestamp || !m.timestamp || m.timestamp === msg.timestamp)
-                  )
-                  if (isDup) return prev
-                  return [...prev, { sender: msgSender, text: msgText, avatar: msg.avatar, timestamp: msg.timestamp }]
+                  if (msgId && prev.some((m) => m.id === msgId)) return prev
+                  return [...prev, { id: msgId, sender: msgSender, text: msgText, avatar: msg.avatar, timestamp: msg.timestamp }]
                 })
               }
             }

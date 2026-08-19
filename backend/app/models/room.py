@@ -45,6 +45,13 @@ class Room(Base):
     def participants_count(self) -> int:
         return len(self.participants) if self.participants else 0
 
+    # Dynamic runtime attributes for live sessions (not DB columns)
+    active_question = None
+    qa_state = None
+    top_voted_questions = None
+    chat_messages = None
+
+
 
 
 

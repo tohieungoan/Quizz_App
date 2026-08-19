@@ -39,8 +39,11 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
     Server-side background task that waits for question time limit + delay,
     then automatically advances the room to the next question if progression_mode is 'auto'.
     """
-    await asyncio.sleep(delay_seconds)
-    
+    try:
+        await asyncio.sleep(delay_seconds)
+    except asyncio.CancelledError:
+        return
+
     db = SessionLocal()
     try:
         room = crud_room.get(db=db, room_id=room_id)
@@ -48,15 +51,15 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
             return
             
         if room.status == "PLAYING" and (room.progression_mode or "manual").lower() == "auto":
-            if room.current_question_index == expected_question_index:
+            if room.current_question_index == expected_question_index and room.room_code:
                 updated_room = crud_room.next_question(db=db, room=room)
                 if updated_room.status == "ENDED":
-                    await room_websocket_notification_manager.broadcast_to_room(
+                    await room_websocket_manager.broadcast_to_room(
                         room.room_code,
                         {"type": "GAME_ENDED", "status": "ENDED"}
                     )
                 else:
-                    await room_websocket_notification_manager.broadcast_to_room(
+                    await room_websocket_manager.broadcast_to_room(
                         room.room_code,
                         {
                             "type": "NEXT_QUESTION",
@@ -69,6 +72,7 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
     except Exception as e:
         logger.error(f"Error in _auto_advance_room_task for room {room_id}: {e}")
     finally:
+        _auto_advance_tasks.pop(room_id, None)
         db.close()
 
 
@@ -80,6 +84,11 @@ def _trigger_auto_advance_if_enabled(db: Session, room):
         return
     if (room.progression_mode or "manual").lower() != "auto":
         return
+
+    # Cancel any previous auto advance task for this room
+    existing_task = _auto_advance_tasks.get(room.id)
+    if existing_task and not existing_task.done():
+        existing_task.cancel()
 
     time_limit = 20
     if room.quiz and room.quiz.questions:
@@ -403,16 +412,17 @@ async def get_room_by_code(
             }
 
     # Populate room fields dynamically
-    room.active_question = active_q
+    setattr(room, "active_question", active_q)
 
     # Attach live Q&A state, top voted questions & chat messages
-    try:
-        from app.services.redis_room_service import redis_room_service
-        setattr(room, "top_voted_questions", await redis_room_service.get_top_voted_questions(room.room_code))
-        setattr(room, "qa_state", await redis_room_service.get_qa_session_state(room.room_code))
-        setattr(room, "chat_messages", await redis_room_service.get_chat_messages(room.room_code))
-    except Exception as e_qa:
-        logger.warning(f"Failed to load live qa_state for room {room.room_code}: {e_qa}")
+    if room.room_code:
+        try:
+            from app.services.redis_room_service import redis_room_service
+            setattr(room, "top_voted_questions", await redis_room_service.get_top_voted_questions(room.room_code))
+            setattr(room, "qa_state", await redis_room_service.get_qa_session_state(room.room_code))
+            setattr(room, "chat_messages", await redis_room_service.get_chat_messages(room.room_code))
+        except Exception as e_qa:
+            logger.warning(f"Failed to load live qa_state for room {room.room_code}: {e_qa}")
 
     return room
 
@@ -442,10 +452,11 @@ async def end_room(
 
     from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.update_status(db=db, room=room, status="ENDED")
-    # Broadcast game ended to all websocket clients
-    await room_websocket_notification_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
-    # Batch flush cached Redis answers to PostgreSQL database
-    await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
+    if room.room_code:
+        # Broadcast game ended to all websocket clients
+        await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
+        # Batch flush cached Redis answers to PostgreSQL database
+        await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
     return updated_room
 
 
@@ -489,7 +500,7 @@ async def join_room_by_code(
         active_nicknames = await run_in_threadpool(
             lambda: [row[0] for row in db.query(Participant.nickname).filter(Participant.room_id == room.id).all()]
         )
-        await room_websocket_notification_manager.broadcast_to_room(
+        await room_websocket_manager.broadcast_to_room(
             room_code,
             {
                 "type": "PLAYER_JOINED",
@@ -595,7 +606,8 @@ async def start_room(
 
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast game started to all websocket clients in room
-    await room_websocket_notification_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
+    if room.room_code:
+        await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -628,7 +640,7 @@ async def get_live_session(
         
         # Format Options with keys A, B, C, D
         KEYS = ["A", "B", "C", "D"]
-        sorted_opts = sorted(q.options, key=lambda o: o.id)
+        sorted_opts = sorted(q.options or [], key=lambda o: o.id)
         options_live = []
         correct_option_key = None
         for idx, opt in enumerate(sorted_opts):
@@ -679,10 +691,7 @@ async def get_live_session(
         )
         return title_row[0] if title_row else None
 
-    is_short_ans = False
-    if active_question:
-        raw_type = (q.type or "multiple_choice").lower().strip()
-        is_short_ans = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+    is_short_ans = active_question is not None and active_question.get("type") == "SHORT_ANSWER"
 
     if is_short_ans and active_question:
         for p in room.participants:
@@ -715,9 +724,11 @@ async def get_live_session(
                 ).first()
                 if ans:
                     answered = True
-                    selected_key = next((o["key"] for o in active_question["options"] if o["id"] == ans.selected_option_id), None)
-                    if selected_key in distribution:
-                        distribution[selected_key] += 1
+                    options = active_question.get("options")
+                    if isinstance(options, list):
+                        selected_key = next((o.get("key") for o in options if isinstance(o, dict) and o.get("id") == ans.selected_option_id), None)
+                        if selected_key and selected_key in distribution:
+                            distribution[selected_key] += 1
             participants_live.append({
                 "id": p.id,
                 "nickname": p.nickname or "",
@@ -778,16 +789,17 @@ async def next_question(
     from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast NEXT_QUESTION to all client WebSockets in room
-    await room_websocket_notification_manager.broadcast_to_room(
-        room.room_code,
-        {
-            "type": "NEXT_QUESTION",
-            "current_question_index": updated_room.current_question_index,
-            "status": updated_room.status
-        }
-    )
-    # Batch flush cached Redis answers to PostgreSQL database
-    await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
+    if room.room_code:
+        await room_websocket_manager.broadcast_to_room(
+            room.room_code,
+            {
+                "type": "NEXT_QUESTION",
+                "current_question_index": updated_room.current_question_index,
+                "status": updated_room.status
+            }
+        )
+        # Batch flush cached Redis answers to PostgreSQL database
+        await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -846,26 +858,28 @@ async def submit_answer(
         )
 
         # High-concurrency Redis Store update
-        redis_total_score, _ = await redis_room_service.submit_answer_redis(
-            room_code=room.room_code,
-            participant_id=participant.id,
-            question_id=answer_in.question_id,
-            selected_option_id=answer_in.selected_option_id,
-            answer_text=answer_in.answer_text,
-            is_correct=is_correct,
-            score=score,
-            correct_option_key=correct_option_key,
-        )
+        redis_total_score = None
+        if room.room_code:
+            redis_total_score, _ = await redis_room_service.submit_answer_redis(
+                room_code=room.room_code,
+                participant_id=participant.id,
+                question_id=answer_in.question_id,
+                selected_option_id=answer_in.selected_option_id,
+                answer_text=answer_in.answer_text,
+                is_correct=is_correct,
+                score=score,
+                correct_option_key=correct_option_key,
+            )
 
-        # Real-time WebSocket notification to host panel
-        await room_websocket_notification_manager.broadcast_to_room(
-            room.room_code,
-            {
-                "type": "ANSWER_SUBMITTED",
-                "participant_id": participant.id,
-                "question_id": answer_in.question_id
-            }
-        )
+            # Real-time WebSocket notification to host panel
+            await room_websocket_manager.broadcast_to_room(
+                room.room_code,
+                {
+                    "type": "ANSWER_SUBMITTED",
+                    "participant_id": participant.id,
+                    "question_id": answer_in.question_id
+                }
+            )
 
         if participant.user:
             pts = 15 if is_correct else 10
@@ -939,7 +953,7 @@ async def leave_room_endpoint(
     if room_code and nickname:
         db_room = crud_room.get_by_code(db=db, room_code=room_code)
         active_nicknames = [p.nickname for p in db_room.participants] if db_room else []
-        await room_websocket_notification_manager.broadcast_to_room(
+        await room_websocket_manager.broadcast_to_room(
             room_code,
             {
                 "type": "PLAYER_LEFT",
@@ -1054,6 +1068,7 @@ async def send_chat_message_endpoint(
         {
             "type": "CHAT_MESSAGE_RECEIVED",
             "t": "CMR",
+            "id": msg_item.get("id"),
             "sender": msg_item["sender"],
             "text": msg_item["text"],
             "message": msg_item["text"],
@@ -1064,8 +1079,11 @@ async def send_chat_message_endpoint(
 
     return {
         "status": "ok",
+        "id": msg_item.get("id"),
         "sender": sender,
-        "text": text
+        "text": text,
+        "avatar": avatar,
+        "timestamp": msg_item["timestamp"]
     }
 
 

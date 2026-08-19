@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Send, MessageSquare } from 'lucide-react'
 
 export interface ChatMessage {
+  id?: string
   sender: string
   text: string
   avatar?: string | null
