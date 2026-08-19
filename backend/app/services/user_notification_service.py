@@ -17,7 +17,7 @@ def _send_sync_ws_notification(user_id: int, title: str, content: str, action_ur
     """
     try:
         import asyncio
-        from app.api.v1.websockets.manager import manager
+        from app.api.v1.websockets.notification_manager import notification_manager
         payload = {
             "type": "NOTIFICATION",
             "title": title,
@@ -34,10 +34,10 @@ def _send_sync_ws_notification(user_id: int, title: str, content: str, action_ur
                 loop = None
 
         if loop and loop.is_running():
-            asyncio.run_coroutine_threadsafe(manager.send_personal_message(payload, user_id), loop)
+            asyncio.run_coroutine_threadsafe(notification_manager.send_personal_message(payload, user_id), loop)
         else:
             try:
-                asyncio.run(manager.send_personal_message(payload, user_id))
+                asyncio.run(notification_manager.send_personal_message(payload, user_id))
             except Exception as inner_e:
                 logger.warning(f"[UserNotificationService] WS dispatch warning: {inner_e}")
     except Exception as e:

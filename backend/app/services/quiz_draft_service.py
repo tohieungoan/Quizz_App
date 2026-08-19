@@ -20,8 +20,9 @@ from app.schemas.quiz import (
     QuizDraftSnapshot,
 )
 from app.services.quiz_authoring_policy import (
+    QuizInActiveExamError,
     QuizInActiveRoomError,
-    ensure_quiz_is_not_in_active_room,
+    ensure_quiz_authoring_is_unlocked,
 )
 from app.utils.cloudinary_utils import is_managed_cloudinary_url
 
@@ -48,7 +49,7 @@ class QuizSnapshotError(QuizDraftError):
     pass
 
 
-class QuizActiveRoomError(QuizDraftError):
+class QuizAuthoringLockedError(QuizDraftError):
     pass
 
 
@@ -157,9 +158,9 @@ class QuizDraftService:
             if not self._can_manage(quiz, user_id, is_super_admin):
                 raise QuizPermissionError("You do not have permission to edit this quiz.")
             try:
-                ensure_quiz_is_not_in_active_room(db, quiz.id)
-            except QuizInActiveRoomError as error:
-                raise QuizActiveRoomError(str(error)) from error
+                ensure_quiz_authoring_is_unlocked(db, quiz.id)
+            except (QuizInActiveRoomError, QuizInActiveExamError) as error:
+                raise QuizAuthoringLockedError(str(error)) from error
             if quiz.version != snapshot.expected_version:
                 raise QuizVersionConflictError(quiz.version)
             if len(snapshot.questions) > self.MAX_QUESTIONS:
@@ -221,6 +222,10 @@ class QuizDraftService:
                 raise QuizNotFoundError("Quiz not found.")
             if not self._can_manage(quiz, user_id, is_super_admin):
                 raise QuizPermissionError("You do not have permission to publish this quiz.")
+            try:
+                ensure_quiz_authoring_is_unlocked(db, quiz.id)
+            except (QuizInActiveRoomError, QuizInActiveExamError) as error:
+                raise QuizAuthoringLockedError(str(error)) from error
             if quiz.version != expected_version:
                 raise QuizVersionConflictError(quiz.version)
 

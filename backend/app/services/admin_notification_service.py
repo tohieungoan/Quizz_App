@@ -29,7 +29,7 @@ def _push_ws_notification(user_id: int, title: str, content: str, action_url: Op
     """Push real-time WebSocket notification to an active Admin connection."""
     try:
         import asyncio
-        from app.api.v1.websockets.manager import manager
+        from app.api.v1.websockets.notification_manager import notification_manager
 
         payload = {
             "type": "NOTIFICATION",
@@ -48,10 +48,10 @@ def _push_ws_notification(user_id: int, title: str, content: str, action_url: Op
                 loop = None
 
         if loop and loop.is_running():
-            asyncio.run_coroutine_threadsafe(manager.send_personal_message(payload, user_id), loop)
+            asyncio.run_coroutine_threadsafe(notification_manager.send_personal_message(payload, user_id), loop)
         else:
             try:
-                asyncio.run(manager.send_personal_message(payload, user_id))
+                asyncio.run(notification_manager.send_personal_message(payload, user_id))
             except Exception:
                 pass
     except Exception as e:

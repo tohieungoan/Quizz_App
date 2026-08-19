@@ -1,11 +1,44 @@
 from typing import List, Optional, Tuple
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from sqlalchemy.orm import selectinload
-from app.models.quiz import Quiz
+from app.models.quiz import Question, Quiz
 from app.schemas.quiz import QuizCreate, QuizUpdate
 
 
 class CRUDQuiz:
+    @staticmethod
+    def _paginate_with_question_counts(
+        db: Session,
+        query,
+        skip: int,
+        limit: int,
+    ) -> Tuple[List[Quiz], int]:
+        """Return a quiz page without hydrating every Question relationship."""
+        total = query.count()
+        counts = (
+            db.query(
+                Question.quiz_id.label("quiz_id"),
+                func.count(Question.id).label("question_count"),
+            )
+            .group_by(Question.quiz_id)
+            .subquery()
+        )
+        rows = (
+            query.outerjoin(counts, counts.c.quiz_id == Quiz.id)
+            .add_columns(func.coalesce(counts.c.question_count, 0))
+            .order_by(Quiz.id.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+        quizzes: List[Quiz] = []
+        for quiz, question_count in rows:
+            # QuizResponse reads the public property; keeping the aggregate on
+            # the instance avoids a hidden lazy-load/N+1 during serialization.
+            quiz.__dict__["_prefetched_question_count"] = int(question_count)
+            quizzes.append(quiz)
+        return quizzes, total
+
     def get(self, db: Session, quiz_id: int) -> Optional[Quiz]:
         """Get quiz by ID."""
         return db.query(Quiz).filter(Quiz.id == quiz_id).first()
@@ -32,7 +65,7 @@ class CRUDQuiz:
         subject: Optional[str] = None
     ) -> Tuple[List[Quiz], int]:
         """Get all quizzes in the system with pagination and optional filtering."""
-        query = db.query(Quiz).options(selectinload(Quiz.questions))
+        query = db.query(Quiz)
         
         # Apply filters
         if keyword:
@@ -43,9 +76,7 @@ class CRUDQuiz:
         if subject:
             query = query.filter(Quiz.subject == subject)
             
-        total = query.count()
-        quizzes = query.order_by(Quiz.id.desc()).offset(skip).limit(limit).all()
-        return quizzes, total
+        return self._paginate_with_question_counts(db, query, skip, limit)
 
     def get_multi_by_user(
         self, 
@@ -58,7 +89,7 @@ class CRUDQuiz:
         subject: Optional[str] = None
     ) -> Tuple[List[Quiz], int]:
         """Get all quizzes for a specific user with pagination and optional filtering."""
-        query = db.query(Quiz).options(selectinload(Quiz.questions)).filter(Quiz.user_id == user_id)
+        query = db.query(Quiz).filter(Quiz.user_id == user_id)
         
         # Apply filters
         if keyword:
@@ -69,9 +100,7 @@ class CRUDQuiz:
         if subject:
             query = query.filter(Quiz.subject == subject)
             
-        total = query.count()
-        quizzes = query.order_by(Quiz.id.desc()).offset(skip).limit(limit).all()
-        return quizzes, total
+        return self._paginate_with_question_counts(db, query, skip, limit)
 
     def create_with_user(self, db: Session, obj_in: QuizCreate, user_id: int) -> Quiz:
         """Create a new quiz associated with a user."""

@@ -36,6 +36,9 @@ class Quiz(Base):
 
     @property
     def question_count(self) -> int:
+        prefetched = self.__dict__.get("_prefetched_question_count")
+        if prefetched is not None:
+            return int(prefetched)
         return len(self.questions)
 
 

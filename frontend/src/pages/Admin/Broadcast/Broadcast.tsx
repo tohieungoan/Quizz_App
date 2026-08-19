@@ -152,17 +152,23 @@ export function Broadcast() {
 
   const formatScheduledTime = (isoString?: string | null) => {
     if (!isoString) return 'Scheduled';
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
+
+    // Older API responses contain UTC datetimes without a timezone suffix.
+    // Add `Z` defensively so browsers do not interpret them as local time.
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(isoString);
+    const normalizedIsoString = hasTimezone ? isoString : `${isoString}Z`;
+    const date = new Date(normalizedIsoString);
+
+    if (Number.isNaN(date.getTime())) {
       return isoString;
     }
+
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const getPreviewIcon = () => {

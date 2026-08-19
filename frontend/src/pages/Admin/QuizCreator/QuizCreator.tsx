@@ -541,41 +541,45 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
     if (mediaFile) {
       const url = await uploadMedia(mediaFile);
-      if (url) {
-        // If there was an old URL and it was uploaded during this draft session, delete it to prevent orphaned assets
-        if (mediaUrl && mediaUrl !== url && draftUploadedUrls.has(mediaUrl)) {
-          const isReferenced = questions.some(q => q.id !== editingId && (q.mediaUrl === mediaUrl || q.audioUrl === mediaUrl));
-          if (!isReferenced) {
-            deleteMediaFile(mediaUrl);
-            setDraftUploadedUrls(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(mediaUrl);
-              return newSet;
-            });
-          }
-        }
-        finalMediaUrl = url;
-        setDraftUploadedUrls(prev => new Set(prev).add(url));
+      if (!url) {
+        toast.error('Image or video upload failed. Retry the upload before saving this question.');
+        return;
       }
+      // If there was an old URL and it was uploaded during this draft session, delete it to prevent orphaned assets
+      if (mediaUrl && mediaUrl !== url && draftUploadedUrls.has(mediaUrl)) {
+        const isReferenced = questions.some(q => q.id !== editingId && (q.mediaUrl === mediaUrl || q.audioUrl === mediaUrl));
+        if (!isReferenced) {
+          void deleteMediaFile(mediaUrl);
+          setDraftUploadedUrls(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(mediaUrl);
+            return newSet;
+          });
+        }
+      }
+      finalMediaUrl = url;
+      setDraftUploadedUrls(prev => new Set(prev).add(url));
     }
 
     if (audioFile) {
       const url = await uploadAudio(audioFile);
-      if (url) {
-        if (audioUrl && audioUrl !== url && draftUploadedUrls.has(audioUrl)) {
-          const isReferenced = questions.some(q => q.id !== editingId && (q.mediaUrl === audioUrl || q.audioUrl === audioUrl));
-          if (!isReferenced) {
-            deleteAudioFile(audioUrl);
-            setDraftUploadedUrls(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(audioUrl);
-              return newSet;
-            });
-          }
-        }
-        finalAudioUrl = url;
-        setDraftUploadedUrls(prev => new Set(prev).add(url));
+      if (!url) {
+        toast.error('Audio upload failed. Retry the upload before saving this question.');
+        return;
       }
+      if (audioUrl && audioUrl !== url && draftUploadedUrls.has(audioUrl)) {
+        const isReferenced = questions.some(q => q.id !== editingId && (q.mediaUrl === audioUrl || q.audioUrl === audioUrl));
+        if (!isReferenced) {
+          void deleteAudioFile(audioUrl);
+          setDraftUploadedUrls(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(audioUrl);
+            return newSet;
+          });
+        }
+      }
+      finalAudioUrl = url;
+      setDraftUploadedUrls(prev => new Set(prev).add(url));
     }
 
     let newQ: Question;
@@ -1003,6 +1007,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                   setMediaUrl(uploaded);
                   setDraftUploadedUrls(previous => new Set(previous).add(uploaded));
                   setMediaFile(null);
+                } else {
+                  toast.error('Image or video upload failed. Please retry before saving.');
                 }
               }}
               onAudioSelect={async file => {
@@ -1017,6 +1023,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
                   setAudioUrl(uploaded);
                   setDraftUploadedUrls(previous => new Set(previous).add(uploaded));
                   setAudioFile(null);
+                } else {
+                  toast.error('Audio upload failed. Please retry before saving.');
                 }
               }}
               onClose={() => {

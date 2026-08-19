@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from datetime import datetime, timezone
 from typing import List, Optional
 
 VALID_BROADCAST_TYPES = {"ANNOUNCEMENT", "SYSTEM", "INFO", "UPDATE", "PROMOTION", "EVENT"}
@@ -77,6 +77,15 @@ class BroadcastLogSchema(BaseModel):
     status: str
     job_id: Optional[str] = None
     created_at: datetime
+
+    @field_serializer("scheduled_at", "created_at", when_used="json")
+    def serialize_utc_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """Serialize UTC-naive database values as unambiguous ISO-8601 UTC."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     
     model_config = ConfigDict(from_attributes=True)
 
