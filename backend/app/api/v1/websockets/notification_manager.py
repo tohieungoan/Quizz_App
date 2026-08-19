@@ -112,6 +112,14 @@ class ConnectionManager:
                 targets.append((user_id, connection))
         await self._send_in_batches(targets, message)
 
+    async def send_personal_message(self, message: dict[str, Any], user_id: int) -> None:
+        """Send a notification message to all active WebSocket connections of a specific user."""
+        connections = list(self.active_connections.get(user_id, []))
+        if not connections:
+            return
+        targets = [(user_id, connection) for connection in connections]
+        await self._send_in_batches(targets, message)
 
 
 notification_manager = ConnectionManager()
+

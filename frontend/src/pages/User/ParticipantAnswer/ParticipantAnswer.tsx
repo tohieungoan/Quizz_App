@@ -455,13 +455,11 @@ export const ParticipantAnswer: React.FC = () => {
               const msgText = data.text || data.message || ""
               const msgSender = data.sender || "User"
               const msgAvatar = data.avatar || null
+              const msgId = data.id || null
               if (msgText) {
                 setChatMessages((prev) => {
-                  const isDup = prev.some(
-                    (m) => m.sender === msgSender && m.text === msgText && (!data.timestamp || !m.timestamp || m.timestamp === data.timestamp)
-                  )
-                  if (isDup) return prev
-                  return [...prev, { sender: msgSender, text: msgText, avatar: msgAvatar, timestamp: data.timestamp }]
+                  if (msgId && prev.some((m) => m.id === msgId)) return prev
+                  return [...prev, { id: msgId, sender: msgSender, text: msgText, avatar: msgAvatar, timestamp: data.timestamp }]
                 })
               }
               return
