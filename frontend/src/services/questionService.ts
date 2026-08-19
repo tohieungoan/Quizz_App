@@ -16,7 +16,6 @@ export interface QuestionCreatePayload {
   audio_play_limit?: number;
   difficulty?: string;
   time_limit?: number;
-  source?: string;
   is_original?: boolean;
   options?: QuestionOptionCreatePayload[];
 }

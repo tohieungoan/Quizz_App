@@ -336,7 +336,7 @@ def get_my_exam_result(
         )
 
     quiz = exam.quiz
-    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.id.asc()).all()
+    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.position.asc(), Question.id.asc()).all()
     answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
     answers_dict = {a.question_id: a for a in answers}
 
@@ -862,7 +862,7 @@ def take_exam(
     remaining_seconds = int((allowed_duration - time_elapsed).total_seconds())
 
     quiz = exam.quiz
-    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.id.asc()).all()
+    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.position.asc(), Question.id.asc()).all()
 
     existing_answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
     user_answer_map = {ans.question_id: ans for ans in existing_answers}
@@ -1278,7 +1278,7 @@ def get_student_submission_details(
         raise HTTPException(status_code=404, detail="Student submission not found")
 
     quiz = exam.quiz
-    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.id.asc()).all()
+    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.position.asc(), Question.id.asc()).all()
     answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
     answers_dict = {a.question_id: a for a in answers}
 

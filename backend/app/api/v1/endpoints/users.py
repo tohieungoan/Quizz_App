@@ -111,8 +111,9 @@ def read_users(
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Create new user (Admin)")
-def create_user(
+async def create_user(
     user_in: UserCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_admin),
 ):
@@ -126,7 +127,18 @@ def create_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This email address is already registered.",
         )
+        
+    user_in.status = "UNVERIFIED"
     user = crud_user.create(db, obj_in=user_in)
+    
+    # Send email verification token via BackgroundTasks
+    if settings.SMTP_USER and settings.SMTP_PASSWORD:
+        verify_token = secrets.token_urlsafe(32)
+        await set_token(f"verify_email:{verify_token}", user.email, expire_seconds=86400)
+        verify_url = f"{settings.FRONTEND_URL}/verify-email?token={verify_token}"
+        from app.core.email import send_verification_email
+        background_tasks.add_task(send_verification_email, email_to=user.email, verify_url=verify_url)
+
     return user
 
 

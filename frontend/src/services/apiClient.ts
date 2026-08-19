@@ -1,114 +1,117 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
 
-// Flag to avoid infinite token refreshing loop
-let isRefreshing = false
-let refreshQueue: Array<() => void> = []
+let refreshPromise: Promise<void> | null = null
 
-// Automatically attach Authorization header if token exists
 const buildHeaders = (extra?: Record<string, string>): Record<string, string> => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
-  
-  // If explicitly set to empty string, delete it (useful for FormData which needs to set its own Content-Type with boundaries)
-  if (headers['Content-Type'] === '') {
-    delete headers['Content-Type']
-  }
+  if (headers['Content-Type'] === '') delete headers['Content-Type']
 
   const token = localStorage.getItem('token')
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
+  if (token) headers.Authorization = `Bearer ${token}`
   return headers
 }
 
-/**
- * Refresh access_token using refresh_token.
- */
 const refreshAccessToken = async (): Promise<void> => {
   const refreshToken = localStorage.getItem('refresh_token')
   if (!refreshToken) throw new Error('No refresh token available')
 
-  const res = await fetch(`${BASE_URL}/auth/refresh-token`, {
+  const response = await fetch(`${BASE_URL}/auth/refresh-token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: refreshToken }),
   })
-  if (!res.ok) throw new Error('Refresh token expired or revoked')
+  if (!response.ok) throw new Error('Refresh token expired or revoked')
 
-  const data = await res.json()
+  const data = await response.json()
   localStorage.setItem('token', data.access_token)
   localStorage.setItem('refresh_token', data.refresh_token)
 }
 
-/**
- * Perform fetch with automatic retry after refreshing access_token if 401 Unauthorized is received.
- * Uses a queue so that concurrent requests do not trigger multiple refresh operations.
- */
+const clearSession = (): void => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
+  localStorage.removeItem('user')
+}
+
+/** Retry one time after a shared token refresh; concurrent 401s cannot deadlock. */
 const fetchWithAuth = async (url: string, init: RequestInit): Promise<Response> => {
-  const res = await fetch(url, { ...init, headers: buildHeaders(init.headers as Record<string, string>) })
-
-  if (res.status !== 401) return res
-
-  // Received 401 — try refreshing the token once
-  if (!isRefreshing) {
-    isRefreshing = true
-    try {
-      await refreshAccessToken()
-      // Notify all pending requests in queue
-      refreshQueue.forEach((cb) => cb())
-      refreshQueue = []
-    } catch {
-      refreshQueue = []
-      // Refresh failed — force log out
-      localStorage.removeItem('token')
-      localStorage.removeItem('refresh_token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
-      throw new Error('Session expired. Redirecting to login...')
-    } finally {
-      isRefreshing = false
-    }
-  }
-
-  // Wait for refresh to complete, then retry with the new token
-  await new Promise<void>((resolve) => {
-    refreshQueue.push(resolve)
+  const request = () => fetch(url, {
+    ...init,
+    headers: buildHeaders(init.headers as Record<string, string>),
   })
 
-  // Retry with the new token
-  return fetch(url, { ...init, headers: buildHeaders(init.headers as Record<string, string>) })
+  const response = await request()
+  if (response.status !== 401) return response
+
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null
+    })
+  }
+
+  try {
+    await refreshPromise
+  } catch {
+    clearSession()
+    window.location.href = '/login'
+    throw new Error('Session expired. Redirecting to login...')
+  }
+  return request()
 }
 
 export class ApiError extends Error {
-  public fieldErrors?: Record<string, string>;
-  constructor(message: string, fieldErrors?: Record<string, string>) {
-    super(message);
-    this.name = 'ApiError';
-    this.fieldErrors = fieldErrors;
+  public fieldErrors?: Record<string, string>
+  public status: number
+  public code?: string
+  public details?: unknown
+
+  constructor(
+    message: string,
+    status: number,
+    fieldErrors?: Record<string, string>,
+    code?: string,
+    details?: unknown,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.fieldErrors = fieldErrors
+    this.code = code
+    this.details = details
   }
 }
 
-const handleResponse = async <T>(res: Response): Promise<T> => {
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}))
-    let errorMsg = `HTTP error ${res.status}`
-    let fieldErrors: Record<string, string> | undefined;
+const handleResponse = async <T>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    let message = `HTTP error ${response.status}`
+    let fieldErrors: Record<string, string> | undefined
 
     if (Array.isArray(error.detail)) {
-      fieldErrors = {};
-      error.detail.forEach((e: any) => {
-        const fieldName = e.loc[e.loc.length - 1];
-        fieldErrors![fieldName] = e.msg;
-      });
-      errorMsg = "Please check the highlighted fields for errors.";
+      fieldErrors = {}
+      error.detail.forEach((item: any) => {
+        const fieldName = item.loc[item.loc.length - 1]
+        fieldErrors![fieldName] = item.msg
+      })
+      message = 'Please check the highlighted fields for errors.'
     } else if (error.detail) {
-      errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
+      message = typeof error.detail === 'string'
+        ? error.detail
+        : error.detail.message || JSON.stringify(error.detail)
     } else if (error.message) {
-      errorMsg = error.message;
+      message = error.message
     }
 
-    throw new ApiError(errorMsg, fieldErrors);
+    throw new ApiError(
+      message,
+      response.status,
+      fieldErrors,
+      error.detail?.code,
+      error.detail,
+    )
   }
-  return res.json()
+  if (response.status === 204) return undefined as T
+  return response.json()
 }
 
 export const apiClient = {
@@ -116,30 +119,21 @@ export const apiClient = {
     fetchWithAuth(`${BASE_URL}${endpoint}`, { method: 'GET', headers: extraHeaders })
       .then(handleResponse<T>),
 
-  post: <T = unknown>(
-    endpoint: string,
-    body?: unknown,
-    extraHeaders?: Record<string, string>
-  ): Promise<T> =>
+  post: <T = unknown>(endpoint: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> =>
     fetchWithAuth(`${BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: extraHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }).then(handleResponse<T>),
 
-  postMultipart: <T = unknown>(
-    endpoint: string,
-    body: FormData,
-    config?: RequestInit
-  ): Promise<T> =>
+  postMultipart: <T = unknown>(endpoint: string, body: FormData, config?: RequestInit): Promise<T> =>
     fetchWithAuth(`${BASE_URL}${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': '' }, // Empty string tells buildHeaders to delete it
-      body: body,
-      ...config
+      headers: { 'Content-Type': '' },
+      body,
+      ...config,
     }).then(handleResponse<T>),
 
-  /** Reserved for form-urlencoded (OAuth2 login) — authorization header not needed */
   postForm: <T = unknown>(endpoint: string, params: URLSearchParams): Promise<T> =>
     fetch(`${BASE_URL}${endpoint}`, {
       method: 'POST',
@@ -147,11 +141,7 @@ export const apiClient = {
       body: params.toString(),
     }).then(handleResponse<T>),
 
-  put: <T = unknown>(
-    endpoint: string,
-    body: unknown,
-    extraHeaders?: Record<string, string>
-  ): Promise<T> =>
+  put: <T = unknown>(endpoint: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> =>
     fetchWithAuth(`${BASE_URL}${endpoint}`, {
       method: 'PUT',
       headers: extraHeaders,
@@ -165,6 +155,5 @@ export const apiClient = {
     }).then(handleResponse<T>),
 
   delete: <T = unknown>(endpoint: string): Promise<T> =>
-    fetchWithAuth(`${BASE_URL}${endpoint}`, { method: 'DELETE' })
-      .then(handleResponse<T>),
+    fetchWithAuth(`${BASE_URL}${endpoint}`, { method: 'DELETE' }).then(handleResponse<T>),
 }

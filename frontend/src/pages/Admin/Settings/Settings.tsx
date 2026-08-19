@@ -223,8 +223,8 @@ export function Settings() {
             
             {/* Headers for toggles */}
             <div className="flex items-center gap-8 px-4 py-1.5 rounded-full border border-slate-200 bg-slate-50">
-              <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider w-10 text-center">In-App</span>
-              <span className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider w-10 text-center">Email</span>
+              <span className="w-10 whitespace-nowrap text-center text-[11px] font-extrabold uppercase tracking-wider text-slate-600">In-App</span>
+              <span className="w-10 whitespace-nowrap text-center text-[11px] font-extrabold uppercase tracking-wider text-slate-600">Email</span>
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 import json
 from typing import Optional, List
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
 import logging
 
 from app.schemas.ai_quiz import (
@@ -10,10 +10,27 @@ from app.schemas.ai_quiz import (
 )
 from app.services.ai import AIQuizService, LLMOrchestrator
 from app.core.config import settings
+from app.api.deps import get_current_active_user
+from app.services.ai.rate_limiter import consume_ai_generation_quota
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+MAX_AI_DOCUMENT_SIZE = 20 * 1024 * 1024
+
+
+async def _read_upload_with_limit(file: UploadFile) -> bytes:
+    chunks = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > MAX_AI_DOCUMENT_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="AI source documents cannot exceed 20MB.",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 @router.post(
@@ -32,11 +49,24 @@ async def generate(
     end_page: Optional[int] = Form(None),
     existing_questions: Optional[str] = Form(None, description="JSON array string of existing questions"),
     deleted_blacklist: Optional[str] = Form(None, description="JSON array string of deleted questions"),
+    current_user=Depends(get_current_active_user),
 ):
     try:
+        allowed, _ = await consume_ai_generation_quota(current_user.id)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="AI generation hourly quota exceeded. Please try again later.",
+            )
         file_bytes = None
         if file:
-            file_bytes = await file.read()
+            extension = (file.filename or "").lower().rsplit(".", 1)[-1]
+            if extension not in {"pdf", "docx", "txt", "md", "markdown", "csv"}:
+                raise HTTPException(
+                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    detail="Supported AI documents are PDF, DOCX, TXT, Markdown, and CSV.",
+                )
+            file_bytes = await _read_upload_with_limit(file)
             if not file_bytes:
                 file_bytes = None
 
@@ -93,7 +123,7 @@ async def generate(
         logger.error(f"System error during AI question generation: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI System Error: {str(e)}"
+            detail="AI generation failed unexpectedly. Please retry or contact support."
         )
 
 
@@ -106,20 +136,29 @@ async def preview_document(
     file: UploadFile = File(...),
     start_page: Optional[int] = Form(None),
     end_page: Optional[int] = Form(None),
+    current_user=Depends(get_current_active_user),
 ):
     try:
-        file_bytes = await file.read()
+        extension = (file.filename or "").lower().rsplit(".", 1)[-1]
+        if extension not in {"pdf", "docx", "txt", "md", "markdown", "csv"}:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Supported AI documents are PDF, DOCX, TXT, Markdown, and CSV.",
+            )
+        file_bytes = await _read_upload_with_limit(file)
         return AIQuizService.preview_document(
             file_bytes=file_bytes,
             filename=file.filename or "document.pdf",
             start_page=start_page,
             end_page=end_page
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Document preview error: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unable to read document: {str(e)}"
+            detail="Unable to read the supplied document."
         )
 
 
@@ -127,7 +166,7 @@ async def preview_document(
     "/models/status",
     summary="Check AI models configuration status"
 )
-async def get_models_status():
+async def get_models_status(current_user=Depends(get_current_active_user)):
     return {
         "status": "ready",
         "primary_model": settings.OPENROUTER_PRIMARY_MODEL,

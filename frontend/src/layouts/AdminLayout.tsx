@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header as AdminHeader } from './AdminHeader';
 import { ViewState } from '../types';
+import { startNewQuizDraftSession } from '@/utils/quizDraftSession';
 
 export function AdminLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -22,7 +23,10 @@ export function AdminLayout() {
     const goToView = () => {
       if (view === 'quiz-creator') {
         if (context && context.id) navigate(`/admin/quizzes/edit/${context.id}`, { state: context });
-        else navigate(`/admin/quizzes/create`);
+        else {
+          startNewQuizDraftSession();
+          navigate(`/admin/quizzes/create`);
+        }
       } else if (view === 'reports' && context && (context.roomId || context.id)) {
         navigate(`/admin/reports/${context.roomId || context.id}`, { state: context });
       } else if (view === 'live-rooms') {

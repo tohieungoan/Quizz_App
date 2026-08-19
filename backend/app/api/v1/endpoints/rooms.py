@@ -83,7 +83,7 @@ def _trigger_auto_advance_if_enabled(db: Session, room):
 
     time_limit = 20
     if room.quiz and room.quiz.questions:
-        sorted_q = sorted(room.quiz.questions, key=lambda q: q.id)
+        sorted_q = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
         if 1 <= room.current_question_index <= len(sorted_q):
             time_limit = sorted_q[room.current_question_index - 1].time_limit or 20
 
@@ -172,7 +172,9 @@ def launch_room(
     Requires authentication (active user).
     """
     # Verify if quiz exists
-    quiz = crud_quiz.get(db=db, quiz_id=room_in.quiz_id)
+    # Serialize room creation with authoring saves. Once this lock is held,
+    # either the save completes before launch or subsequent saves see WAITING.
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=room_in.quiz_id)
     if not quiz:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -302,7 +304,7 @@ def get_my_active_rooms(
     for room in active_rooms:
         active_q = None
         if room.status == "PLAYING" and room.quiz and room.quiz.questions:
-            sorted_questions = sorted(room.quiz.questions, key=lambda q: q.id)
+            sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
             if 1 <= room.current_question_index <= len(sorted_questions):
                 q = sorted_questions[room.current_question_index - 1]
                 KEYS = ["A", "B", "C", "D"]
@@ -351,7 +353,7 @@ async def get_room_by_code(
     # Construct active_question safely without exposing correct_option_key
     active_q = None
     if room.status == "PLAYING" and room.quiz and room.quiz.questions:
-        sorted_questions = sorted(room.quiz.questions, key=lambda q: q.id)
+        sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
         if 1 <= room.current_question_index <= len(sorted_questions):
             q = sorted_questions[room.current_question_index - 1]
             
@@ -604,7 +606,7 @@ async def get_live_session(
     active_question = None
     sorted_questions = []
     if room.quiz and room.quiz.questions:
-        sorted_questions = sorted(room.quiz.questions, key=lambda q: q.id)
+        sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
         
     if 1 <= room.current_question_index <= len(sorted_questions):
         q = sorted_questions[room.current_question_index - 1]
@@ -932,8 +934,6 @@ async def leave_room_endpoint(
         )
         
     return {"message": "Successfully left the room."}
-
-
 @router.post("/{room_code}/vote-question", summary="Vote for a question in a room (HTTP Fallback)")
 async def vote_question_endpoint(
     room_code: str,
@@ -954,8 +954,7 @@ async def vote_question_endpoint(
     )
 
     top_questions = await redis_room_service.get_top_voted_questions(room_code)
-    
-    # Broadcast to WS room
+
     await room_websocket_manager.broadcast_to_room(
         room_code,
         {
@@ -967,7 +966,12 @@ async def vote_question_endpoint(
         }
     )
 
-    return {"status": "ok", "question_id": question_id, "vote_count": new_votes, "top_voted_questions": top_questions}
+    return {
+        "status": "ok",
+        "question_id": question_id,
+        "vote_count": new_votes,
+        "top_voted_questions": top_questions
+    }
 
 
 @router.post("/{room_code}/start-qa", summary="Start Q&A Mode in room (WS + HTTP Fallback)")
@@ -980,9 +984,12 @@ async def start_qa_endpoint(
     if all_top_qs:
         first_top_q = all_top_qs[0].get("question_id")
 
-    await redis_room_service.set_qa_session_state(room_code, is_active=True, current_question_id=first_top_q)
+    await redis_room_service.set_qa_session_state(
+        room_code,
+        is_active=True,
+        current_question_id=first_top_q
+    )
 
-    # Broadcast QA_SESSION_STARTED to all WebSocket clients in room
     await room_websocket_manager.broadcast_to_room(
         room_code,
         {
@@ -995,7 +1002,10 @@ async def start_qa_endpoint(
 
     return {
         "status": "ok",
-        "qa_state": {"is_active": True, "current_question_id": first_top_q},
+        "qa_state": {
+            "is_active": True,
+            "current_question_id": first_top_q
+        },
         "top_voted_questions": all_top_qs
     }
 
@@ -1009,8 +1019,12 @@ async def send_chat_message_endpoint(
     sender = payload.get("sender") or "User"
     text = (payload.get("message") or payload.get("text") or "").strip()
     avatar = payload.get("avatar")
+
     if not text:
-        raise HTTPException(status_code=400, detail="message content is required")
+        raise HTTPException(
+            status_code=400,
+            detail="message content is required"
+        )
 
     msg_item = await redis_room_service.add_chat_message(
         room_code,
@@ -1033,7 +1047,11 @@ async def send_chat_message_endpoint(
         }
     )
 
-    return {"status": "ok", "sender": sender, "text": text}
+    return {
+        "status": "ok",
+        "sender": sender,
+        "text": text
+    }
 
 
 @router.post("/{room_code}/select-qa-question", summary="Select active Q&A question in room (WS + HTTP Fallback)")
@@ -1043,9 +1061,13 @@ async def select_qa_question_endpoint(
     db: Session = Depends(get_db),
 ) -> Any:
     target_qid = payload.get("question_id") or payload.get("qid")
-    await redis_room_service.set_qa_session_state(room_code, is_active=True, current_question_id=target_qid)
 
-    # Broadcast QA_QUESTION_CHANGED to room
+    await redis_room_service.set_qa_session_state(
+        room_code,
+        is_active=True,
+        current_question_id=target_qid
+    )
+
     await room_websocket_manager.broadcast_to_room(
         room_code,
         {
@@ -1055,4 +1077,7 @@ async def select_qa_question_endpoint(
         }
     )
 
-    return {"status": "ok", "current_question_id": target_qid}
+    return {
+        "status": "ok",
+        "current_question_id": target_qid
+    }

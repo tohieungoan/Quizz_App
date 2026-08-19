@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, or_, case
+from sqlalchemy import func, desc, or_, case, literal
 import csv
 import io
 import zipfile
@@ -36,84 +36,186 @@ class CRUDReport:
     def get_reports_paginated(
         self, db: Session, search: str = "", report_type: str = "ALL", skip: int = 0, limit: int = 5
     ) -> ReportPageResponse:
-        
-        all_reports = []
+        normalized_type = report_type.upper()
+        search_term = f"%{search.strip()}%"
 
-        # 1. Fetch ended Rooms
-        if report_type in ["ALL", "ROOM"]:
-            rooms = (
-                db.query(Room, Quiz.title.label("quiz_title"), User.fullname.label("host_name"))
+        # Aggregate child tables once and join the summaries into their parent
+        # sessions. This avoids running three extra queries for every report.
+        room_participant_counts = (
+            db.query(
+                Participant.room_id.label("room_id"),
+                func.count(Participant.id).label("participant_count"),
+            )
+            .group_by(Participant.room_id)
+            .subquery()
+        )
+        room_answer_stats = (
+            db.query(
+                Participant.room_id.label("room_id"),
+                func.count(ParticipantAnswer.id).label("total_answers"),
+                func.sum(
+                    case((ParticipantAnswer.is_correct.is_(True), 1), else_=0)
+                ).label("correct_answers"),
+            )
+            .outerjoin(
+                ParticipantAnswer,
+                ParticipantAnswer.participant_id == Participant.id,
+            )
+            .group_by(Participant.room_id)
+            .subquery()
+        )
+        exam_assignee_counts = (
+            db.query(
+                ExamAssignee.exam_id.label("exam_id"),
+                func.count(ExamAssignee.id).label("participant_count"),
+            )
+            .group_by(ExamAssignee.exam_id)
+            .subquery()
+        )
+        exam_answer_stats = (
+            db.query(
+                ExamAssignee.exam_id.label("exam_id"),
+                func.count(ExamAnswer.id).label("total_answers"),
+                func.sum(
+                    case((ExamAnswer.is_correct.is_(True), 1), else_=0)
+                ).label("correct_answers"),
+            )
+            .outerjoin(
+                ExamAnswer,
+                ExamAnswer.exam_assignee_id == ExamAssignee.id,
+            )
+            .group_by(ExamAssignee.exam_id)
+            .subquery()
+        )
+
+        report_queries = []
+
+        if normalized_type in ["ALL", "ROOM"]:
+            room_query = (
+                db.query(
+                    Room.id.label("id"),
+                    literal("ROOM").label("type"),
+                    func.coalesce(Room.room_code, "").label("room_code"),
+                    func.coalesce(Quiz.title, "").label("quiz_title"),
+                    func.coalesce(Room.title, Room.room_code, "").label("room_title"),
+                    func.coalesce(User.fullname, "").label("host"),
+                    func.coalesce(Room.ended_at, Room.created_at).label("event_date"),
+                    func.coalesce(room_participant_counts.c.participant_count, 0).label("participants"),
+                    func.coalesce(room_answer_stats.c.total_answers, 0).label("total_answers"),
+                    func.coalesce(room_answer_stats.c.correct_answers, 0).label("correct_answers"),
+                )
                 .join(Quiz, Room.quiz_id == Quiz.id)
                 .join(User, Room.host_id == User.id)
+                .outerjoin(
+                    room_participant_counts,
+                    room_participant_counts.c.room_id == Room.id,
+                )
+                .outerjoin(
+                    room_answer_stats,
+                    room_answer_stats.c.room_id == Room.id,
+                )
                 .filter(Room.status == "ENDED")
-                .all()
             )
-            for row in rooms:
-                room, quiz_title, host_name = row
-                # Count participants
-                p_count = db.query(func.count(Participant.id)).filter(Participant.room_id == room.id).scalar() or 0
-                
-                # Avg score for this room
-                r_total_ans = db.query(func.count(ParticipantAnswer.id)).join(Participant).filter(Participant.room_id == room.id).scalar() or 0
-                r_corr_ans = db.query(func.count(ParticipantAnswer.id)).join(Participant).filter(Participant.room_id == room.id, ParticipantAnswer.is_correct == True).scalar() or 0
-                r_avg = f"{(r_corr_ans / r_total_ans * 100):.1f}%" if r_total_ans > 0 else "0.0%"
+            if search.strip():
+                room_query = room_query.filter(
+                    or_(
+                        Quiz.title.ilike(search_term),
+                        Room.title.ilike(search_term),
+                        Room.room_code.ilike(search_term),
+                        User.fullname.ilike(search_term),
+                    )
+                )
+            report_queries.append(room_query)
 
-                date_str = room.ended_at.strftime("%Y-%m-%d %H:%M") if room.ended_at else (room.created_at.strftime("%Y-%m-%d %H:%M") if room.created_at else "")
-
-                # Apply search filter
-                search_lower = search.lower()
-                if search_lower in (quiz_title or "").lower() or search_lower in (room.title or room.room_code or "").lower() or search_lower in (host_name or "").lower():
-                    all_reports.append(ReportListItem(
-                        id=room.id,
-                        type="ROOM",
-                        room_code=room.room_code or "",
-                        quiz_title=quiz_title or "",
-                        room_title=room.title or room.room_code or "",
-                        host=host_name or "",
-                        date=date_str,
-                        participants=p_count,
-                        avg_score=r_avg
-                    ))
-
-        # 2. Fetch completed Exams (ACTIVE exams that have passed their end_time, or all ACTIVE exams with assignees who completed)
-        if report_type in ["ALL", "EXAM"]:
-            exams = (
-                db.query(Exam, Quiz.title.label("quiz_title"), User.fullname.label("host_name"))
+        if normalized_type in ["ALL", "EXAM"]:
+            exam_query = (
+                db.query(
+                    Exam.id.label("id"),
+                    literal("EXAM").label("type"),
+                    literal("").label("room_code"),
+                    func.coalesce(Quiz.title, "").label("quiz_title"),
+                    func.coalesce(Exam.title, "").label("room_title"),
+                    func.coalesce(User.fullname, "").label("host"),
+                    func.coalesce(Exam.end_time, Exam.created_at).label("event_date"),
+                    func.coalesce(exam_assignee_counts.c.participant_count, 0).label("participants"),
+                    func.coalesce(exam_answer_stats.c.total_answers, 0).label("total_answers"),
+                    func.coalesce(exam_answer_stats.c.correct_answers, 0).label("correct_answers"),
+                )
                 .join(Quiz, Exam.quiz_id == Quiz.id)
                 .join(User, Exam.host_id == User.id)
+                .outerjoin(
+                    exam_assignee_counts,
+                    exam_assignee_counts.c.exam_id == Exam.id,
+                )
+                .outerjoin(
+                    exam_answer_stats,
+                    exam_answer_stats.c.exam_id == Exam.id,
+                )
                 .filter(Exam.status.in_(["ACTIVE", "ENDED", "FINISHED", "COMPLETED"]))
-                .all()
             )
-            for row in exams:
-                exam, quiz_title, host_name = row
-                p_count = db.query(func.count(ExamAssignee.id)).filter(ExamAssignee.exam_id == exam.id).scalar() or 0
-                
-                # Avg score for exam
-                e_total_ans = db.query(func.count(ExamAnswer.id)).join(ExamAssignee).filter(ExamAssignee.exam_id == exam.id).scalar() or 0
-                e_corr_ans = db.query(func.count(ExamAnswer.id)).join(ExamAssignee).filter(ExamAssignee.exam_id == exam.id, ExamAnswer.is_correct == True).scalar() or 0
-                e_avg = f"{(e_corr_ans / e_total_ans * 100):.1f}%" if e_total_ans > 0 else "0.0%"
-                
-                date_str = exam.end_time.strftime("%Y-%m-%d %H:%M") if exam.end_time else (exam.created_at.strftime("%Y-%m-%d %H:%M") if exam.created_at else "")
+            if search.strip():
+                exam_query = exam_query.filter(
+                    or_(
+                        Quiz.title.ilike(search_term),
+                        Exam.title.ilike(search_term),
+                        User.fullname.ilike(search_term),
+                    )
+                )
+            report_queries.append(exam_query)
 
-                search_lower = search.lower()
-                if search_lower in (quiz_title or "").lower() or search_lower in (exam.title or "").lower() or search_lower in (host_name or "").lower():
-                    all_reports.append(ReportListItem(
-                        id=exam.id,
-                        type="EXAM",
-                        room_code=f"EX-{exam.id}",
-                        quiz_title=quiz_title or "",
-                        room_title=exam.title or f"Exam {exam.id}",
-                        host=host_name or "",
-                        date=date_str,
-                        participants=p_count,
-                        avg_score=e_avg
-                    ))
+        if not report_queries:
+            return ReportPageResponse(
+                data=[],
+                total=0,
+                pageIndex=(skip // limit) + 1 if limit > 0 else 1,
+                pageSize=limit,
+            )
 
-        # Sort by date descending (simple string sort works well enough for YYYY-MM-DD HH:MM)
-        all_reports.sort(key=lambda x: x.date, reverse=True)
-        
-        total = len(all_reports)
-        paginated_reports = all_reports[skip : skip + limit]
+        combined_query = report_queries[0]
+        if len(report_queries) > 1:
+            combined_query = combined_query.union_all(*report_queries[1:])
+        combined_reports = combined_query.subquery()
+
+        # Count and paginate in SQL. Only the requested rows are materialized.
+        total = db.query(func.count()).select_from(combined_reports).scalar() or 0
+        rows = (
+            db.query(combined_reports)
+            .order_by(
+                combined_reports.c.event_date.desc(),
+                combined_reports.c.type.asc(),
+                combined_reports.c.id.desc(),
+            )
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+        paginated_reports = []
+        for row in rows:
+            total_answers = int(row.total_answers or 0)
+            correct_answers = int(row.correct_answers or 0)
+            avg_score = (
+                f"{(correct_answers / total_answers * 100):.1f}%"
+                if total_answers > 0
+                else "0.0%"
+            )
+            event_date = row.event_date.strftime("%Y-%m-%d %H:%M") if row.event_date else ""
+            room_code = row.room_code or (f"EX-{row.id}" if row.type == "EXAM" else "")
+            room_title = row.room_title or (f"Exam {row.id}" if row.type == "EXAM" else room_code)
+
+            paginated_reports.append(
+                ReportListItem(
+                    id=row.id,
+                    type=row.type,
+                    room_code=room_code,
+                    quiz_title=row.quiz_title or "",
+                    room_title=room_title,
+                    host=row.host or "",
+                    date=event_date,
+                    participants=int(row.participants or 0),
+                    avg_score=avg_score,
+                )
+            )
 
         return ReportPageResponse(
             data=paginated_reports,

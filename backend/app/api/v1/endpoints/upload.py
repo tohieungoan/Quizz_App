@@ -1,92 +1,114 @@
-import time
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-import cloudinary
-import cloudinary.utils
-from app.api.deps import get_current_active_admin, get_current_active_user
-from app.core.config import settings
-from app.schemas.upload import UploadSignatureRequest, UploadSignatureResponse
-from app.utils.cloudinary_utils import delete_cloudinary_asset_bg
+"""Authenticated Cloudinary upload reservations and owned asset cleanup."""
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_active_user, get_db
+from app.schemas.upload import (
+    UploadAssetResponse,
+    UploadCompleteRequest,
+    UploadSignatureRequest,
+    UploadSignatureResponse,
+)
+from app.services.media_asset_service import (
+    MediaAssetError,
+    MediaAssetPermissionError,
+    media_asset_service,
+)
 
 router = APIRouter()
 
-# Initialize Cloudinary
-cloudinary.config(
-    cloud_name=settings.CLOUDINARY_CLOUD_NAME or "",
-    api_key=settings.CLOUDINARY_API_KEY or "",
-    api_secret=settings.CLOUDINARY_API_SECRET or ""
+
+def _raise_media_error(error: MediaAssetError) -> None:
+    if isinstance(error, MediaAssetPermissionError):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
+    message = str(error)
+    code = status.HTTP_503_SERVICE_UNAVAILABLE if "not configured" in message else status.HTTP_400_BAD_REQUEST
+    raise HTTPException(status_code=code, detail=message)
+
+
+@router.post(
+    "/request-signature",
+    response_model=UploadSignatureResponse,
+    summary="Reserve an owned Cloudinary asset and issue a scoped signature",
 )
-
-# File size limits (in bytes)
-MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
-MAX_VIDEO_AUDIO_SIZE = 50 * 1024 * 1024  # 50MB
-
-@router.post("/request-signature", response_model=UploadSignatureResponse, summary="Request a Cloudinary upload signature")
-async def request_upload_signature(
+def request_upload_signature(
     request: UploadSignatureRequest,
+    db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
-):
-    """
-    Generate a secure signature for direct client-to-cloud upload.
-    Validates file type and size before granting permission.
-    Requires an authenticated and active user.
-    """
-    
-    # 1. Validate File Type
-    if not (request.fileType.startswith("image/") or request.fileType.startswith("video/") or request.fileType.startswith("audio/")):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file type. Only images, videos, and audio files are allowed."
+) -> Any:
+    try:
+        asset, signed = media_asset_service.create_pending_asset(
+            db,
+            user_id=current_user.id,
+            filename=request.fileName,
+            file_type=request.fileType,
+            file_size=request.fileSize,
+            quiz_id=request.quizId,
         )
+        return UploadSignatureResponse(asset_id=asset.id, **signed)
+    except MediaAssetError as error:
+        db.rollback()
+        _raise_media_error(error)
 
-    # 2. Validate File Size
-    if request.fileType.startswith("image/"):
-        if request.fileSize > MAX_IMAGE_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Image file size exceeds the maximum limit of {MAX_IMAGE_SIZE // (1024 * 1024)}MB."
-            )
-    else:
-        if request.fileSize > MAX_VIDEO_AUDIO_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Media file size exceeds the maximum limit of {MAX_VIDEO_AUDIO_SIZE // (1024 * 1024)}MB."
-            )
 
-    # 3. Generate Signature
-    timestamp = int(time.time())
-    folder = "quizz_app"
-    
-    params_to_sign = {
-        "timestamp": timestamp,
-        "folder": folder
-    }
-    
-    signature = cloudinary.utils.api_sign_request(
-        params_to_sign, 
-        settings.CLOUDINARY_API_SECRET or ""
-    )
-
-    return UploadSignatureResponse(
-        signature=signature,
-        timestamp=timestamp,
-        api_key=settings.CLOUDINARY_API_KEY or "",
-        cloud_name=settings.CLOUDINARY_CLOUD_NAME or "",
-        folder=folder
-    )
-
-@router.delete("/delete-asset", summary="Delete a Cloudinary asset by URL (for draft cleanup)")
-async def delete_asset(
-    url: str,
-    background_tasks: BackgroundTasks,
+@router.post(
+    "/complete",
+    response_model=UploadAssetResponse,
+    summary="Verify Cloudinary metadata and activate an uploaded asset",
+)
+def complete_upload(
+    request: UploadCompleteRequest,
+    db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
-):
-    """
-    Safely delete an asset from Cloudinary by its secure URL.
-    Used by authenticated users/admins to clean up orphaned uploads during the draft creation process.
-    Requires an authenticated and active user.
-    """
-    if not url:
-        raise HTTPException(status_code=400, detail="URL is required")
-        
-    background_tasks.add_task(delete_cloudinary_asset_bg, url)
-    return {"detail": "Asset deletion scheduled"}
+) -> Any:
+    try:
+        return media_asset_service.complete_asset(
+            db,
+            user_id=current_user.id,
+            asset_id=request.asset_id,
+            public_id=request.public_id,
+            secure_url=request.secure_url,
+            resource_type=request.resource_type,
+            reported_bytes=request.bytes,
+        )
+    except MediaAssetError as error:
+        db.rollback()
+        _raise_media_error(error)
+
+
+@router.delete(
+    "/assets/{asset_id}",
+    response_model=UploadAssetResponse,
+    summary="Schedule deletion of an unreferenced owned asset",
+)
+def delete_owned_asset(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    try:
+        return media_asset_service.request_cleanup(db, current_user.id, asset_id)
+    except MediaAssetError as error:
+        db.rollback()
+        _raise_media_error(error)
+
+
+@router.delete(
+    "/delete-asset",
+    response_model=UploadAssetResponse,
+    summary="Schedule deletion by URL after resolving server-side ownership",
+)
+def delete_asset_by_url(
+    url: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    """Compatibility endpoint; unlike the old API it never deletes arbitrary URLs."""
+    try:
+        return media_asset_service.request_cleanup_by_url(db, current_user.id, url)
+    except MediaAssetError as error:
+        db.rollback()
+        _raise_media_error(error)

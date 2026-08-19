@@ -102,7 +102,7 @@ export const CloudUpload = forwardRef<CloudUploadRef, CloudUploadProps>(({
           <>
             <UploadCloud className="w-8 h-8 text-primary/60 mb-2" />
             <p className="text-sm font-bold text-on-surface mb-1">{label}</p>
-            <p className="text-xs text-on-surface-variant">Max 50MB</p>
+            <p className="text-xs text-on-surface-variant">Images 5MB · audio/video 50MB</p>
           </>
         ) : (
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full justify-between bg-surface-container-low p-2 rounded-lg">

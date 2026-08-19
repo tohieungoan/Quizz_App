@@ -31,6 +31,7 @@ import { Broadcast } from './pages/Admin/Broadcast/Broadcast';
 import { Profile } from './pages/User/Profile/Profile';
 import { useAuth } from './hooks/useAuth';
 import { GraduationCap } from 'lucide-react';
+import { startNewQuizDraftSession } from './utils/quizDraftSession';
 
 /**
  * Route classification:
@@ -172,7 +173,7 @@ const App: React.FC = () => {
         <Route path="/host-panel" element={<HostLiveReview />} />
         <Route path="/admin" element={<AdminLayout />}>
           <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="quizzes" element={<Quizzes onCreateQuiz={() => navigate('/admin/quizzes/create')} onEditQuiz={(quiz) => navigate(`/admin/quizzes/edit/${quiz.id}`)} />} />
+          <Route path="quizzes" element={<Quizzes onCreateQuiz={() => { startNewQuizDraftSession(); navigate('/admin/quizzes/create'); }} onEditQuiz={(quiz) => navigate(`/admin/quizzes/edit/${quiz.id}`)} />} />
           <Route path="quizzes/create" element={<QuizCreator onCancel={() => navigate('/admin/quizzes')} />} />
           <Route path="quizzes/edit/:id" element={<QuizCreator onCancel={() => navigate('/admin/quizzes')} />} />
           <Route path="rooms" element={<Rooms onNavigate={() => {}} />} />
