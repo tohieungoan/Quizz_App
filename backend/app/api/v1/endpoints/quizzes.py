@@ -16,6 +16,13 @@ from app.schemas.quiz import (
     QuizResponse,
     QuizUpdate,
 )
+from app.schemas.quiz_variant import (
+    QuizVariantGenerateRequest,
+    QuizVariantQuestionResponse,
+    QuizVariantQuestionUpdate,
+    QuizVariantRetryResponse,
+    QuizVariantSetResponse,
+)
 from app.services.media_asset_service import media_asset_service
 from app.services.quiz_authoring_policy import (
     ACTIVE_ROOM_STATUSES,
@@ -32,6 +39,11 @@ from app.services.quiz_draft_service import (
     QuizSnapshotError,
     QuizVersionConflictError,
     quiz_draft_service,
+)
+from app.services.quiz_variant_service import (
+    QuizVariantError,
+    QuizVariantMutationError,
+    quiz_variant_service,
 )
 
 router = APIRouter()
@@ -214,6 +226,145 @@ def publish_quiz(
         return _editor_payload(quiz)
     except QuizDraftError as error:
         _raise_draft_http_error(error)
+
+
+@router.get(
+    "/quizzes/{quiz_id}/variants",
+    response_model=QuizVariantSetResponse,
+    summary="Preview the active generated quiz versions",
+)
+def read_quiz_variants(
+    quiz_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    quiz = crud_quiz.get(db=db, quiz_id=quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="You do not have permission to view these quiz versions.")
+    variant_set = quiz_variant_service.get_active_set(db, quiz_id)
+    if not variant_set:
+        raise HTTPException(status_code=404, detail="This quiz does not have a generated version set yet.")
+    payload = QuizVariantSetResponse.model_validate(variant_set).model_dump()
+    payload["status"] = quiz.variant_status or variant_set.status
+    return payload
+
+
+@router.post(
+    "/quizzes/{quiz_id}/variants/generate",
+    response_model=QuizVariantSetResponse,
+    summary="Generate editable quiz versions from the current draft",
+)
+def generate_quiz_variants(
+    quiz_id: int,
+    generate_in: QuizVariantGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="You do not have permission to generate these quiz versions.")
+    try:
+        ensure_quiz_authoring_is_unlocked(db, quiz.id)
+    except (QuizInActiveRoomError, QuizInActiveExamError) as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    if quiz.version != generate_in.expected_version:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "The quiz changed before version generation started. Save and retry.",
+                "code": "QUIZ_VERSION_CONFLICT",
+                "current_version": quiz.version,
+            },
+        )
+    try:
+        variant_set = quiz_variant_service.prepare_set(db, quiz)
+        db.commit()
+        return quiz_variant_service.get_active_set(db, quiz.id)
+    except QuizVariantError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.put(
+    "/quizzes/{quiz_id}/variants/{variant_id}/questions/{question_id}",
+    response_model=QuizVariantQuestionResponse,
+    summary="Edit a question in a generated quiz version",
+)
+def update_quiz_variant_question(
+    quiz_id: int,
+    variant_id: int,
+    question_id: int,
+    question_in: QuizVariantQuestionUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="You do not have permission to edit this quiz version.")
+    try:
+        ensure_quiz_authoring_is_unlocked(db, quiz.id)
+        return quiz_variant_service.update_question(
+            db, quiz, variant_id, question_id, question_in
+        )
+    except (QuizInActiveRoomError, QuizInActiveExamError, QuizVariantMutationError) as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.delete(
+    "/quizzes/{quiz_id}/variants/{variant_id}/questions/{question_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a question from a generated quiz version",
+)
+def delete_quiz_variant_question(
+    quiz_id: int,
+    variant_id: int,
+    question_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> None:
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="You do not have permission to edit this quiz version.")
+    try:
+        ensure_quiz_authoring_is_unlocked(db, quiz.id)
+        quiz_variant_service.delete_question(db, quiz, variant_id, question_id)
+    except (QuizInActiveRoomError, QuizInActiveExamError, QuizVariantMutationError) as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post(
+    "/quizzes/{quiz_id}/variants/retry",
+    response_model=QuizVariantRetryResponse,
+    summary="Retry a failed or partial quiz version set",
+)
+def retry_quiz_variants(
+    quiz_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    quiz = crud_quiz.get_for_update(db=db, quiz_id=quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+    if quiz.user_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="You do not have permission to retry these quiz versions.")
+    variant_set = quiz_variant_service.get_active_set(db, quiz_id)
+    if not variant_set:
+        raise HTTPException(status_code=404, detail="This quiz does not have a generated version set yet.")
+    try:
+        retried = quiz_variant_service.retry(db, variant_set)
+    except QuizVariantError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return {"variant_set_id": retried.id, "status": retried.status}
 
 
 @router.post("/quizzes/{quiz_id}/duplicate", response_model=QuizResponse, status_code=status.HTTP_201_CREATED, summary="Duplicate a quiz")

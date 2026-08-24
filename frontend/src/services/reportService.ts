@@ -36,6 +36,7 @@ export interface ReportParticipant {
   correct_answers?: string;
   accuracy?: string;
   rank?: number;
+  version_code?: string | null;
 }
 
 export interface ReportParticipantPageResponse {
@@ -47,6 +48,8 @@ export interface ReportParticipantPageResponse {
 
 export interface ReportQuestionAnalysis {
   id: number;
+  original_question_id?: number | null;
+  version_code?: string | null;
   question: string;
   correct: number;
   incorrect: number;
@@ -91,7 +94,8 @@ export const reportService = {
   
   exportReport: async (sessionId: number, type: string) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'}/admin/reports/${sessionId}/export?type=${type}`, {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const res = await fetch(`${apiBaseUrl}/admin/reports/${sessionId}/export?type=${type}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Failed to export');

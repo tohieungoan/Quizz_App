@@ -1,6 +1,6 @@
 from typing import List, Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from datetime import datetime
 
 from app.api.deps import get_db, get_current_active_user
@@ -8,6 +8,7 @@ from app.models.user import User
 from app.models.quiz import Quiz, Question, QuestionOption
 from app.models.group import Group, GroupMember
 from app.models.exam import Exam, ExamAssignee, ExamAnswer
+from app.models.quiz_variant import QuizVariantOption, QuizVariantQuestion, QuizVariantSet
 from app.models.notification import Notification
 from app.schemas.exam import (
     ExamAssignRequest,
@@ -22,6 +23,7 @@ from app.schemas.exam import (
 )
 import logging
 from app.services.user_notification_service import user_notification_service
+from app.services.quiz_variant_service import QuizVariantNotReadyError, quiz_variant_service
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,126 @@ def assign_active_exams_to_new_member(db: Session, group_id: int, user_id: int) 
 
 router = APIRouter()
 
+
+def _assign_exam_versions(db: Session, exam: Exam) -> None:
+    """Assign every unassigned candidate to a stable, balanced paper."""
+    if not exam.variant_set_id:
+        return
+    variant_set = db.query(QuizVariantSet).filter(
+        QuizVariantSet.id == exam.variant_set_id
+    ).first()
+    if not variant_set:
+        raise QuizVariantNotReadyError("The exam's quiz version set no longer exists.")
+    if variant_set.status != "READY":
+        raise QuizVariantNotReadyError(
+            "Quiz versions are not ready for delivery. Fix or regenerate them before starting the exam."
+        )
+    assignees = db.query(ExamAssignee).filter(
+        ExamAssignee.exam_id == exam.id
+    ).with_for_update().all()
+    quiz_variant_service.assign_balanced(
+        assignees,
+        quiz_variant_service.ready_variants(variant_set),
+    )
+    db.flush()
+
+
+def _serialize_submission_questions(db: Session, assignee: ExamAssignee) -> list[dict[str, Any]]:
+    """Return the exact immutable paper seen by one candidate."""
+    answers = db.query(ExamAnswer).filter(
+        ExamAnswer.exam_assignee_id == assignee.id
+    ).all()
+    answers_by_question = {answer.question_id: answer for answer in answers}
+    answers_by_variant_question = {
+        answer.variant_question_id: answer
+        for answer in answers
+        if answer.variant_question_id is not None
+    }
+
+    if assignee.quiz_variant_id:
+        variant_questions = db.query(QuizVariantQuestion).options(
+            selectinload(QuizVariantQuestion.options)
+        ).filter(
+            QuizVariantQuestion.quiz_variant_id == assignee.quiz_variant_id
+        ).order_by(
+            QuizVariantQuestion.position.asc(),
+            QuizVariantQuestion.id.asc(),
+        ).all()
+
+        result = []
+        for question in variant_questions:
+            answer = answers_by_variant_question.get(question.id)
+            if answer is None and question.original_question_id is not None:
+                answer = answers_by_question.get(question.original_question_id)
+            result.append({
+                "id": question.original_question_id,
+                "variant_question_id": question.id,
+                "version_code": assignee.quiz_variant.version_code,
+                "content": question.content or "Untitled Question",
+                "type": question.type or "MULTIPLE_CHOICE",
+                "difficulty": question.difficulty or "Beginner",
+                "time_limit": question.time_limit,
+                "media_url": question.media_url,
+                "audio_url": question.audio_url,
+                "options": [
+                    {
+                        "id": option.id,
+                        "variant_option_id": option.id,
+                        "original_option_id": option.original_option_id,
+                        "content": option.content or "",
+                        "is_correct": option.is_correct,
+                    }
+                    for option in question.options
+                ],
+                "user_answer": {
+                    "selected_option_id": answer.variant_option_id,
+                    "variant_option_id": answer.variant_option_id,
+                    "answer_text": answer.answer_text,
+                    "is_correct": bool(answer.is_correct),
+                    "answer_score": answer.score,
+                } if answer else None,
+            })
+        return result
+
+    quiz_id = assignee.exam.quiz_id
+    questions = db.query(Question).options(
+        selectinload(Question.options)
+    ).filter(
+        Question.quiz_id == quiz_id
+    ).order_by(Question.position.asc(), Question.id.asc()).all()
+
+    return [
+        {
+            "id": question.id,
+            "variant_question_id": None,
+            "version_code": None,
+            "content": question.content or "Untitled Question",
+            "type": question.type or "MULTIPLE_CHOICE",
+            "difficulty": question.difficulty or "Beginner",
+            "time_limit": question.time_limit,
+            "media_url": question.media_url,
+            "audio_url": question.audio_url,
+            "options": [
+                {
+                    "id": option.id,
+                    "variant_option_id": None,
+                    "original_option_id": option.id,
+                    "content": option.content or "",
+                    "is_correct": option.is_correct,
+                }
+                for option in question.options
+            ],
+            "user_answer": {
+                "selected_option_id": answers_by_question[question.id].selected_option_id,
+                "variant_option_id": None,
+                "answer_text": answers_by_question[question.id].answer_text,
+                "is_correct": bool(answers_by_question[question.id].is_correct),
+                "answer_score": answers_by_question[question.id].score,
+            } if question.id in answers_by_question else None,
+        }
+        for question in questions
+    ]
+
 @router.post("/assign", response_model=ExamAssignDetailResponse, status_code=status.HTTP_201_CREATED, summary="Assign a quiz to a group as an exam")
 def assign_exam(
     body: ExamAssignRequest,
@@ -131,6 +253,16 @@ def assign_exam(
             status_code=status.HTTP_409_CONFLICT,
             detail="Only a published quiz can be assigned as an exam.",
         )
+    if quiz.variant_enabled:
+        variant_set = db.query(QuizVariantSet).filter(
+            QuizVariantSet.id == quiz.active_variant_set_id,
+            QuizVariantSet.quiz_id == quiz.id,
+        ).first()
+        if not variant_set or variant_set.status != "READY":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Quiz versions must be valid and published before assigning the exam.",
+            )
 
     # 2. Validate Group
     group = db.query(Group).filter(Group.id == body.group_id).first()
@@ -172,6 +304,7 @@ def assign_exam(
         navigation_rule=body.navigation_rule,
         results_published=body.results_published if body.results_published is not None else False,
         status=body.status,
+        variant_set_id=quiz.active_variant_set_id if quiz.variant_enabled else None,
     )
     db.add(db_exam)
     db.commit()
@@ -343,37 +476,12 @@ def get_my_exam_result(
         )
 
     quiz = exam.quiz
-    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.position.asc(), Question.id.asc()).all()
-    answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
-    answers_dict = {a.question_id: a for a in answers}
-
-    formatted_questions = []
-    correct_count = 0
-    for q in questions:
-        options = db.query(QuestionOption).filter(QuestionOption.question_id == q.id).order_by(QuestionOption.id.asc()).all()
-        user_ans = answers_dict.get(q.id)
-
-        formatted_options = [
-            {"id": opt.id, "content": opt.content or "", "is_correct": opt.is_correct}
-            for opt in options
-        ]
-
-        is_correct = user_ans.is_correct if user_ans else False
-        if is_correct:
-            correct_count += 1
-
-        formatted_questions.append({
-            "id": q.id,
-            "content": q.content or "Untitled Question",
-            "type": q.type or "MULTIPLE_CHOICE",
-            "options": formatted_options,
-            "user_answer": {
-                "selected_option_id": user_ans.selected_option_id if user_ans else None,
-                "answer_text": user_ans.answer_text if user_ans else None,
-                "is_correct": is_correct,
-                "answer_score": user_ans.score if user_ans else None,
-            } if user_ans else None,
-        })
+    formatted_questions = _serialize_submission_questions(db, assignee)
+    correct_count = sum(
+        1
+        for question in formatted_questions
+        if question["user_answer"] and question["user_answer"]["is_correct"]
+    )
 
     return {
         "exam_id": exam.id,
@@ -386,7 +494,8 @@ def get_my_exam_result(
         "submitted_at": assignee.submitted_at,
         "feedback_comment": assignee.feedback_comment,
         "correct_count": correct_count,
-        "total_questions": len(questions),
+        "total_questions": len(formatted_questions),
+        "version_code": assignee.quiz_variant.version_code if assignee.quiz_variant else None,
         "questions": formatted_questions,
     }
 
@@ -448,6 +557,7 @@ def update_exam(
     update_data = body.model_dump(exclude_unset=True)
 
     target_quiz_id = update_data.get("quiz_id", exam.quiz_id)
+    target_quiz = exam.quiz
     resulting_status = str(update_data.get("status", exam.status) or "").strip().upper()
     quiz_id_changed = target_quiz_id != exam.quiz_id
     if quiz_id_changed or resulting_status == "ACTIVE":
@@ -484,6 +594,14 @@ def update_exam(
         # Perform the updates
         if quiz_id_changed:
             exam.quiz_id = update_data["quiz_id"]
+            exam.variant_set_id = (
+                target_quiz.active_variant_set_id
+                if target_quiz.variant_enabled
+                else None
+            )
+            db.query(ExamAssignee).filter(
+                ExamAssignee.exam_id == exam.id
+            ).update({ExamAssignee.quiz_variant_id: None}, synchronize_session=False)
             del update_data["quiz_id"]
         
         if group_id_changed:
@@ -660,6 +778,33 @@ def _helper_submit_exam(db: Session, assignee: ExamAssignee) -> float:
             continue
             
         q_type = (q.type or "").strip().lower()
+        if user_ans.variant_question_id:
+            variant_question = db.query(QuizVariantQuestion).filter(
+                QuizVariantQuestion.id == user_ans.variant_question_id,
+                QuizVariantQuestion.original_question_id == q.id,
+                QuizVariantQuestion.quiz_variant_id == assignee.quiz_variant_id,
+            ).first()
+            if not variant_question:
+                user_ans.is_correct = False
+            elif q_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank"]:
+                normalized_answer = (user_ans.answer_text or "").strip().casefold()
+                user_ans.is_correct = any(
+                    option.is_correct and normalized_answer == (option.content or "").strip().casefold()
+                    for option in variant_question.options
+                )
+            else:
+                user_ans.is_correct = bool(
+                    user_ans.variant_option_id
+                    and db.query(QuizVariantOption.id).filter(
+                        QuizVariantOption.id == user_ans.variant_option_id,
+                        QuizVariantOption.variant_question_id == variant_question.id,
+                        QuizVariantOption.is_correct == True,
+                    ).first()
+                )
+            if user_ans.is_correct:
+                correct_count += 1
+            db.add(user_ans)
+            continue
         if q_type in ["essay", "written"]:
             user_ans.is_correct = False
             db.add(user_ans)
@@ -729,7 +874,7 @@ def start_exam(
     Strictly: each user can only start once.
     """
     # 1. Fetch exam details first
-    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    exam = db.query(Exam).filter(Exam.id == exam_id).with_for_update().first()
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -745,7 +890,8 @@ def start_exam(
     if not assignee and exam.group_id:
         group_member = db.query(GroupMember).filter(
             GroupMember.group_id == exam.group_id,
-            GroupMember.user_id == current_user.id
+            GroupMember.user_id == current_user.id,
+            GroupMember.status == "APPROVED",
         ).first()
         if group_member:
             assignee = ExamAssignee(
@@ -754,7 +900,7 @@ def start_exam(
                 status="PENDING",
             )
             db.add(assignee)
-            db.commit()
+            db.flush()
             db.refresh(assignee)
 
     if not assignee:
@@ -797,7 +943,13 @@ def start_exam(
                 detail=f"Time limit reached. Your exam has been auto-submitted with score: {score}%.",
             )
         return {"message": "Exam is already in progress. Continuing...", "started_at": assignee.started_at}
-        
+
+    try:
+        _assign_exam_versions(db, exam)
+    except QuizVariantNotReadyError as error:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    db.refresh(assignee)
     assignee.status = "IN_PROGRESS"
     assignee.started_at = now
     db.add(assignee)
@@ -832,7 +984,8 @@ def take_exam(
     if not assignee and exam.group_id:
         group_member = db.query(GroupMember).filter(
             GroupMember.group_id == exam.group_id,
-            GroupMember.user_id == current_user.id
+            GroupMember.user_id == current_user.id,
+            GroupMember.status == "APPROVED",
         ).first()
         if group_member:
             assignee = ExamAssignee(
@@ -891,12 +1044,57 @@ def take_exam(
     remaining_seconds = int((allowed_duration - time_elapsed).total_seconds())
 
     quiz = exam.quiz
-    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.position.asc(), Question.id.asc()).all()
 
     existing_answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
     user_answer_map = {ans.question_id: ans for ans in existing_answers}
 
     formatted_questions = []
+    if assignee.quiz_variant_id:
+        variant_questions = db.query(QuizVariantQuestion).options(
+            selectinload(QuizVariantQuestion.options)
+        ).filter(
+            QuizVariantQuestion.quiz_variant_id == assignee.quiz_variant_id
+        ).order_by(QuizVariantQuestion.position.asc(), QuizVariantQuestion.id.asc()).all()
+        for variant_question in variant_questions:
+            original_question_id = variant_question.original_question_id
+            if original_question_id is None:
+                continue
+            user_ans = user_answer_map.get(original_question_id)
+            formatted_questions.append({
+                "id": original_question_id,
+                "variant_question_id": variant_question.id,
+                "version_code": assignee.quiz_variant.version_code if assignee.quiz_variant else None,
+                "question_text": variant_question.content,
+                "question_type": variant_question.type or "MULTIPLE_CHOICE",
+                "order": len(formatted_questions) + 1,
+                "points": variant_question.time_limit or 1.0,
+                "media_url": variant_question.media_url,
+                "audio_url": variant_question.audio_url,
+                "audio_play_limit": variant_question.audio_play_limit,
+                "user_answer": {
+                    "selected_option_id": user_ans.variant_option_id,
+                    "answer_text": user_ans.answer_text,
+                } if user_ans else None,
+                "options": [
+                    {
+                        "id": option.id,
+                        "variant_option_id": option.id,
+                        "option_text": option.content,
+                        "order": index + 1,
+                        "media_url": option.media_url,
+                        "audio_url": option.audio_url,
+                    }
+                    for index, option in enumerate(variant_question.options)
+                ],
+            })
+        return {
+            "exam": exam,
+            "remaining_seconds": remaining_seconds,
+            "version_code": assignee.quiz_variant.version_code if assignee.quiz_variant else None,
+            "questions": formatted_questions,
+        }
+
+    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.position.asc(), Question.id.asc()).all()
     for q in questions:
         options = db.query(QuestionOption).filter(QuestionOption.question_id == q.id).order_by(QuestionOption.id.asc()).all()
         formatted_options = []
@@ -933,7 +1131,8 @@ def take_exam(
     return {
         "exam": exam,
         "remaining_seconds": remaining_seconds,
-        "questions": formatted_questions
+        "questions": formatted_questions,
+        "version_code": None,
     }
 
 
@@ -1001,10 +1200,42 @@ def submit_answer(
         ExamAnswer.question_id == body.question_id
     ).first()
 
-    # Check correctness based on question type
+    # Check correctness using the immutable paper assigned to this candidate.
     is_correct = False
     q_type = (question.type or "").strip().lower()
-    if q_type in ["essay", "written"]:
+    variant_question = None
+    variant_option_id = None
+    if assignee.quiz_variant_id:
+        variant_question_query = db.query(QuizVariantQuestion).filter(
+            QuizVariantQuestion.quiz_variant_id == assignee.quiz_variant_id,
+            QuizVariantQuestion.original_question_id == body.question_id,
+        )
+        if body.variant_question_id is not None:
+            variant_question_query = variant_question_query.filter(
+                QuizVariantQuestion.id == body.variant_question_id
+            )
+        variant_question = variant_question_query.first()
+        if not variant_question:
+            raise HTTPException(status_code=400, detail="Invalid question for your assigned quiz version.")
+        variant_option_id = body.variant_option_id or body.selected_option_id
+        if q_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank"]:
+            normalized_answer = (body.answer_text or "").strip().casefold()
+            is_correct = any(
+                option.is_correct and normalized_answer == (option.content or "").strip().casefold()
+                for option in variant_question.options
+            )
+        elif q_type not in ["essay", "written"] and variant_option_id:
+            is_correct = db.query(QuizVariantOption.id).filter(
+                QuizVariantOption.id == variant_option_id,
+                QuizVariantOption.variant_question_id == variant_question.id,
+                QuizVariantOption.is_correct == True,
+            ).first() is not None
+            if not db.query(QuizVariantOption.id).filter(
+                QuizVariantOption.id == variant_option_id,
+                QuizVariantOption.variant_question_id == variant_question.id,
+            ).first():
+                raise HTTPException(status_code=400, detail="Invalid option for your assigned quiz version.")
+    elif q_type in ["essay", "written"]:
         is_correct = False
     elif q_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank"]:
         user_val = (body.answer_text or "").strip().lower()
@@ -1030,13 +1261,17 @@ def submit_answer(
         answer = ExamAnswer(
             exam_assignee_id=assignee.id,
             question_id=body.question_id,
-            selected_option_id=body.selected_option_id,
+            selected_option_id=None if variant_question else body.selected_option_id,
+            variant_question_id=variant_question.id if variant_question else None,
+            variant_option_id=variant_option_id,
             answer_text=body.answer_text,
             is_correct=is_correct
         )
         db.add(answer)
     else:
-        answer.selected_option_id = body.selected_option_id
+        answer.selected_option_id = None if variant_question else body.selected_option_id
+        answer.variant_question_id = variant_question.id if variant_question else None
+        answer.variant_option_id = variant_option_id
         answer.answer_text = body.answer_text
         answer.is_correct = is_correct
         db.add(answer)
@@ -1306,36 +1541,7 @@ def get_student_submission_details(
     if not assignee:
         raise HTTPException(status_code=404, detail="Student submission not found")
 
-    quiz = exam.quiz
-    questions = db.query(Question).filter(Question.quiz_id == quiz.id).order_by(Question.position.asc(), Question.id.asc()).all()
-    answers = db.query(ExamAnswer).filter(ExamAnswer.exam_assignee_id == assignee.id).all()
-    answers_dict = {a.question_id: a for a in answers}
-
-    formatted_questions = []
-    for q in questions:
-        options = db.query(QuestionOption).filter(QuestionOption.question_id == q.id).order_by(QuestionOption.id.asc()).all()
-        formatted_options = []
-        for opt in options:
-            formatted_options.append({
-                "id": opt.id,
-                "content": opt.content or "",
-                "is_correct": opt.is_correct
-            })
-
-        user_ans = answers_dict.get(q.id)
-        formatted_questions.append({
-            "id": q.id,
-            "content": q.content or "Untitled Question",
-            "type": q.type or "MULTIPLE_CHOICE",
-            "difficulty": q.difficulty or "Beginner",
-            "time_limit": q.time_limit,
-            "options": formatted_options,
-            "user_answer": {
-                "selected_option_id": user_ans.selected_option_id if user_ans else None,
-                "answer_text": user_ans.answer_text if user_ans else None,
-                "is_correct": user_ans.is_correct if user_ans else False
-            } if user_ans else None
-        })
+    formatted_questions = _serialize_submission_questions(db, assignee)
 
     student_user = db.query(User).filter(User.id == user_id).first()
 
@@ -1350,6 +1556,7 @@ def get_student_submission_details(
         "started_at": assignee.started_at,
         "submitted_at": assignee.submitted_at,
         "feedback_comment": assignee.feedback_comment,
+        "version_code": assignee.quiz_variant.version_code if assignee.quiz_variant else None,
         "questions": formatted_questions
     }
 

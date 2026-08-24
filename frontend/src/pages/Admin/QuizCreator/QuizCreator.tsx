@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { toAIReviewQuestion } from '@/components/ui/AIQuizModal';
@@ -13,7 +13,9 @@ import { QuestionList } from './components/QuestionList';
 import { QuestionEditor } from './components/QuestionEditor';
 import { QuizCreatorDialogs } from './components/QuizCreatorDialogs';
 import { QuizCreatorHeader } from './components/QuizCreatorHeader';
+import { QuizGenerationToolbar } from './components/QuizGenerationToolbar';
 import { QuizSettingsPanel } from './components/QuizSettingsPanel';
+import type { QuizVersionSelection } from './components/QuizVersionsViewer';
 import { QuestionStartPanel } from './components/QuestionStartPanel';
 import {
   mapServerQuestion,
@@ -65,6 +67,12 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [quizDifficulty, setQuizDifficulty] = useState(initialData?.diff || 'Medium');
   const [isPublic, setIsPublic] = useState(initialData?.is_public ?? initialData?.isPublic ?? false);
   const [shuffleOptions, setShuffleOptions] = useState(true);
+  const [variantEnabled, setVariantEnabled] = useState(false);
+  const [variantCount, setVariantCount] = useState(5);
+  const [variantStatus, setVariantStatus] = useState<string | null>(null);
+  const [versionPreview, setVersionPreview] = useState<{ variantId: number; label: string; questions: Question[] } | null>(null);
+  const [isGeneratingVersions, setIsGeneratingVersions] = useState(false);
+  const [variantRefreshToken, setVariantRefreshToken] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
 
   // Auto-Save Draft & Crash Recovery State
@@ -84,16 +92,19 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const isInitialMount = useRef(true);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const serverQuizIdRef = useRef<string>(quizRawId);
+  const [persistedQuizId, setPersistedQuizId] = useState<string>(quizRawId);
   const quizVersionRef = useRef<number>(1);
   const saveOperationRef = useRef<Promise<boolean> | null>(null);
   const queuedSaveRef = useRef(false);
-  const skipNextServerAutosaveRef = useRef(true);
+  const serverAutosaveTimerRef = useRef<number | null>(null);
+  const publishInFlightRef = useRef(false);
+  const exitAfterAlertRef = useRef(false);
   // Mark media removals so they are persisted immediately after React commits
   // the updated question list (including when Save & Next resets the form).
   const saveAfterQuestionRef = useRef(false);
+  const refreshVariantsAfterSaveRef = useRef(false);
   const saveQuizRef = useRef<(status: string, shouldExit?: boolean, silent?: boolean) => Promise<boolean>>(async () => false);
 
   // Modal State
@@ -116,7 +127,57 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   const [formResetKey, setFormResetKey] = useState(0);
 
   // Global Background AI Generation Integration
-  const { startGeneration, unconsumedQuestions, consumeQuestions } = useAIQuiz();
+  const {
+    startGeneration,
+    cancelGeneration,
+    unconsumedQuestions,
+    consumeQuestions,
+    isGenerating: isGeneratingAIQuestions,
+    stage: aiGenerationStage,
+    numQuestions: requestedAIQuestionCount,
+    receivedQuestionCount,
+  } = useAIQuiz();
+  const lastConsumedAIDeliveryRef = useRef(0);
+
+  const crashRecoverySnapshot = useMemo(() => ({
+    quizTitle,
+    quizDescription,
+    quizSubject,
+    quizDifficulty,
+    isPublic,
+    shuffleOptions,
+    variantEnabled,
+    variantCount,
+    questions,
+    builderState: {
+      editingType, editingId, qText, mcOptions, mcOptionIds, mcCorrect,
+      tfCorrect, tfOptionIds, shortCorrect, shortOptionId, qDifficulty,
+      qTimeLimit, mediaUrl, audioUrl, showUploadType,
+      aiReviewQuestions, aiReviewModelUsed,
+    },
+  }), [
+    quizTitle, quizDescription, quizSubject, quizDifficulty, isPublic,
+    shuffleOptions, variantEnabled, variantCount, questions, editingType,
+    editingId, qText, mcOptions, mcOptionIds, mcCorrect, tfCorrect,
+    tfOptionIds, shortCorrect, shortOptionId, qDifficulty, qTimeLimit,
+    mediaUrl, audioUrl, showUploadType, aiReviewQuestions, aiReviewModelUsed,
+  ]);
+
+  const editorFingerprint = useMemo(() => JSON.stringify({
+    ...crashRecoverySnapshot,
+    questions: questions.map(({ id: _id, optionIds: _optionIds, ...question }) => question),
+    builderState: {
+      ...crashRecoverySnapshot.builderState,
+      editingId: undefined,
+      mcOptionIds: undefined,
+      tfOptionIds: undefined,
+      shortOptionId: undefined,
+    },
+  }), [crashRecoverySnapshot, questions]);
+  const savedEditorFingerprintRef = useRef<string | null>(null);
+  const currentEditorFingerprintRef = useRef(editorFingerprint);
+  const recoveredDraftRef = useRef(false);
+  currentEditorFingerprintRef.current = editorFingerprint;
 
   // Import only after the author has reviewed and validated the AI output.
   const handleAIReviewImport = (
@@ -196,7 +257,11 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
   // Generated questions enter a review queue instead of being injected directly.
   useEffect(() => {
-    if (unconsumedQuestions) {
+    if (
+      unconsumedQuestions
+      && unconsumedQuestions.deliveryId > lastConsumedAIDeliveryRef.current
+    ) {
+      lastConsumedAIDeliveryRef.current = unconsumedQuestions.deliveryId;
       const data = consumeQuestions();
       if (data && data.questions.length > 0) {
         const reviewQuestions = data.questions.map(question => toAIReviewQuestion(question));
@@ -208,6 +273,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   }, [unconsumedQuestions]);
 
   const handleAIReviewCancel = () => {
+    if (isGeneratingAIQuestions && !['completed', 'idle'].includes(aiGenerationStage)) {
+      cancelGeneration();
+    }
     setAiReviewQuestions([]);
     setAiReviewModelUsed('');
     setAiReviewOpen(false);
@@ -255,6 +323,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       setQuizDifficulty(snapshot.quizDifficulty ?? 'Medium');
       setIsPublic(snapshot.isPublic ?? false);
       setShuffleOptions(snapshot.shuffleOptions ?? true);
+      setVariantEnabled(snapshot.variantEnabled ?? false);
+      setVariantCount(snapshot.variantCount ?? 5);
       if (Array.isArray(snapshot.questions)) setQuestions(snapshot.questions);
       applyBuilderState(snapshot.builderState);
     };
@@ -277,6 +347,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
         if (response) {
           serverQuizIdRef.current = String(response.quiz.id);
+          setPersistedQuizId(String(response.quiz.id));
           quizVersionRef.current = response.quiz.version || 1;
           setQuizTitle(response.quiz.title || '');
           setQuizDescription(response.quiz.description || '');
@@ -284,6 +355,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           setQuizDifficulty(response.quiz.difficulty || 'Medium');
           setIsPublic(response.quiz.is_public ?? false);
           setShuffleOptions(response.quiz.shuffle_options ?? true);
+          setVariantEnabled(response.quiz.variant_enabled ?? false);
+          setVariantCount(response.quiz.variant_count ?? 5);
+          setVariantStatus(response.quiz.variant_status ?? null);
           setQuestions((response.questions || []).map(mapServerQuestion));
           applyBuilderState(response.builder_state);
         }
@@ -297,7 +371,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           ) || 0 : 0;
           if (localSnapshot?.timestamp > serverTimestamp) {
             applyLocalSnapshot(localSnapshot);
-            skipNextServerAutosaveRef.current = false;
+            recoveredDraftRef.current = true;
           }
         } catch (error) {
           console.warn('Unable to read local crash-recovery snapshot:', error);
@@ -305,10 +379,8 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
         // A fresh editor stays entirely client-side until meaningful content
         // triggers autosave or an explicit save/publish action.
-        if (!response) skipNextServerAutosaveRef.current = false;
         setAutoSaveStatus(response ? 'saved' : 'idle');
         setIsEditorReady(true);
-        isInitialMount.current = false;
       } catch (error: any) {
         if (cancelled) return;
         console.error('Failed to initialize quiz editor', error);
@@ -327,32 +399,26 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
   // Debounced Auto-Save Draft to LocalStorage whenever anything changes
   useEffect(() => {
-    if (isInitialMount.current || !isEditorReady) {
-      return;
+    if (!isEditorReady) return;
+    if (versionPreview) return;
+
+    if (savedEditorFingerprintRef.current === null) {
+      savedEditorFingerprintRef.current = recoveredDraftRef.current
+        ? '__recovered_draft_requires_save__'
+        : editorFingerprint;
+      recoveredDraftRef.current = false;
     }
 
-    setHasUnsavedChanges(true);
+    const isDirty = savedEditorFingerprintRef.current !== editorFingerprint;
+    setHasUnsavedChanges(isDirty);
+    if (!isDirty) return;
+
     setAutoSaveStatus('saving');
 
     const timer = setTimeout(() => {
       try {
         if (quizTitle.trim() || questions.length > 0 || quizDescription.trim() || qText.trim() || aiReviewQuestions.length > 0) {
-          const payload = {
-            quizTitle,
-            quizDescription,
-            quizSubject,
-            quizDifficulty,
-            isPublic,
-            shuffleOptions,
-            questions,
-            builderState: {
-              editingType, editingId, qText, mcOptions, mcOptionIds, mcCorrect,
-              tfCorrect, tfOptionIds, shortCorrect, shortOptionId, qDifficulty,
-              qTimeLimit, mediaUrl, audioUrl, showUploadType,
-              aiReviewQuestions, aiReviewModelUsed,
-            },
-            timestamp: Date.now()
-          };
+          const payload = { ...crashRecoverySnapshot, timestamp: Date.now() };
           localStorage.setItem(draftStorageKey, JSON.stringify(payload));
           setAutoSaveStatus('saved');
           setLastAutoSaveTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -366,33 +432,19 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [quizTitle, quizDescription, quizSubject, quizDifficulty, isPublic, shuffleOptions,
-    questions, editingType, editingId, qText, mcOptions, mcOptionIds, mcCorrect,
-    tfCorrect, tfOptionIds, shortCorrect, shortOptionId, qDifficulty, qTimeLimit,
-    mediaUrl, audioUrl, showUploadType, aiReviewQuestions, aiReviewModelUsed,
-    draftStorageKey, isEditorReady]);
+  }, [
+    aiReviewQuestions.length, crashRecoverySnapshot, draftStorageKey,
+    editorFingerprint, isEditorReady, qText, questions.length,
+    quizDescription, quizTitle, versionPreview,
+  ]);
 
   // Auto-save immediately when switching browser tabs, minimizing window or page hiding
   useEffect(() => {
     const handleTabOrVisibilityChange = () => {
+      if (versionPreview) return;
       if (document.visibilityState === 'hidden' || document.hidden) {
         if (quizTitle.trim() || questions.length > 0 || quizDescription.trim() || qText.trim() || aiReviewQuestions.length > 0) {
-          const payload = {
-            quizTitle,
-            quizDescription,
-            quizSubject,
-            quizDifficulty,
-            isPublic,
-            shuffleOptions,
-            questions,
-            builderState: {
-              editingType, editingId, qText, mcOptions, mcOptionIds, mcCorrect,
-              tfCorrect, tfOptionIds, shortCorrect, shortOptionId, qDifficulty,
-              qTimeLimit, mediaUrl, audioUrl, showUploadType,
-              aiReviewQuestions, aiReviewModelUsed,
-            },
-            timestamp: Date.now()
-          };
+          const payload = { ...crashRecoverySnapshot, timestamp: Date.now() };
           localStorage.setItem(draftStorageKey, JSON.stringify(payload));
           setAutoSaveStatus('saved');
           setLastAutoSaveTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -408,11 +460,10 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       window.removeEventListener('pagehide', handleTabOrVisibilityChange);
       window.removeEventListener('blur', handleTabOrVisibilityChange);
     };
-  }, [quizTitle, quizDescription, quizSubject, quizDifficulty, isPublic, shuffleOptions,
-    questions, editingType, editingId, qText, mcOptions, mcOptionIds, mcCorrect,
-    tfCorrect, tfOptionIds, shortCorrect, shortOptionId, qDifficulty, qTimeLimit,
-    mediaUrl, audioUrl, showUploadType, aiReviewQuestions, aiReviewModelUsed,
-    draftStorageKey]);
+  }, [
+    aiReviewQuestions.length, crashRecoverySnapshot, draftStorageKey, qText,
+    questions.length, quizDescription, quizTitle, versionPreview,
+  ]);
 
   // Browser beforeunload protection against accidental tab close or page refresh
   useEffect(() => {
@@ -600,7 +651,38 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       newQ = { ...baseQ, type: 'short', correctAnswer: shortCorrect, optionIds: shortOptionId ? [shortOptionId] : [] };
     }
 
-    if (editingId !== null && editingId !== undefined) {
+    if (versionPreview && editingId !== null && editingId !== undefined) {
+      const position = versionPreview.questions.findIndex(
+        question => String(question.id) === String(editingId),
+      );
+      if (position < 0 || !serverQuizIdRef.current) {
+        toast.error('The generated question is no longer available. Reload the version and retry.');
+        return;
+      }
+      setIsSaving(true);
+      try {
+        const updated = await quizService.updateVariantQuestion(
+          serverQuizIdRef.current,
+          versionPreview.variantId,
+          editingId,
+          toDraftQuestionSnapshot(newQ, position),
+        );
+        const mapped = mapServerQuestion(updated);
+        setVersionPreview(current => current ? {
+          ...current,
+          questions: current.questions.map(question =>
+            String(question.id) === String(editingId) ? mapped : question
+          ),
+        } : current);
+        setVariantRefreshToken(current => current + 1);
+        toast.success('Generated question updated.');
+      } catch (error: unknown) {
+        toast.error(error instanceof Error ? error.message : 'Unable to update the generated question.');
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    } else if (editingId !== null && editingId !== undefined) {
       const previousQuestion = questions.find(q => String(q.id) === String(editingId));
       saveAfterQuestionRef.current = Boolean(
         previousQuestion
@@ -637,8 +719,28 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setDeleteConfirmOpen(true);
   };
 
-  const confirmDeleteQuestion = () => {
+  const confirmDeleteQuestion = async () => {
     if (questionToDelete) {
+      if (versionPreview) {
+        if (!serverQuizIdRef.current) return;
+        try {
+          await quizService.deleteVariantQuestion(
+            serverQuizIdRef.current,
+            versionPreview.variantId,
+            questionToDelete,
+          );
+          setVersionPreview(current => current ? {
+            ...current,
+            questions: current.questions.filter(question => question.id !== questionToDelete),
+          } : current);
+          setVariantRefreshToken(current => current + 1);
+          setQuestionToDelete(null);
+          toast.success('Question removed from this generated version.');
+        } catch (error: unknown) {
+          toast.error(error instanceof Error ? error.message : 'Unable to delete the generated question.');
+        }
+        return;
+      }
       const qToDelete = questions.find(q => q.id === questionToDelete);
       if (qToDelete) {
         // Add to deleted blacklist to prevent AI from re-generating this question
@@ -670,6 +772,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         }
       }
       setQuestions(prev => prev.filter(q => q.id !== questionToDelete));
+      if (variantEnabled && /^\d+$/.test(questionToDelete)) {
+        refreshVariantsAfterSaveRef.current = true;
+      }
       setQuestionToDelete(null);
     }
   };
@@ -679,6 +784,12 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     shouldExit: boolean = true,
     silent: boolean = false,
   ): Promise<boolean> => {
+    // A delayed autosave may fire while Publish is waiting for the current
+    // save operation. Ignore that stale Draft request so it cannot demote the
+    // newly Published quiz and detach its active variant set.
+    if (status === 'Draft' && silent && publishInFlightRef.current) {
+      return true;
+    }
     if (saveOperationRef.current) {
       queuedSaveRef.current = true;
       const previousResult = await saveOperationRef.current;
@@ -691,6 +802,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     }
 
     const operation = (async (): Promise<boolean> => {
+      const submittedFingerprint = editorFingerprint;
       if (!isEditorReady && !serverQuizIdRef.current) return false;
       if (status !== 'Published' && questions.length === 0 && !quizTitle.trim() && !qText.trim() && aiReviewQuestions.length === 0) {
         // An empty Draft can be closed without creating a server record.
@@ -703,7 +815,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
 
       const questionSnapshot = questions.map(toDraftQuestionSnapshot);
 
-      const builderState = {
+      const builderState = versionPreview ? null : {
         editingType, editingId, qText, mcOptions, mcOptionIds, mcCorrect,
         tfCorrect, tfOptionIds, shortCorrect, shortOptionId, qDifficulty,
         qTimeLimit, mediaUrl, audioUrl, showUploadType,
@@ -711,55 +823,70 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
       };
 
       try {
+        const hadServerQuiz = Boolean(serverQuizIdRef.current);
         if (!serverQuizIdRef.current) {
           const created = await quizService.createOrResumeDraft(draftClientIdRef.current);
           serverQuizIdRef.current = String(created.quiz.id);
+          setPersistedQuizId(String(created.quiz.id));
           quizVersionRef.current = created.quiz.version;
         }
 
-        const saved = await quizService.saveDraft(serverQuizIdRef.current, {
-          expected_version: quizVersionRef.current,
-          complete_snapshot: true,
-          expected_question_count: questionSnapshot.length,
-          title: quizTitle,
-          description: quizDescription,
-          subject: quizSubject,
-          difficulty: quizDifficulty,
-          is_public: isPublic,
-          shuffle_options: shuffleOptions,
-          builder_state: builderState,
-          questions: questionSnapshot,
-        });
-        quizVersionRef.current = saved.quiz.version;
-
-        // Preserve any keystrokes made while the request was in flight; only
-        // merge database identifiers returned for new questions/options.
-        setQuestions(current => {
-          let identifiersChanged = false;
-          const merged = current.map(question => {
-          const snapshotIndex = questionSnapshot.findIndex(snapshot =>
-            snapshot.id === Number(question.id) || snapshot.client_id === question.id
-          );
-          if (snapshotIndex < 0) return question;
-          const persisted = saved.questions[snapshotIndex];
-          if (!persisted) return question;
-          const nextId = String(persisted.id);
-          const nextOptionIds = (persisted.options || []).map((option: any) => option.id);
-          const currentOptionIds = question.optionIds || [];
-          if (
-            question.id === nextId
-            && currentOptionIds.length === nextOptionIds.length
-            && currentOptionIds.every((value, index) => value === nextOptionIds[index])
-          ) return question;
-          identifiersChanged = true;
-          return {
-            ...question,
-            id: nextId,
-            optionIds: nextOptionIds,
-          } as Question;
+        // Publishing a clean draft must not save the same source snapshot again:
+        // saveDraft intentionally invalidates generated versions when source
+        // content changes. Generated-version edits are persisted independently.
+        const shouldSaveSnapshot = status !== 'Published' || hasUnsavedChanges || !hadServerQuiz;
+        if (shouldSaveSnapshot) {
+          const saved = await quizService.saveDraft(serverQuizIdRef.current, {
+            expected_version: quizVersionRef.current,
+            complete_snapshot: true,
+            expected_question_count: questionSnapshot.length,
+            title: quizTitle,
+            description: quizDescription,
+            subject: quizSubject,
+            difficulty: quizDifficulty,
+            is_public: isPublic,
+            shuffle_options: shuffleOptions,
+            variant_enabled: variantEnabled,
+            variant_count: variantCount,
+            builder_state: builderState,
+            questions: questionSnapshot,
           });
-          return identifiersChanged ? merged : current;
-        });
+          quizVersionRef.current = saved.quiz.version;
+          setVariantStatus(saved.quiz.variant_status ?? null);
+          if (refreshVariantsAfterSaveRef.current) {
+            refreshVariantsAfterSaveRef.current = false;
+            setVariantRefreshToken(current => current + 1);
+          }
+
+          // Preserve any keystrokes made while the request was in flight; only
+          // merge database identifiers returned for new questions/options.
+          setQuestions(current => {
+            let identifiersChanged = false;
+            const merged = current.map(question => {
+              const snapshotIndex = questionSnapshot.findIndex(snapshot =>
+                snapshot.id === Number(question.id) || snapshot.client_id === question.id
+              );
+              if (snapshotIndex < 0) return question;
+              const persisted = saved.questions[snapshotIndex];
+              if (!persisted) return question;
+              const nextId = String(persisted.id);
+              const nextOptionIds = (persisted.options || []).map((option: any) => option.id);
+              const currentOptionIds = question.optionIds || [];
+              if (
+                question.id === nextId
+                && currentOptionIds.length === nextOptionIds.length
+                && currentOptionIds.every((value, index) => value === nextOptionIds[index])
+              ) return question;
+              identifiersChanged = true;
+              return {
+                ...question,
+                id: nextId,
+                optionIds: nextOptionIds,
+              } as Question;
+            });
+            return identifiersChanged ? merged : current;
+          });
+        }
 
         if (status === 'Published') {
           const published = await quizService.publishQuiz(
@@ -767,6 +894,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
             quizVersionRef.current,
           );
           quizVersionRef.current = published.quiz.version;
+          setVariantStatus(published.quiz.variant_status ?? null);
           if (!quizRawId) localStorage.removeItem(activeDraftPointerKey);
           localStorage.removeItem(draftStorageKey);
         } else {
@@ -774,22 +902,27 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         }
 
         setDraftUploadedUrls(new Set());
-        setHasUnsavedChanges(false);
+        savedEditorFingerprintRef.current = submittedFingerprint;
+        setHasUnsavedChanges(
+          currentEditorFingerprintRef.current !== submittedFingerprint,
+        );
         setAutoSaveStatus('saved');
         setLastAutoSaveTime(new Date().toLocaleTimeString([], {
           hour: '2-digit', minute: '2-digit', second: '2-digit',
         }));
 
         if (shouldExit) {
+          exitAfterAlertRef.current = true;
           setAlertState({
             isOpen: true,
             title: status === 'Published' ? 'Quiz Published!' : 'Draft Saved',
             message: status === 'Published'
-              ? 'Your quiz passed validation and is now published.'
+              ? variantEnabled
+                ? 'Your quiz is published with the prepared versions.'
+                : 'Your quiz passed validation and is now published.'
               : 'Your complete draft was saved atomically to the server.',
             type: 'success',
           });
-          setTimeout(onCancel, 700);
         } else if (!silent && status === 'Published') {
           toast.success('Quiz published!');
         }
@@ -805,7 +938,11 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         if (!silent || error instanceof ApiError && error.status === 409) {
           setAlertState({
             isOpen: true,
-            title: conflictMessage ? 'Draft Conflict' : 'Unable to Save Quiz',
+            title: conflictMessage
+              ? 'Draft Conflict'
+              : status === 'Published'
+                ? 'Unable to Publish Quiz'
+                : 'Unable to Save Quiz',
             message: validationErrors || conflictMessage || error?.message || 'Failed to save quiz.',
             type: 'error',
           });
@@ -839,24 +976,31 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
   // Persist to the server after a short idle window. LocalStorage remains the
   // immediate crash journal; the server snapshot is the cross-device source of truth.
   useEffect(() => {
-    if (!isEditorReady || isInitialMount.current) return;
-    if (skipNextServerAutosaveRef.current) {
-      skipNextServerAutosaveRef.current = false;
-      return;
-    }
+    if (!isEditorReady || versionPreview || !hasUnsavedChanges) return;
     const timer = window.setTimeout(() => {
+      serverAutosaveTimerRef.current = null;
+      if (publishInFlightRef.current) return;
       void saveQuizRef.current('Draft', false, true);
     }, 1800);
-    return () => window.clearTimeout(timer);
-  }, [quizTitle, quizDescription, quizSubject, quizDifficulty, isPublic, shuffleOptions,
-    questions, editingType, editingId, qText, mcOptions, mcOptionIds, mcCorrect,
-    tfCorrect, tfOptionIds, shortCorrect, shortOptionId, qDifficulty, qTimeLimit,
-    mediaUrl, audioUrl, showUploadType, aiReviewQuestions, aiReviewModelUsed,
-    isEditorReady]);
+    serverAutosaveTimerRef.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (serverAutosaveTimerRef.current === timer) {
+        serverAutosaveTimerRef.current = null;
+      }
+    };
+  }, [editorFingerprint, hasUnsavedChanges, isEditorReady, versionPreview]);
 
   useEffect(() => {
     const handleSaveBeforeNavigation = async (event: Event) => {
       const { onSaved } = (event as CustomEvent<{ onSaved?: () => void }>).detail || {};
+      if (
+        savedEditorFingerprintRef.current !== null
+        && savedEditorFingerprintRef.current === currentEditorFingerprintRef.current
+      ) {
+        onSaved?.();
+        return;
+      }
       const saved = await saveQuizRef.current('Draft', false);
       if (saved) onSaved?.();
     };
@@ -869,18 +1013,45 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     setPublishConfirmOpen(true);
   };
 
+  const closeVersionPreviewWithoutSourceChange = () => {
+    if (!versionPreview) return;
+    setVersionPreview(null);
+  };
+
   const confirmPublish = () => {
     setPublishConfirmOpen(false);
-    void saveQuizAndQuestions('Published', true);
+    closeVersionPreviewWithoutSourceChange();
+    if (serverAutosaveTimerRef.current !== null) {
+      window.clearTimeout(serverAutosaveTimerRef.current);
+      serverAutosaveTimerRef.current = null;
+    }
+    publishInFlightRef.current = true;
+    void saveQuizAndQuestions('Published', true).finally(() => {
+      publishInFlightRef.current = false;
+    });
   };
 
   const handleCancelClick = () => {
+    if (
+      savedEditorFingerprintRef.current !== null
+      && savedEditorFingerprintRef.current === currentEditorFingerprintRef.current
+    ) {
+      onCancel();
+      return;
+    }
     if (quizTitle.trim() || questions.length > 0 || qText.trim() || aiReviewQuestions.length > 0) {
       // Directly auto-save to Database as Draft and exit smoothly
       saveQuizAndQuestions('Draft', true);
     } else {
       onCancel();
     }
+  };
+
+  const handleAlertClose = () => {
+    setAlertState(previous => ({ ...previous, isOpen: false }));
+    if (!exitAfterAlertRef.current) return;
+    exitAfterAlertRef.current = false;
+    onCancel();
   };
 
   const updateMcOption = (index: number, val: string) => {
@@ -905,6 +1076,57 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
     
     if (mcCorrect === index) setMcCorrect(0);
     else if (mcCorrect > index) setMcCorrect(mcCorrect - 1);
+  };
+
+  const handleVariantSelect = (selection: QuizVersionSelection | null) => {
+    setEditingType(null);
+    setEditingId(null);
+    if (!selection) {
+      closeVersionPreviewWithoutSourceChange();
+    } else {
+      setVersionPreview({
+        variantId: selection.variantId,
+        label: selection.label,
+        questions: selection.questions.map(mapServerQuestion),
+      });
+    }
+
+    setMobileTab('build');
+    window.setTimeout(() => {
+      document.getElementById('questions-list-section')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 0);
+  };
+
+  const handleGenerateVersions = async () => {
+    if (!variantEnabled) return;
+    if (versionPreview && editingType) {
+      toast.error('Save or close the generated question before regenerating versions.');
+      return;
+    }
+    setIsGeneratingVersions(true);
+    closeVersionPreviewWithoutSourceChange();
+    try {
+      if (serverAutosaveTimerRef.current !== null) {
+        window.clearTimeout(serverAutosaveTimerRef.current);
+        serverAutosaveTimerRef.current = null;
+      }
+      const saved = await saveQuizRef.current('Draft', false, false);
+      if (!saved || !serverQuizIdRef.current) return;
+      const variantSet = await quizService.generateVariants(
+        serverQuizIdRef.current,
+        quizVersionRef.current,
+      );
+      setVariantStatus(variantSet.status ?? 'PENDING');
+      setVariantRefreshToken(current => current + 1);
+      toast.success('Version generation started.');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Unable to generate quiz versions.');
+    } finally {
+      setIsGeneratingVersions(false);
+    }
   };
 
   return (
@@ -944,24 +1166,49 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           subject={quizSubject}
           difficulty={quizDifficulty}
           isPublic={isPublic}
-          shuffleOptions={shuffleOptions}
           onTitleChange={setQuizTitle}
           onDescriptionChange={setQuizDescription}
           onSubjectChange={setQuizSubject}
           onDifficultyChange={setQuizDifficulty}
           onPublicChange={setIsPublic}
-          onShuffleOptionsChange={setShuffleOptions}
         />
 
         {/* Main Builder Area */}
         {/* Right Content */}
         <section className={`${mobileTab === 'build' ? 'block' : 'hidden'} md:block flex-1 min-h-0 overflow-y-auto overscroll-none bg-surface-container-lowest p-4 md:p-8 relative animate-in slide-in-from-left-4 md:animate-none`} id="main-builder-area">
-          
+
           {!editingType && (
-            <QuestionStartPanel
-              aiPrompt={quickAIPrompt}
-              onAIPromptChange={setQuickAIPrompt}
+            <QuizGenerationToolbar
+              quizId={persistedQuizId || undefined}
+              variantEnabled={variantEnabled}
+              variantCount={variantCount}
+              variantStatus={variantStatus}
+              isGeneratingVersions={isGeneratingVersions}
+              variantRefreshToken={variantRefreshToken}
+              disableQuestionGeneration={versionPreview !== null}
               onOpenAI={() => setAiModalOpen(true)}
+              onVariantEnabledChange={enabled => {
+                setVariantEnabled(enabled);
+                if (!enabled) {
+                  setVersionPreview(null);
+                  setEditingType(null);
+                  setEditingId(null);
+                }
+                if (enabled) setShuffleOptions(true);
+              }}
+              onVariantCountChange={count => {
+                setVariantCount(count);
+                setVersionPreview(null);
+                setEditingType(null);
+                setEditingId(null);
+              }}
+              onGenerateVersions={handleGenerateVersions}
+              onVariantSelect={handleVariantSelect}
+            />
+          )}
+
+          {!editingType && !versionPreview && (
+            <QuestionStartPanel
               onStartBuild={handleStartBuild}
               onOpenQuestionBank={() => setBankModalOpen(true)}
             />
@@ -1036,10 +1283,13 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
           )}
 
           <QuestionList
-            questions={questions}
+            questions={versionPreview?.questions ?? questions}
             onEdit={handleEditQuestion}
             onDuplicate={handleDuplicateQuestion}
             onDelete={handleDeleteClick}
+            versionLabel={versionPreview?.label ?? (variantEnabled ? 'Original' : undefined)}
+            readOnly={false}
+            variantMode={versionPreview !== null}
           />
 
 
@@ -1056,6 +1306,9 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
         questions={questions}
         aiReviewQuestions={aiReviewQuestions}
         aiReviewModelUsed={aiReviewModelUsed}
+        aiReviewGenerating={isGeneratingAIQuestions && !['completed', 'idle'].includes(aiGenerationStage)}
+        aiReviewRequestedCount={requestedAIQuestionCount}
+        aiReviewReceivedCount={receivedQuestionCount}
         deletedBlacklist={deletedBlacklist}
         quickAIPrompt={quickAIPrompt}
         onCloseDelete={() => setDeleteConfirmOpen(false)}
@@ -1072,7 +1325,7 @@ export function QuizCreator({ onCancel, initialData }: { onCancel: () => void, i
             type: 'success',
           });
         }}
-        onCloseAlert={() => setAlertState(previous => ({ ...previous, isOpen: false }))}
+        onCloseAlert={handleAlertClose}
         onReviewChange={setAiReviewQuestions}
         onReviewCancel={handleAIReviewCancel}
         onReviewImport={handleAIReviewImport}

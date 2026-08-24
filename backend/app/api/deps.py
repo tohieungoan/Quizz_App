@@ -81,8 +81,11 @@ async def get_current_user_ws(
     websocket: WebSocket,
     db: Session = Depends(get_db)
 ) -> User:
-    """Authenticate WebSocket connections using query parameter `token`."""
-    token = websocket.query_params.get("token")
+    """Authenticate WebSockets via bearer subprotocol, with legacy query fallback."""
+    protocol_header = websocket.headers.get("sec-websocket-protocol", "")
+    protocols = [value.strip() for value in protocol_header.split(",") if value.strip()]
+    token = protocols[1] if len(protocols) >= 2 and protocols[0].lower() == "bearer" else None
+    token = token or websocket.query_params.get("token")
     if not token:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         raise HTTPException(status_code=403, detail="Missing token")

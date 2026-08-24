@@ -8,6 +8,8 @@ export interface QuizCreatePayload {
   is_public?: boolean;
   status?: string;
   shuffle_options?: boolean;
+  variant_enabled?: boolean;
+  variant_count?: number;
 }
 
 export interface QuizEditorResponse {
@@ -26,6 +28,8 @@ export interface QuizDraftSnapshot {
   difficulty?: string;
   is_public: boolean;
   shuffle_options: boolean;
+  variant_enabled: boolean;
+  variant_count: number;
   builder_state?: Record<string, unknown> | null;
   questions: any[];
 }
@@ -54,4 +58,26 @@ export const quizService = {
     apiClient.put<QuizEditorResponse>(`/quizzes/${quizId}/draft`, data),
   publishQuiz: (quizId: number | string, expectedVersion: number): Promise<QuizEditorResponse> =>
     apiClient.post<QuizEditorResponse>(`/quizzes/${quizId}/publish`, { expected_version: expectedVersion }),
+  getVariants: (quizId: number | string): Promise<any> =>
+    apiClient.get<any>(`/quizzes/${quizId}/variants`),
+  generateVariants: (quizId: number | string, expectedVersion: number): Promise<any> =>
+    apiClient.post<any>(`/quizzes/${quizId}/variants/generate`, { expected_version: expectedVersion }),
+  retryVariants: (quizId: number | string): Promise<any> =>
+    apiClient.post<any>(`/quizzes/${quizId}/variants/retry`, {}),
+  updateVariantQuestion: (
+    quizId: number | string,
+    variantId: number,
+    questionId: number | string,
+    data: any,
+  ): Promise<any> => apiClient.put<any>(
+    `/quizzes/${quizId}/variants/${variantId}/questions/${questionId}`,
+    data,
+  ),
+  deleteVariantQuestion: (
+    quizId: number | string,
+    variantId: number,
+    questionId: number | string,
+  ): Promise<void> => apiClient.delete<void>(
+    `/quizzes/${quizId}/variants/${variantId}/questions/${questionId}`,
+  ),
 }

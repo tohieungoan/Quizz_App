@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Search, Users, Eye, FileText, MonitorPlay, Loader2 } from 'lucide-react';
+import { Search, Users, Eye, Loader2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Pagination } from '@/components/ui/Pagination';
 import { RoomDetailsModal } from '@/components/ui/RoomDetailsModal';
 import { roomService } from '@/services/roomService';
+import { AdminRoomEvent, useAdminRoomsRealtime } from '@/hooks/useAdminRoomsRealtime';
 
 export interface RoomItem {
   id: string | number;
@@ -33,11 +34,18 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
 
   const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [detailsRefreshKey, setDetailsRefreshKey] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const latestRequestId = React.useRef(0);
+  const latestLoadingRequestId = React.useRef(0);
 
-  const fetchRooms = async () => {
-    setIsLoading(true);
+  const fetchRooms = React.useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    const requestId = ++latestRequestId.current;
+    if (!silent) {
+      latestLoadingRequestId.current = requestId;
+      setIsLoading(true);
+    }
     try {
       const data = await roomService.getAdminRooms({
         skip: (currentPage - 1) * itemsPerPage,
@@ -45,24 +53,42 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
         search: searchTerm || undefined,
         status: statusFilter
       });
-      console.log("Admin Rooms API response:", data);
+      if (requestId !== latestRequestId.current) return;
       if (data && data.data) {
         setRooms(data.data);
         setTotalItems(data.total);
+        setSelectedRoom((current: RoomItem | null) => {
+          if (!current) return current;
+          return data.data.find((room: RoomItem) => String(room.id) === String(current.id)) || current;
+        });
       } else {
         console.warn("Unexpected API response structure:", data);
         setRooms([]);
+        setTotalItems(0);
       }
     } catch (error) {
       console.error("Failed to fetch rooms:", error);
     } finally {
-      setIsLoading(false);
+      if (!silent && requestId === latestLoadingRequestId.current) setIsLoading(false);
     }
-  };
+  }, [currentPage, searchTerm, statusFilter]);
+
+  const handleRealtimeInvalidation = React.useCallback((event: AdminRoomEvent | null) => {
+    void fetchRooms({ silent: true });
+    if (!event || (selectedRoom && String(event.room_id) === String(selectedRoom.id))) {
+      setDetailsRefreshKey((value) => value + 1);
+    }
+  }, [fetchRooms, selectedRoom]);
+
+  useAdminRoomsRealtime({
+    enabled: true,
+    fallbackIntervalMs: 15_000,
+    onInvalidate: handleRealtimeInvalidation,
+  });
 
   React.useEffect(() => {
-    fetchRooms();
-  }, [currentPage, searchTerm, statusFilter]);
+    void fetchRooms();
+  }, [fetchRooms]);
 
   // Use debounce for search term to avoid spamming API
   const [searchInput, setSearchInput] = useState('');
@@ -178,7 +204,7 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
                       <td className="px-6 py-4 text-center font-bold text-on-surface">
                         <div className="inline-flex items-center gap-1 bg-surface-container px-2.5 py-1 rounded-full text-xs">
                           <Users className="w-3.5 h-3.5 text-primary" />
-                          {room.participant_count || room.participants?.length || 0}
+                          {room.participant_count ?? room.participants?.length ?? 0}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center whitespace-nowrap">
@@ -244,6 +270,7 @@ export const Rooms: React.FC<RoomsProps> = ({ onNavigate }) => {
             setSelectedRoom(null);
           }}
           room={selectedRoom}
+          refreshKey={detailsRefreshKey}
         />
       </div>
     </main>

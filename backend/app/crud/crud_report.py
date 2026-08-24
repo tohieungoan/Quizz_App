@@ -1,13 +1,19 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, or_, case, literal
-import csv
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import func, desc, or_, case, literal, and_
 import io
 import zipfile
+from collections import defaultdict
+from datetime import datetime
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 from app.models.quiz import Quiz, Question
 from app.models.user import User
 from app.models.room import Room, Participant, ParticipantAnswer
 from app.models.exam import Exam, ExamAssignee, ExamAnswer
+from app.models.quiz_variant import QuizVariant, QuizVariantQuestion
 from app.schemas.report import ReportMetrics, ReportListItem, ReportPageResponse, ReportParticipant, ReportQuestionAnalysis, ReportParticipantPageResponse, ReportQuestionPageResponse
 
 class CRUDReport:
@@ -229,7 +235,9 @@ class CRUDReport:
         total = 0
         
         if session_type.upper() == "ROOM":
-            query = db.query(Participant).filter(Participant.room_id == session_id)
+            query = db.query(Participant).options(
+                selectinload(Participant.quiz_variant)
+            ).filter(Participant.room_id == session_id)
             total = query.count()
             # Get all participants sorted by score for ranking
             all_participants = query.order_by(desc(Participant.score)).all()
@@ -263,10 +271,13 @@ class CRUDReport:
                     score=p.score,
                     correct_answers=f"{correct_ans}/{total_ans}",
                     accuracy=acc,
-                    rank=rank_map.get(p.id, 0)
+                    rank=rank_map.get(p.id, 0),
+                    version_code=p.quiz_variant.version_code if p.quiz_variant else None,
                 ))
         elif session_type.upper() == "EXAM":
-            query = db.query(ExamAssignee, User.fullname).outerjoin(User, ExamAssignee.user_id == User.id).filter(ExamAssignee.exam_id == session_id)
+            query = db.query(ExamAssignee, User.fullname).options(
+                selectinload(ExamAssignee.quiz_variant)
+            ).outerjoin(User, ExamAssignee.user_id == User.id).filter(ExamAssignee.exam_id == session_id)
             total = query.count()
             # Get all for ranking
             all_assignees = query.order_by(desc(ExamAssignee.score)).all()
@@ -284,10 +295,10 @@ class CRUDReport:
                 
                 # Calculate correct/total answers
                 total_ans = db.query(func.count(ExamAnswer.id)).filter(
-                    ExamAnswer.assignee_id == a.id
+                    ExamAnswer.exam_assignee_id == a.id
                 ).scalar() or 0
                 correct_ans = db.query(func.count(ExamAnswer.id)).filter(
-                    ExamAnswer.assignee_id == a.id,
+                    ExamAnswer.exam_assignee_id == a.id,
                     ExamAnswer.is_correct == True
                 ).scalar() or 0
                 
@@ -302,7 +313,8 @@ class CRUDReport:
                     score=a.score or 0,
                     correct_answers=f"{correct_ans}/{total_ans}",
                     accuracy=acc,
-                    rank=rank_map.get(a.id, 0)
+                    rank=rank_map.get(a.id, 0),
+                    version_code=a.quiz_variant.version_code if a.quiz_variant else None,
                 ))
                 
         return ReportParticipantPageResponse(
@@ -313,84 +325,127 @@ class CRUDReport:
         )
 
     def get_report_questions(self, db: Session, session_id: int, session_type: str, skip: int = 0, limit: int = 50) -> ReportQuestionPageResponse:
-        results = []
+        results: list[ReportQuestionAnalysis] = []
         total = 0
-        if session_type.upper() == "ROOM":
-            room = db.query(Room).filter(Room.id == session_id).first()
-            if room:
-                query = db.query(
-                    Question.id,
-                    Question.content,
-                    Question.difficulty,
-                    func.count(ParticipantAnswer.id).label("total_ans"),
-                    func.sum(case((ParticipantAnswer.is_correct == True, 1), else_=0)).label("correct_ans")
-                ).outerjoin(
-                    ParticipantAnswer,
-                    (ParticipantAnswer.question_id == Question.id) &
-                    (ParticipantAnswer.participant_id.in_(
-                        db.query(Participant.id).filter(Participant.room_id == session_id)
-                    ))
-                ).filter(
-                    Question.quiz_id == room.quiz_id
-                ).group_by(Question.id)
-                
-                total = db.query(func.count(Question.id)).filter(Question.quiz_id == room.quiz_id).scalar() or 0
+        normalized_type = session_type.upper()
+
+        session = None
+        answer_model = None
+        answer_owner_column = None
+        owner_ids = None
+        if normalized_type == "ROOM":
+            session = db.query(Room).filter(Room.id == session_id).first()
+            answer_model = ParticipantAnswer
+            answer_owner_column = ParticipantAnswer.participant_id
+            owner_ids = db.query(Participant.id).filter(Participant.room_id == session_id)
+        elif normalized_type == "EXAM":
+            session = db.query(Exam).filter(Exam.id == session_id).first()
+            answer_model = ExamAnswer
+            answer_owner_column = ExamAnswer.exam_assignee_id
+            owner_ids = db.query(ExamAssignee.id).filter(ExamAssignee.exam_id == session_id)
+
+        if session and answer_model is not None and owner_ids is not None:
+            if session.variant_set_id:
+                query = (
+                    db.query(
+                        QuizVariantQuestion.id,
+                        QuizVariantQuestion.original_question_id,
+                        QuizVariant.version_code,
+                        QuizVariantQuestion.content,
+                        QuizVariantQuestion.difficulty,
+                        func.count(answer_model.id).label("total_ans"),
+                        func.sum(
+                            case((answer_model.is_correct.is_(True), 1), else_=0)
+                        ).label("correct_ans"),
+                    )
+                    .join(
+                        QuizVariant,
+                        QuizVariantQuestion.quiz_variant_id == QuizVariant.id,
+                    )
+                    .outerjoin(
+                        answer_model,
+                        and_(
+                            answer_model.variant_question_id == QuizVariantQuestion.id,
+                            answer_owner_column.in_(owner_ids),
+                        ),
+                    )
+                    .filter(QuizVariant.variant_set_id == session.variant_set_id)
+                    .group_by(
+                        QuizVariantQuestion.id,
+                        QuizVariant.version_code,
+                    )
+                    .order_by(
+                        QuizVariant.version_code.asc(),
+                        QuizVariantQuestion.position.asc(),
+                        QuizVariantQuestion.id.asc(),
+                    )
+                )
+                total = (
+                    db.query(func.count(QuizVariantQuestion.id))
+                    .join(QuizVariant, QuizVariantQuestion.quiz_variant_id == QuizVariant.id)
+                    .filter(QuizVariant.variant_set_id == session.variant_set_id)
+                    .scalar()
+                    or 0
+                )
                 stats = query.offset(skip).limit(limit).all()
-                
                 for row in stats:
-                    q_id, q_content, q_diff, t_ans, c_ans = row
-                    t_ans = t_ans or 0
-                    c_ans = c_ans or 0
-                    i_ans = t_ans - c_ans
-                    acc = round((c_ans / t_ans * 100), 2) if t_ans > 0 else 0.0
-                    
+                    q_id, original_id, version_code, content, difficulty, total_ans, correct_ans = row
+                    total_ans = int(total_ans or 0)
+                    correct_ans = int(correct_ans or 0)
                     results.append(ReportQuestionAnalysis(
                         id=q_id,
-                        question=q_content or "No content",
-                        correct=int(c_ans),
-                        incorrect=int(i_ans),
-                        rate=float(acc),
-                        difficulty=q_diff or "Medium"
+                        original_question_id=original_id,
+                        version_code=version_code,
+                        question=content or "No content",
+                        correct=correct_ans,
+                        incorrect=total_ans - correct_ans,
+                        rate=round((correct_ans / total_ans * 100), 2) if total_ans else 0.0,
+                        difficulty=difficulty or "Medium",
                     ))
-                    
-        elif session_type.upper() == "EXAM":
-            exam = db.query(Exam).filter(Exam.id == session_id).first()
-            if exam:
-                query = db.query(
-                    Question.id,
-                    Question.content,
-                    Question.difficulty,
-                    func.count(ExamAnswer.id).label("total_ans"),
-                    func.sum(case((ExamAnswer.is_correct == True, 1), else_=0)).label("correct_ans")
-                ).outerjoin(
-                    ExamAnswer,
-                    (ExamAnswer.question_id == Question.id) &
-                    (ExamAnswer.assignee_id.in_(
-                        db.query(ExamAssignee.id).filter(ExamAssignee.exam_id == session_id)
-                    ))
-                ).filter(
-                    Question.quiz_id == exam.quiz_id
-                ).group_by(Question.id)
-                
-                total = db.query(func.count(Question.id)).filter(Question.quiz_id == exam.quiz_id).scalar() or 0
+            else:
+                query = (
+                    db.query(
+                        Question.id,
+                        Question.content,
+                        Question.difficulty,
+                        func.count(answer_model.id).label("total_ans"),
+                        func.sum(
+                            case((answer_model.is_correct.is_(True), 1), else_=0)
+                        ).label("correct_ans"),
+                    )
+                    .outerjoin(
+                        answer_model,
+                        and_(
+                            answer_model.question_id == Question.id,
+                            answer_owner_column.in_(owner_ids),
+                        ),
+                    )
+                    .filter(Question.quiz_id == session.quiz_id)
+                    .group_by(Question.id)
+                    .order_by(Question.position.asc(), Question.id.asc())
+                )
+                total = (
+                    db.query(func.count(Question.id))
+                    .filter(Question.quiz_id == session.quiz_id)
+                    .scalar()
+                    or 0
+                )
                 stats = query.offset(skip).limit(limit).all()
-                
                 for row in stats:
-                    q_id, q_content, q_diff, t_ans, c_ans = row
-                    t_ans = t_ans or 0
-                    c_ans = c_ans or 0
-                    i_ans = t_ans - c_ans
-                    acc = round((c_ans / t_ans * 100), 2) if t_ans > 0 else 0.0
-                    
+                    q_id, content, difficulty, total_ans, correct_ans = row
+                    total_ans = int(total_ans or 0)
+                    correct_ans = int(correct_ans or 0)
                     results.append(ReportQuestionAnalysis(
                         id=q_id,
-                        question=q_content or "No content",
-                        correct=int(c_ans),
-                        incorrect=int(i_ans),
-                        rate=float(acc),
-                        difficulty=q_diff or "Medium"
+                        original_question_id=q_id,
+                        version_code=None,
+                        question=content or "No content",
+                        correct=correct_ans,
+                        incorrect=total_ans - correct_ans,
+                        rate=round((correct_ans / total_ans * 100), 2) if total_ans else 0.0,
+                        difficulty=difficulty or "Medium",
                     ))
-                    
+
         return ReportQuestionPageResponse(
             data=results,
             total=total,
@@ -399,119 +454,216 @@ class CRUDReport:
         )
 
     def export_report_zip(self, db: Session, session_id: int, session_type: str) -> bytes:
-        """
-        Generates a ZIP file in memory containing participants.csv and questions_accuracy.csv
-        """
-        # Generate participants CSV
-        participants_output = io.StringIO()
-        p_writer = csv.writer(participants_output)
-        p_writer.writerow(["Rank", "Participant Name", "Score", "Correct Answers", "Accuracy (%)", "Joined At", "Status"])
+        """Build a ZIP containing separate participant and question workbooks."""
+        normalized_type = session_type.upper()
+        if normalized_type == "ROOM":
+            session = db.query(Room).filter(Room.id == session_id).first()
+            title = (session.title or session.room_code or f"Room {session_id}") if session else ""
+        elif normalized_type == "EXAM":
+            session = db.query(Exam).filter(Exam.id == session_id).first()
+            title = (session.title or f"Exam {session_id}") if session else ""
+        else:
+            raise ValueError("Report type must be ROOM or EXAM.")
+        if not session:
+            raise ValueError("Report session not found.")
 
-        # Generate questions CSV
-        questions_output = io.StringIO()
-        q_writer = csv.writer(questions_output)
-        q_writer.writerow(["Question ID", "Question Content", "Total Answers", "Correct", "Incorrect", "Accuracy (%)"])
+        participant_report = self.get_report_participants(
+            db, session_id=session_id, session_type=normalized_type, skip=0, limit=1_000_000
+        )
+        question_report = self.get_report_questions(
+            db, session_id=session_id, session_type=normalized_type, skip=0, limit=1_000_000
+        )
 
-        if session_type.upper() == "ROOM":
-            # 1. Participants data
-            participants = db.query(Participant).filter(Participant.room_id == session_id).order_by(desc(Participant.score)).all()
-            for rank, p in enumerate(participants, 1):
-                total_ans = db.query(func.count(ParticipantAnswer.id)).filter(
-                    ParticipantAnswer.participant_id == p.id
-                ).scalar() or 0
-                correct_ans = db.query(func.count(ParticipantAnswer.id)).filter(
-                    ParticipantAnswer.participant_id == p.id,
-                    ParticipantAnswer.is_correct == True
-                ).scalar() or 0
-                acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0%"
-                joined = p.joined_at.strftime("%Y-%m-%d %H:%M") if hasattr(p, 'joined_at') and p.joined_at else "N/A"
-                
-                p_writer.writerow([
-                    rank,
-                    p.nickname or "Anonymous", 
-                    p.score,
-                    f"\t{correct_ans}/{total_ans}",
-                    acc,
-                    joined,
-                    p.status or "Completed"
+        def version_key(code: str | None) -> str:
+            if code:
+                return code
+            return "Unassigned" if session.variant_set_id else "Original"
+
+        questions_by_version = defaultdict(list)
+        for question in question_report.data:
+            questions_by_version[version_key(question.version_code)].append(question)
+
+        version_codes = sorted(
+            set(questions_by_version),
+            key=lambda value: (value not in {"A", "B", "C", "D", "E"}, value),
+        )
+        if not version_codes:
+            version_codes = ["Original"]
+
+        navy = "1A0B82"
+        light_blue = "E8E7F7"
+        light_gray = "F3F4F6"
+        green = "E7F6EC"
+        white = "FFFFFF"
+        muted = "64748B"
+        thin_gray = Side(style="thin", color="D9DEE7")
+        bottom_border = Border(bottom=thin_gray)
+
+        def style_title(sheet, text: str, end_column: str = "H") -> None:
+            sheet.merge_cells(f"A1:{end_column}1")
+            cell = sheet["A1"]
+            cell.value = text
+            cell.fill = PatternFill("solid", fgColor=navy)
+            cell.font = Font(color=white, bold=True, size=16)
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+            sheet.row_dimensions[1].height = 30
+            sheet.sheet_view.showGridLines = False
+
+        def style_header(sheet, row: int, columns: int = 8) -> None:
+            for cell in sheet[row][:columns]:
+                cell.fill = PatternFill("solid", fgColor=light_blue)
+                cell.font = Font(color=navy, bold=True)
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell.border = bottom_border
+            sheet.row_dimensions[row].height = 28
+
+        def finish_question_sheet(sheet) -> None:
+            widths = [14, 22, 48, 14, 18, 14, 18, 18]
+            for index, width in enumerate(widths, start=1):
+                sheet.column_dimensions[get_column_letter(index)].width = width
+            sheet.freeze_panes = "A6"
+
+        def accuracy_value(value: str | None) -> float:
+            raw = (value or "0%").strip().rstrip("%")
+            try:
+                return float(raw) / 100
+            except ValueError:
+                return 0
+
+        def joined_at_value(value: str | None):
+            if not value:
+                return "N/A"
+            try:
+                return datetime.strptime(value, "%Y-%m-%d %H:%M")
+            except ValueError:
+                return value
+
+        participant_workbook = Workbook()
+        all_participants = participant_workbook.active
+        all_participants.title = "Participants"
+        style_title(all_participants, f"{title} — Participant Statistics", end_column="I")
+        all_participants["A3"] = "Session ID"
+        all_participants["B3"] = session_id
+        all_participants["D3"] = "Type"
+        all_participants["E3"] = normalized_type
+        all_participants["G3"] = "Participants"
+        all_participants["H3"] = participant_report.total
+        participant_headers = [
+            "Rank", "User ID", "Participant", "Version", "Score",
+            "Correct Answers", "Accuracy", "Joined At", "Status",
+        ]
+        for column, header in enumerate(participant_headers, start=1):
+            all_participants.cell(5, column, header)
+        style_header(all_participants, 5, 9)
+        participant_row = 6
+        for participant in participant_report.data:
+            all_participants.append([
+                participant.rank,
+                participant.user_id or "Guest",
+                participant.nickname,
+                version_key(participant.version_code),
+                participant.score,
+                participant.correct_answers,
+                accuracy_value(participant.accuracy),
+                joined_at_value(participant.joined_at),
+                participant.status,
+            ])
+            all_participants.cell(participant_row, 7).number_format = "0.0%"
+            if isinstance(all_participants.cell(participant_row, 8).value, datetime):
+                all_participants.cell(participant_row, 8).number_format = "yyyy-mm-dd hh:mm"
+            for column in range(1, 10):
+                all_participants.cell(participant_row, column).alignment = Alignment(
+                    horizontal="left" if column in {3, 9} else "center",
+                    vertical="center",
+                )
+            if participant_row % 2 == 0:
+                for cell in all_participants[participant_row][:9]:
+                    cell.fill = PatternFill("solid", fgColor=light_gray)
+            participant_row += 1
+        if participant_row == 6:
+            all_participants.append([None, None, "No participant data for this session."])
+            all_participants.cell(6, 3).font = Font(color=muted, italic=True)
+        else:
+            all_participants.auto_filter.ref = f"A5:I{participant_row - 1}"
+        all_participants.freeze_panes = "A6"
+        all_participants.sheet_view.showGridLines = False
+        for column, width in enumerate([10, 14, 28, 14, 14, 18, 14, 20, 18], start=1):
+            all_participants.column_dimensions[get_column_letter(column)].width = width
+
+        question_workbook = Workbook()
+        question_workbook.remove(question_workbook.active)
+        for code in version_codes:
+            sheet_name = f"Version {code}" if code in {"A", "B", "C", "D", "E"} else code
+            sheet = question_workbook.create_sheet(title=sheet_name[:31])
+            style_title(sheet, f"{title} — Question Statistics — {sheet_name}")
+            sheet["A3"] = "Session ID"
+            sheet["B3"] = session_id
+            sheet["D3"] = "Type"
+            sheet["E3"] = normalized_type
+            sheet["G3"] = "Version"
+            sheet["H3"] = code
+            question_headers = [
+                "Question ID", "Original Question ID", "Question Content", "Difficulty",
+                "Total Answers", "Correct", "Incorrect", "Accuracy",
+            ]
+            for column, header in enumerate(question_headers, start=1):
+                sheet.cell(5, column, header)
+            style_header(sheet, 5, 8)
+            row = 6
+
+            for question in questions_by_version.get(code, []):
+                total_answers = question.correct + question.incorrect
+                sheet.append([
+                    question.id,
+                    question.original_question_id or question.id,
+                    question.question,
+                    question.difficulty,
+                    total_answers,
+                    question.correct,
+                    question.incorrect,
+                    question.rate / 100,
                 ])
-                
-            # 2. Questions Accuracy data
-            room = db.query(Room).filter(Room.id == session_id).first()
-            if room:
-                questions = db.query(Question).filter(Question.quiz_id == room.quiz_id).all()
-                for q in questions:
-                    total_ans = db.query(func.count(ParticipantAnswer.id)).join(Participant).filter(
-                        Participant.room_id == session_id,
-                        ParticipantAnswer.question_id == q.id
-                    ).scalar() or 0
-                    
-                    correct_ans = db.query(func.count(ParticipantAnswer.id)).join(Participant).filter(
-                        Participant.room_id == session_id,
-                        ParticipantAnswer.question_id == q.id,
-                        ParticipantAnswer.is_correct == True
-                    ).scalar() or 0
-                    
-                    incorrect_ans = total_ans - correct_ans
-                    acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0.0%"
-                    
-                    content_preview = (q.content[:50] + "...") if q.content and len(q.content) > 50 else (q.content or "No content")
-                    q_writer.writerow([q.id, content_preview, total_ans, correct_ans, incorrect_ans, acc])
+                sheet.cell(row, 1).alignment = Alignment(horizontal="center", vertical="center")
+                sheet.cell(row, 2).alignment = Alignment(horizontal="center", vertical="center")
+                sheet.cell(row, 3).alignment = Alignment(
+                    horizontal="left", vertical="center", wrap_text=True, indent=1
+                )
+                for column in range(4, 9):
+                    sheet.cell(row, column).alignment = Alignment(
+                        horizontal="center", vertical="center"
+                    )
+                sheet.cell(row, 8).number_format = "0.0%"
+                if question.rate >= 70:
+                    sheet.cell(row, 8).fill = PatternFill("solid", fgColor=green)
+                if row % 2 == 0:
+                    for cell in sheet[row][:8]:
+                        if cell.fill.fill_type is None:
+                            cell.fill = PatternFill("solid", fgColor=light_gray)
+                sheet.row_dimensions[row].height = 32
+                row += 1
 
-        elif session_type.upper() == "EXAM":
-            # 1. Assignees data
-            assignees = db.query(ExamAssignee).filter(ExamAssignee.exam_id == session_id).order_by(desc(ExamAssignee.score)).all()
-            for rank, a in enumerate(assignees, 1):
-                user = db.query(User).filter(User.id == a.user_id).first()
-                u_name = user.fullname if user else "Anonymous"
-                
-                total_ans = db.query(func.count(ExamAnswer.id)).filter(
-                    ExamAnswer.assignee_id == a.id
-                ).scalar() or 0
-                correct_ans = db.query(func.count(ExamAnswer.id)).filter(
-                    ExamAnswer.assignee_id == a.id,
-                    ExamAnswer.is_correct == True
-                ).scalar() or 0
-                acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0%"
-                joined = a.started_at.strftime("%Y-%m-%d %H:%M") if hasattr(a, 'started_at') and a.started_at else "N/A"
-                
-                p_writer.writerow([
-                    rank,
-                    u_name,
-                    a.score,
-                    f"\t{correct_ans}/{total_ans}",
-                    acc,
-                    joined,
-                    a.status or "Completed"
-                ])
-                
-            # 2. Questions Accuracy data
-            exam = db.query(Exam).filter(Exam.id == session_id).first()
-            if exam:
-                questions = db.query(Question).filter(Question.quiz_id == exam.quiz_id).all()
-                for q in questions:
-                    total_ans = db.query(func.count(ExamAnswer.id)).join(ExamAssignee).filter(
-                        ExamAssignee.exam_id == session_id,
-                        ExamAnswer.question_id == q.id
-                    ).scalar() or 0
-                    
-                    correct_ans = db.query(func.count(ExamAnswer.id)).join(ExamAssignee).filter(
-                        ExamAssignee.exam_id == session_id,
-                        ExamAnswer.question_id == q.id,
-                        ExamAnswer.is_correct == True
-                    ).scalar() or 0
-                    
-                    incorrect_ans = total_ans - correct_ans
-                    acc = f"{(correct_ans / total_ans * 100):.1f}%" if total_ans > 0 else "0.0%"
-                    
-                    content_preview = (q.content[:50] + "...") if q.content and len(q.content) > 50 else (q.content or "No content")
-                    q_writer.writerow([q.id, content_preview, total_ans, correct_ans, incorrect_ans, acc])
+            if not questions_by_version.get(code):
+                sheet.append([None, None, "No question data for this version."])
+                sheet.cell(row, 3).font = Font(color=muted, italic=True)
 
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("participants.csv", participants_output.getvalue().encode('utf-8-sig'))
-            zf.writestr("questions_accuracy.csv", questions_output.getvalue().encode('utf-8-sig'))
-            
-        return zip_buffer.getvalue()
+            if questions_by_version.get(code):
+                sheet.auto_filter.ref = f"A5:H{row - 1}"
+            finish_question_sheet(sheet)
+
+        participant_output = io.BytesIO()
+        participant_workbook.save(participant_output)
+        question_output = io.BytesIO()
+        question_workbook.save(question_output)
+
+        zip_output = io.BytesIO()
+        base_name = f"{normalized_type}_{session_id}"
+        with zipfile.ZipFile(zip_output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                f"{base_name}_Participants.xlsx", participant_output.getvalue()
+            )
+            archive.writestr(
+                f"{base_name}_Questions.xlsx", question_output.getvalue()
+            )
+        return zip_output.getvalue()
 
 crud_report = CRUDReport()

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Optional
-from sqlalchemy import String, Integer, Boolean, Text, DateTime, ForeignKey, BigInteger, JSON
+from sqlalchemy import String, Integer, Boolean, Text, DateTime, ForeignKey, BigInteger, JSON, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -17,6 +17,19 @@ class Quiz(Base):
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     shuffle_options: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    variant_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    variant_count: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    active_variant_set_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey(
+            "quiz_variant_sets.id",
+            name="fk_quizzes_active_variant_set_id",
+            use_alter=True,
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        index=True,
+    )
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     draft_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     draft_builder_state: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
@@ -33,6 +46,22 @@ class Quiz(Base):
         order_by="Question.position",
     )
     upload_files = relationship("UploadFile", back_populates="quiz")
+    variant_sets = relationship(
+        "QuizVariantSet",
+        foreign_keys="QuizVariantSet.quiz_id",
+        back_populates="quiz",
+        cascade="all, delete-orphan",
+    )
+    active_variant_set = relationship(
+        "QuizVariantSet",
+        foreign_keys=[active_variant_set_id],
+        post_update=True,
+        lazy="selectin",
+    )
+
+    __table_args__ = (
+        CheckConstraint("variant_count BETWEEN 2 AND 5", name="ck_quizzes_variant_count"),
+    )
 
     @property
     def question_count(self) -> int:
@@ -40,6 +69,23 @@ class Quiz(Base):
         if prefetched is not None:
             return int(prefetched)
         return len(self.questions)
+
+    @property
+    def variant_status(self) -> Optional[str]:
+        if not self.variant_enabled or not self.active_variant_set:
+            return None
+        variant_set = self.active_variant_set
+        source_versions = {self.version}
+        # Older published records were generated immediately before Publish,
+        # whose status transition incremented Quiz.version by one.
+        if (self.status or "").strip().lower() == "published":
+            source_versions.add(self.version - 1)
+        if (
+            variant_set.source_quiz_version not in source_versions
+            or variant_set.requested_count != self.variant_count
+        ):
+            return "STALE"
+        return variant_set.status
 
 
 class Question(Base):

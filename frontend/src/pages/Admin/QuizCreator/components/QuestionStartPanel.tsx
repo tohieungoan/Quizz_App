@@ -1,10 +1,7 @@
-import { AlignLeft, CheckSquare, CopyPlus, List, Sparkles } from 'lucide-react';
+import { AlignLeft, CheckSquare, CopyPlus, List } from 'lucide-react';
 import { QuestionType } from '../quizCreatorModels';
 
 interface QuestionStartPanelProps {
-  aiPrompt: string;
-  onAIPromptChange: (value: string) => void;
-  onOpenAI: () => void;
   onStartBuild: (type: QuestionType) => void;
   onOpenQuestionBank: () => void;
 }
@@ -25,13 +22,6 @@ const questionTypes: Array<{
 export function QuestionStartPanel(props: QuestionStartPanelProps) {
   return (
     <div className="max-w-5xl w-full mx-auto">
-      <div className="rounded-2xl border border-outline-variant/50 bg-white shadow-sm mb-10 overflow-hidden">
-        <div className="p-4 md:p-5 flex flex-col md:flex-row items-center gap-4">
-          <div className="flex items-center gap-2.5 shrink-0 w-full md:w-auto"><div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center"><Sparkles className="w-4.5 h-4.5 text-primary" /></div><h2 className="font-bold text-sm whitespace-nowrap text-primary">AI Generate</h2></div>
-          <div className="flex-1 w-full relative"><input type="text" value={props.aiPrompt} onChange={event => props.onAIPromptChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') props.onOpenAI(); }} className="w-full bg-surface-container-lowest border border-outline-variant/50 rounded-xl pl-4 pr-4 py-2.5 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm text-on-surface font-medium placeholder:text-slate-400 transition-all" placeholder="E.g., Generate 5 multiple-choice questions on Object-Oriented Programming (OOP)..." /></div>
-          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0"><button onClick={props.onOpenAI} className="w-full md:w-auto px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"><Sparkles className="w-4 h-4" /> Generate with AI</button></div>
-        </div>
-      </div>
       <div className="mb-6"><h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Build Your Quiz</h2><p className="text-slate-500 font-medium text-sm mt-1">Add questions manually or import them from your question bank.</p></div>
       <div className="mb-10"><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {questionTypes.map(({ type, title, description, Icon, iconClassName, hoverClassName }) => (

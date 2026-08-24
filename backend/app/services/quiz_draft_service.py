@@ -107,6 +107,8 @@ class QuizDraftService:
             difficulty="Medium",
             is_public=False,
             shuffle_options=True,
+            variant_enabled=False,
+            variant_count=5,
             status="Draft",
             version=1,
             draft_key=client_draft_id,
@@ -185,6 +187,15 @@ class QuizDraftService:
             quiz.difficulty = (snapshot.difficulty or "Medium").strip()
             quiz.is_public = snapshot.is_public
             quiz.shuffle_options = snapshot.shuffle_options
+            quiz.variant_enabled = snapshot.variant_enabled
+            quiz.variant_count = snapshot.variant_count
+            # Keep the previous generated set visible after Original changes.
+            # Quiz.variant_status derives STALE from the source-version/count
+            # mismatch, while Publish still requires a freshly generated set.
+            # This avoids silently losing versions on Save/Close without ever
+            # delivering versions generated from outdated source questions.
+            if not snapshot.variant_enabled:
+                quiz.active_variant_set_id = None
             quiz.draft_builder_state = snapshot.builder_state
             quiz.status = "Draft"
 
@@ -233,13 +244,61 @@ class QuizDraftService:
             if validation_errors:
                 raise QuizPublishValidationError(validation_errors)
 
+            if quiz.variant_enabled:
+                from app.services.quiz_variant_service import quiz_variant_service
+
+                variant_set = quiz_variant_service.get_active_set(db, quiz.id)
+                if (
+                    variant_set
+                    and variant_set.source_quiz_version != quiz.version
+                    and variant_set.requested_count == quiz.variant_count
+                    and quiz_variant_service.source_matches_quiz(variant_set, quiz)
+                ):
+                    # Quiz.version may have advanced because of a no-op
+                    # autosave or another workflow-only draft update. Version
+                    # A proves whether the generated source is still exact.
+                    variant_set.source_quiz_version = quiz.version
+                if (
+                    not variant_set
+                    or variant_set.source_quiz_version != quiz.version
+                    or variant_set.requested_count != quiz.variant_count
+                ):
+                    raise QuizPublishValidationError([
+                        "Generate quiz versions from the latest saved draft before publishing."
+                    ])
+                if variant_set.status in {"PENDING", "GENERATING"}:
+                    raise QuizPublishValidationError([
+                        "Wait for quiz version generation to finish before publishing."
+                    ])
+                if variant_set.status == "DIRTY":
+                    raise QuizPublishValidationError([
+                        "A generated version no longer matches the Original. Fix the highlighted differences or generate a new version set before publishing."
+                    ])
+                if variant_set.status != "READY":
+                    raise QuizPublishValidationError([
+                        "Every generated version must pass validation. Retry incomplete version generation before publishing."
+                    ])
+                integrity_errors = quiz_variant_service.integrity_errors(variant_set)
+                if integrity_errors:
+                    raise QuizPublishValidationError([
+                        "Generated versions failed the final integrity check.",
+                        *integrity_errors[:5],
+                    ])
+
             first_publication = quiz.published_at is None
             quiz.status = "Published"
             quiz.version += 1
+            if quiz.variant_enabled:
+                # Publishing changes workflow state, not source content. Move
+                # the prepared set to the resulting optimistic-lock version so
+                # it does not immediately appear stale after publication.
+                variant_set.source_quiz_version = quiz.version
             quiz.published_at = quiz.published_at or datetime.utcnow()
             quiz.draft_builder_state = None
             quiz.updated_at = datetime.utcnow()
             db.add(quiz)
+            if not quiz.variant_enabled:
+                quiz.active_variant_set_id = None
             if first_publication:
                 author = db.query(User).filter(User.id == quiz.user_id).with_for_update().first()
                 if author:
@@ -311,9 +370,17 @@ class QuizDraftService:
 
             QuizDraftService._reconcile_options(db, question, incoming.options)
 
-        for question_id, question in existing_questions.items():
-            if question_id not in retained_question_ids:
-                db.delete(question)
+        removed_question_ids = set(existing_questions) - retained_question_ids
+        if removed_question_ids:
+            from app.services.quiz_variant_service import quiz_variant_service
+
+            quiz_variant_service.sync_deleted_source_questions(
+                db,
+                quiz,
+                removed_question_ids,
+            )
+            for question_id in removed_question_ids:
+                db.delete(existing_questions[question_id])
 
     @staticmethod
     def _reconcile_options(
@@ -451,9 +518,22 @@ class QuizDraftService:
         if not (quiz.title or "").strip():
             errors.append("Quiz title is required.")
         if isinstance(quiz.draft_builder_state, dict):
-            if quiz.draft_builder_state.get("editingType"):
+            builder_state = quiz.draft_builder_state
+            default_mc_options = ["Option 1", "Option 2", "Option 3", "Option 4"]
+            has_meaningful_builder_content = bool(
+                builder_state.get("editingId")
+                or str(builder_state.get("qText") or "").strip()
+                or builder_state.get("mediaUrl")
+                or builder_state.get("audioUrl")
+                or str(builder_state.get("shortCorrect") or "").strip()
+                or (
+                    isinstance(builder_state.get("mcOptions"), list)
+                    and builder_state.get("mcOptions") != default_mc_options
+                )
+            )
+            if builder_state.get("editingType") and has_meaningful_builder_content:
                 errors.append("Finish or cancel the question currently open in the builder before publishing.")
-            if quiz.draft_builder_state.get("aiReviewQuestions"):
+            if builder_state.get("aiReviewQuestions"):
                 errors.append("Import or discard AI-generated questions before publishing.")
 
         for index, question in enumerate(quiz.questions, start=1):

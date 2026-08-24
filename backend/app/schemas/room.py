@@ -10,6 +10,7 @@ class OptionLive(BaseModel):
     id: int
     key: str  # A, B, C, D
     label: str
+    variant_option_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -24,6 +25,8 @@ class QuestionLive(BaseModel):
     audio_url: Optional[str] = None
     media_url: Optional[str] = None
     audio_play_limit: Optional[int] = None
+    variant_question_id: Optional[int] = None
+    version_code: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,6 +73,7 @@ class RoomResponse(BaseModel):
     participants_count: int = 0
     current_question_index: int = 0
     current_question_started_at: Optional[datetime] = None
+    variant_set_id: Optional[int] = None
     active_question: Optional[QuestionLive] = None
     qa_state: Optional[dict] = None
     top_voted_questions: Optional[List[dict]] = None
@@ -103,6 +107,7 @@ class ParticipantResponse(BaseModel):
     score: float
     streak: int = 0
     equipped_title: Optional[str] = None
+    quiz_variant_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -137,6 +142,8 @@ class SubmitAnswerIn(BaseModel):
     participant_id: int
     question_id: int
     selected_option_id: Optional[int] = None
+    variant_question_id: Optional[int] = None
+    variant_option_id: Optional[int] = None
     answer_text: Optional[str] = None
     active_power_up: Optional[str] = None
     streak: Optional[int] = None
@@ -161,7 +168,7 @@ class RoomAdminResponse(BaseModel):
     host_avatar: Optional[str] = None
     quiz_title: str
     status: str
-    participantCount: int
+    participant_count: int
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
 

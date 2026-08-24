@@ -2,6 +2,7 @@ from app.db.base import Base
 from app.models.user import User, RefreshToken, UserSetting
 from app.models.group import Group, GroupMember, GroupAssignment
 from app.models.quiz import Quiz, Question, QuestionOption, UploadFile
+from app.models.quiz_variant import QuizVariantSet, QuizVariant, QuizVariantQuestion, QuizVariantOption
 from app.models.room import Room, RoomTeam, Participant, ParticipantAnswer, LiveQAQuestion, LiveQAUpvote
 from app.models.exam import Exam, ExamAssignee, ExamAnswer, ShortAnswerValidation
 from app.models.notification import Notification
@@ -22,6 +23,10 @@ __all__ = [
     "Question",
     "QuestionOption",
     "UploadFile",
+    "QuizVariantSet",
+    "QuizVariant",
+    "QuizVariantQuestion",
+    "QuizVariantOption",
     "Room",
     "RoomTeam",
     "Participant",

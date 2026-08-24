@@ -41,12 +41,12 @@ class Settings(BaseSettings):
     ASSISTANT_NAME: str = "Quizzy"
 
     # Google AI Studio (Gemini API) Configuration
-    GEMINI_PRIMARY_MODEL: str = "gemini-flash-latest"
+    GEMINI_PRIMARY_MODEL: str = "gemini-3.1-flash-lite"
 
     # OpenRouter AI Configuration (Fallback)
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_PRIMARY_MODEL: str = "inclusionai/ling-3.0-flash:free"
+    OPENROUTER_PRIMARY_MODEL: str = "openrouter/free"
     OPENROUTER_FALLBACK_MODEL: str = "google/gemma-4-26b-a4b-it:free"
     AI_GENERATION_LIMIT_PER_HOUR: int = 20
 

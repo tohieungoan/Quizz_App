@@ -18,6 +18,8 @@ class QuizBase(BaseModel):
     is_public: Optional[bool] = Field(False, examples=[False])
     status: Optional[str] = Field("Draft", examples=["Draft", "Published", "Archived"])
     shuffle_options: Optional[bool] = True
+    variant_enabled: bool = False
+    variant_count: int = Field(default=5, ge=2, le=5)
 
     @field_validator("status")
     @classmethod
@@ -51,6 +53,8 @@ class QuizUpdate(BaseModel):
     is_public: Optional[bool] = None
     status: Optional[str] = None
     shuffle_options: Optional[bool] = None
+    variant_enabled: Optional[bool] = None
+    variant_count: Optional[int] = Field(None, ge=2, le=5)
 
     @field_validator("status")
     @classmethod
@@ -68,6 +72,8 @@ class QuizResponse(QuizBase):
     question_count: int = 0
     version: int = 1
     published_at: Optional[datetime] = None
+    active_variant_set_id: Optional[int] = None
+    variant_status: Optional[str] = None
 
 class QuizPageResponse(BaseModel):
     data: List[QuizResponse]
@@ -113,6 +119,8 @@ class QuizDraftSnapshot(BaseModel):
     difficulty: Optional[str] = Field(default="Medium", max_length=30)
     is_public: bool = False
     shuffle_options: bool = True
+    variant_enabled: bool = False
+    variant_count: int = Field(default=5, ge=2, le=5)
     builder_state: Optional[dict[str, Any]] = None
     questions: List[DraftQuestionSnapshot] = Field(default_factory=list, max_length=2000)
 

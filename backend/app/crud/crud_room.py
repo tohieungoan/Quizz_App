@@ -93,6 +93,16 @@ class CRUDRoom:
         ).first()
         return self.check_and_auto_end_room(db, room)
 
+    def get_by_code_for_update(self, db: Session, room_code: str) -> Optional[Room]:
+        """Lock an active room while a participant is being admitted."""
+        now = datetime.datetime.utcnow()
+        room = db.query(Room).filter(
+            Room.room_code == room_code,
+            Room.status != "ENDED",
+            or_(Room.expire_at.is_(None), Room.expire_at > now),
+        ).with_for_update().first()
+        return self.check_and_auto_end_room(db, room)
+
     def get_all_by_code(self, db: Session, room_code: str) -> Optional[Room]:
         """Get any room by code, regardless of status."""
         room = db.query(Room).filter(Room.room_code == room_code).first()
@@ -119,7 +129,13 @@ class CRUDRoom:
         # Fallback in case collision rate is extremely high
         raise ValueError("Could not generate a unique room code. Please try again.")
 
-    def create_room(self, db: Session, obj_in: RoomCreate, host_id: int) -> Room:
+    def create_room(
+        self,
+        db: Session,
+        obj_in: RoomCreate,
+        host_id: int,
+        variant_set_id: Optional[int] = None,
+    ) -> Room:
         """Create a new live quiz room with a 2-hour expiration limit."""
         # Generate unique room code
         room_code = self.generate_unique_room_code(db)
@@ -136,6 +152,7 @@ class CRUDRoom:
             quiz_id=obj_in.quiz_id,
             host_id=host_id,
             group_id=obj_in.group_id,
+            variant_set_id=variant_set_id,
             room_code=room_code,
             qr_code_url=qr_code_url,
             title=title,
@@ -291,6 +308,7 @@ class CRUDRoom:
             now = datetime.datetime.utcnow()
             
         from app.models.quiz import Question, QuestionOption
+        from app.models.quiz_variant import QuizVariantOption, QuizVariantQuestion
         from app.models.room import ParticipantAnswer
         
         # 1. Verify if participant already answered this question
@@ -305,17 +323,67 @@ class CRUDRoom:
         question = db.query(Question).filter(Question.id == question_id).first()
         if not question:
             raise ValueError("Question not found.")
+        if question.quiz_id != room.quiz_id:
+            raise ValueError("Question does not belong to this room's quiz.")
+        ordered_questions = sorted(room.quiz.questions, key=lambda item: (item.position, item.id))
+        active_question = (
+            ordered_questions[room.current_question_index - 1]
+            if 1 <= room.current_question_index <= len(ordered_questions)
+            else None
+        )
+        if active_question is None or active_question.id != question_id:
+            raise ValueError("This question is not currently active.")
 
         options = db.query(QuestionOption).filter(QuestionOption.question_id == question_id).all()
         raw_type = (question.type or "multiple_choice").lower().strip()
         is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
 
         selected_option = None
+        selected_variant_option = None
+        variant_question = None
         is_correct = False
         is_skip_action = bool(is_skipped or active_power_up == 'skip' or (selected_option_id is None and answer_text is None))
 
+        if participant.quiz_variant_id:
+            variant_question = db.query(QuizVariantQuestion).filter(
+                QuizVariantQuestion.quiz_variant_id == participant.quiz_variant_id,
+                QuizVariantQuestion.original_question_id == question_id,
+            ).first()
+            if not variant_question:
+                raise ValueError("Question is unavailable in your assigned quiz version.")
+
         if not is_skip_action:
-            if is_short_answer:
+            if variant_question:
+                variant_options = list(variant_question.options)
+                variant_type = (variant_question.type or question.type or "").lower().strip()
+                is_short_answer = variant_type in [
+                    "short_answer", "short answer", "short", "fill in the blank",
+                    "fill_in_the_blank", "fill_in",
+                ]
+                if is_short_answer:
+                    normalized = (answer_text or "").strip().casefold()
+                    selected_variant_option = next(
+                        (
+                            option for option in variant_options
+                            if option.is_correct
+                            and normalized == (option.content or "").strip().casefold()
+                        ),
+                        None,
+                    )
+                    is_correct = selected_variant_option is not None
+                elif selected_option_id is not None:
+                    try:
+                        target_option_id = int(selected_option_id)
+                    except (ValueError, TypeError):
+                        target_option_id = selected_option_id
+                    selected_variant_option = db.query(QuizVariantOption).filter(
+                        QuizVariantOption.id == target_option_id,
+                        QuizVariantOption.variant_question_id == variant_question.id,
+                    ).first()
+                    if not selected_variant_option:
+                        raise ValueError("Selected option is invalid for your assigned quiz version.")
+                    is_correct = bool(selected_variant_option.is_correct)
+            elif is_short_answer:
                 if answer_text:
                     match_text = answer_text.strip().lower()
                     for opt in options:
@@ -390,6 +458,8 @@ class CRUDRoom:
             participant_id=participant.id,
             question_id=question_id,
             selected_option_id=selected_option.id if selected_option else None,
+            variant_question_id=variant_question.id if variant_question else None,
+            variant_option_id=selected_variant_option.id if selected_variant_option else None,
             answer_text=answer_text,
             is_correct=is_correct,
             score=score,
@@ -409,8 +479,19 @@ class CRUDRoom:
         if room.mode == "EXAM":
             correct_option_key = None
         elif is_short_answer:
-            correct_opt = next((o for o in options if o.is_correct), None)
+            answer_options = list(variant_question.options) if variant_question else options
+            correct_opt = next((o for o in answer_options if o.is_correct), None)
             correct_option_key = correct_opt.content if correct_opt else None
+        elif variant_question:
+            keys = [chr(ord("A") + index) for index in range(20)]
+            sorted_options = sorted(
+                variant_question.options,
+                key=lambda option: (option.position, option.id),
+            )
+            for index, option in enumerate(sorted_options):
+                if option.is_correct:
+                    correct_option_key = keys[index] if index < len(keys) else str(index + 1)
+                    break
         else:
             from app.utils.option_utils import format_question_options, get_shuffle_seed
             should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
@@ -444,7 +525,7 @@ class CRUDRoom:
     ) -> RoomAdminPageResponse:
         """
         Get all rooms for the Admin dashboard with pagination, search, and filtering.
-        Calculates participantCount using outer join.
+        Calculates participant_count using an outer join.
         """
         # Automatically clean up stale rooms first
         self.auto_end_stale_rooms(db)
@@ -539,7 +620,7 @@ class CRUDRoom:
                 host_avatar=r.host_avatar or None,
                 quiz_title=r.quiz_title or "Unknown",
                 status=r.status or "WAITING",
-                participantCount=r.participant_count or 0,
+                participant_count=r.participant_count or 0,
                 started_at=r.started_at,
                 ended_at=r.ended_at
             ))

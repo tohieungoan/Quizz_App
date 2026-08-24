@@ -1,5 +1,5 @@
 from typing import Any, Optional, Dict, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -12,6 +12,7 @@ from app.crud.crud_quiz import crud_quiz
 from app.crud.crud_room import crud_room
 from app.crud.crud_user import crud_user
 from app.api.v1.websockets.room_manager import room_websocket_manager
+from app.api.v1.websockets.admin_room_manager import admin_room_manager
 from app.services.redis_room_service import redis_room_service
 from app.schemas.room import (
     ParticipantJoin,
@@ -25,6 +26,8 @@ from app.schemas.room import (
     SubmitAnswerResponse,
 )
 from app.services.user_notification_service import user_notification_service
+from app.models.quiz_variant import QuizVariantQuestion, QuizVariantSet
+from app.services.quiz_variant_service import QuizVariantNotReadyError, quiz_variant_service
 
 import asyncio
 import logging
@@ -57,6 +60,11 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
                     await room_websocket_manager.broadcast_to_room(
                         room.room_code,
                         {"type": "GAME_ENDED", "status": "ENDED"}
+                    )
+                    await admin_room_manager.publish(
+                        room_id=updated_room.id,
+                        room_code=updated_room.room_code,
+                        reason="ROOM_ENDED",
                     )
                 else:
                     await room_websocket_manager.broadcast_to_room(
@@ -170,6 +178,7 @@ def get_all_rooms(
 # ----------------------------------------------------------------------
 @router.post("/launch", response_model=RoomResponse, status_code=status.HTTP_201_CREATED, summary="Launch a new live quiz room")
 def launch_room(
+    background_tasks: BackgroundTasks,
     *,
     db: Session = Depends(get_db),
     room_in: RoomCreate,
@@ -216,7 +225,29 @@ def launch_room(
             )
 
     try:
-        room = crud_room.create_room(db=db, obj_in=room_in, host_id=current_user.id)
+        variant_set_id = None
+        if room_in.shuffle_options and quiz.variant_enabled:
+            if not quiz.active_variant_set_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Quiz versions are not prepared for the published quiz version.",
+                )
+            variant_set = db.query(QuizVariantSet).filter(
+                QuizVariantSet.id == quiz.active_variant_set_id,
+                QuizVariantSet.quiz_id == quiz.id,
+            ).first()
+            if not variant_set or variant_set.status != "READY":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Quiz versions must be valid and published before launching a room.",
+                )
+            variant_set_id = quiz.active_variant_set_id
+        room = crud_room.create_room(
+            db=db,
+            obj_in=room_in,
+            host_id=current_user.id,
+            variant_set_id=variant_set_id,
+        )
         crud_user.add_achievement_points(db, current_user, 40)
         
         # Dispatch notifications if a specific group is targeted
@@ -252,6 +283,12 @@ def launch_room(
             except Exception as e:
                 logger.warning(f"Failed to dispatch target group notifications: {e}")
                 
+        background_tasks.add_task(
+            admin_room_manager.publish,
+            room_id=room.id,
+            room_code=room.room_code,
+            reason="ROOM_CREATED",
+        )
         return room
     except ValueError as e:
         raise HTTPException(
@@ -362,6 +399,7 @@ async def get_room_by_code(
     room_code: str,
     nickname: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    participant_id: Optional[int] = Query(None, ge=1),
 ) -> Any:
     """
     Retrieve an active room (not ENDED) by its 6-digit code.
@@ -381,29 +419,66 @@ async def get_room_by_code(
         if 1 <= room.current_question_index <= len(sorted_questions):
             q = sorted_questions[room.current_question_index - 1]
             
-            from app.utils.option_utils import format_question_options, get_shuffle_seed
-            should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
-            seed = get_shuffle_seed(room.id, q.id, nickname) if should_shuffle else None
-            options_live, correct_option_key = format_question_options(
-                options=q.options or [],
-                should_shuffle=should_shuffle,
-                seed=seed
-            )
+            variant_question = None
+            participant = None
+            if participant_id is not None:
+                from app.models.room import Participant
 
-            raw_type = (q.type or "multiple_choice").lower().strip()
+                participant = db.query(Participant).filter(
+                    Participant.id == participant_id,
+                    Participant.room_id == room.id,
+                ).first()
+                if participant and participant.quiz_variant_id:
+                    variant_question = db.query(QuizVariantQuestion).filter(
+                        QuizVariantQuestion.quiz_variant_id == participant.quiz_variant_id,
+                        QuizVariantQuestion.original_question_id == q.id,
+                    ).first()
+
+            if variant_question:
+                keys = [chr(ord("A") + index) for index in range(20)]
+                displayed_options = sorted(
+                    variant_question.options,
+                    key=lambda option: (option.position, option.id),
+                )
+                options_live = [
+                    {
+                        "id": option.id,
+                        "variant_option_id": option.id,
+                        "key": keys[index] if index < len(keys) else str(index + 1),
+                        "label": option.content or "",
+                    }
+                    for index, option in enumerate(displayed_options)
+                ]
+            else:
+                from app.utils.option_utils import format_question_options, get_shuffle_seed
+
+                should_shuffle = bool(
+                    getattr(room, "shuffle_options", False)
+                    or (room.quiz and getattr(room.quiz, "shuffle_options", False))
+                )
+                seed = get_shuffle_seed(room.id, q.id, nickname) if should_shuffle else None
+                options_live, _ = format_question_options(
+                    options=q.options or [],
+                    should_shuffle=should_shuffle,
+                    seed=seed,
+                )
+
+            raw_type = ((variant_question.type if variant_question else q.type) or "multiple_choice").lower().strip()
             is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
             standardized_type = "SHORT_ANSWER" if is_short_answer else "MULTIPLE_CHOICE"
 
             active_q = {
                 "id": q.id,
-                "text": q.content or "",
+                "variant_question_id": variant_question.id if variant_question else None,
+                "version_code": participant.quiz_variant.version_code if participant and participant.quiz_variant else None,
+                "text": (variant_question.content if variant_question else q.content) or "",
                 "type": standardized_type,
-                "time_limit": q.time_limit,
+                "time_limit": variant_question.time_limit if variant_question else q.time_limit,
                 "options": options_live if not is_short_answer else [],
-                "correct_option_key": correct_option_key,
-                "audio_url": q.audio_url,
-                "media_url": q.media_url,
-                "audio_play_limit": q.audio_play_limit,
+                "correct_option_key": None,
+                "audio_url": variant_question.audio_url if variant_question else q.audio_url,
+                "media_url": variant_question.media_url if variant_question else q.media_url,
+                "audio_play_limit": variant_question.audio_play_limit if variant_question else q.audio_play_limit,
             }
 
     # Populate room fields dynamically
@@ -455,6 +530,11 @@ async def end_room(
         await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
         # Batch flush cached Redis answers to PostgreSQL database
         await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
+        await admin_room_manager.publish(
+            room_id=updated_room.id,
+            room_code=updated_room.room_code,
+            reason="ROOM_ENDED",
+        )
     return updated_room
 
 
@@ -474,7 +554,13 @@ async def join_room_by_code(
     from starlette.concurrency import run_in_threadpool
 
     # 1. Verify if the room exists and is active
-    room = await run_in_threadpool(crud_room.get_by_code, db=db, room_code=room_code)
+    # Serialize join and start on the same room row. A participant can never
+    # slip into PLAYING after version assignments have already been persisted.
+    room = await run_in_threadpool(
+        crud_room.get_by_code_for_update,
+        db=db,
+        room_code=room_code,
+    )
     if not room:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -508,6 +594,11 @@ async def join_room_by_code(
         )
         if current_user:
             await run_in_threadpool(crud_user.add_achievement_points, db, current_user, 20)
+        await admin_room_manager.publish(
+            room_id=room.id,
+            room_code=room.room_code,
+            reason="PARTICIPANT_JOINED",
+        )
         return participant
     except ValueError as e:
         raise HTTPException(
@@ -563,6 +654,7 @@ def get_room_participants(
             "joined_at": p.joined_at,
             "score": p.score,
             "equipped_title": equipped_title,
+            "quiz_variant_id": p.quiz_variant_id,
         })
     return result
 
@@ -577,7 +669,9 @@ async def start_room(
     Start the live room quiz session. Updates status from WAITING to PLAYING.
     Only the host of the room can trigger this action.
     """
-    room = crud_room.get(db=db, room_id=room_id)
+    from app.models.room import Room
+
+    room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
     if not room:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -602,10 +696,37 @@ async def start_room(
             detail="Cannot start the room because no participants have joined yet."
         )
 
+    if room.variant_set_id:
+        variant_set = db.query(QuizVariantSet).filter(
+            QuizVariantSet.id == room.variant_set_id
+        ).first()
+        if not variant_set:
+            raise HTTPException(status_code=409, detail="The room's quiz version set no longer exists.")
+        if variant_set.status != "READY":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Quiz versions are not ready for delivery. Fix or regenerate them before starting the room.",
+            )
+        try:
+            quiz_variant_service.assign_balanced(
+                room.participants,
+                quiz_variant_service.ready_variants(variant_set),
+            )
+        except QuizVariantNotReadyError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        db.flush()
+        db.commit()
+        db.refresh(room)
+
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast game started to all websocket clients in room
     if room.room_code:
         await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
+        await admin_room_manager.publish(
+            room_id=updated_room.id,
+            room_code=updated_room.room_code,
+            reason="ROOM_STARTED",
+        )
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -717,11 +838,23 @@ async def get_live_session(
                 ).first()
                 if ans:
                     answered = True
-                    options = active_question.get("options")
-                    if isinstance(options, list):
-                        selected_key = next((o.get("key") for o in options if isinstance(o, dict) and o.get("id") == ans.selected_option_id), None)
-                        if selected_key and selected_key in distribution:
-                            distribution[selected_key] += 1
+                    selected_key = None
+                    if ans.variant_option is not None:
+                        selected_key = chr(ord("A") + ans.variant_option.position)
+                    else:
+                        options = active_question.get("options")
+                        if isinstance(options, list):
+                            selected_key = next(
+                                (
+                                    option.get("key")
+                                    for option in options
+                                    if isinstance(option, dict)
+                                    and option.get("id") == ans.selected_option_id
+                                ),
+                                None,
+                            )
+                    if selected_key in distribution:
+                        distribution[selected_key] += 1
             participants_live.append({
                 "id": p.id,
                 "nickname": p.nickname or "",
@@ -793,6 +926,11 @@ async def next_question(
         )
         # Batch flush cached Redis answers to PostgreSQL database
         await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
+        await admin_room_manager.publish(
+            room_id=updated_room.id,
+            room_code=updated_room.room_code,
+            reason="ROOM_ENDED" if updated_room.status == "ENDED" else "ROOM_ADVANCED",
+        )
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -843,7 +981,7 @@ async def submit_answer(
             room=room,
             participant=participant,
             question_id=answer_in.question_id,
-            selected_option_id=answer_in.selected_option_id,
+            selected_option_id=answer_in.variant_option_id or answer_in.selected_option_id,
             answer_text=answer_in.answer_text,
             active_power_up=answer_in.active_power_up,
             client_streak=answer_in.streak,
@@ -858,7 +996,7 @@ async def submit_answer(
                 room_code=room.room_code,
                 participant_id=participant.id,
                 question_id=answer_in.question_id,
-                selected_option_id=answer_in.selected_option_id,
+                selected_option_id=answer_in.variant_option_id or answer_in.selected_option_id,
                 answer_text=answer_in.answer_text,
                 is_correct=is_correct,
                 score=score,
@@ -874,6 +1012,11 @@ async def submit_answer(
                     "question_id": answer_in.question_id
                 }
             )
+            admin_room_manager.schedule_invalidation(
+                room_id=room.id,
+                room_code=room.room_code,
+                reason="PARTICIPANT_SCORE_UPDATED",
+            )
 
         if participant.user:
             pts = 15 if is_correct else 10
@@ -888,17 +1031,17 @@ async def submit_answer(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
+        logger.exception("Failed to submit answer in room %s", room_code)
         raise HTTPException(
             status_code=500,
-            detail=f"Internal Server Error: {str(e)}\nTraceback:\n{tb}"
-        )
+            detail="Unable to submit the answer. Please try again.",
+        ) from e
 
 
 @router.patch("/{room_id}/settings", response_model=RoomResponse, summary="Update live room settings (e.g. progression_mode)")
 def update_room_settings(
     room_id: int,
+    background_tasks: BackgroundTasks,
     *,
     db: Session = Depends(get_db),
     settings_in: RoomSettingsUpdate,
@@ -908,16 +1051,49 @@ def update_room_settings(
     Update configuration options of a live room (such as progression_mode).
     Only the room host can update these settings.
     """
-    room = crud_room.get(db=db, room_id=room_id)
+    from app.models.room import Room
+
+    room = db.query(Room).filter(Room.id == room_id).with_for_update().first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found.")
 
     if room.host_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have permission to update settings for this room.")
 
+    if settings_in.shuffle_options is not None:
+        if room.status != "WAITING":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Quiz version delivery can only be changed while the room is waiting.",
+            )
+        if settings_in.shuffle_options and room.quiz.variant_enabled:
+            if not room.quiz.active_variant_set_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Quiz versions are not prepared for this published quiz version.",
+                )
+            variant_set = db.query(QuizVariantSet).filter(
+                QuizVariantSet.id == room.quiz.active_variant_set_id,
+                QuizVariantSet.quiz_id == room.quiz_id,
+            ).first()
+            if not variant_set or variant_set.status != "READY":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Quiz versions must be valid before enabling version delivery.",
+                )
+            room.variant_set_id = room.quiz.active_variant_set_id
+        elif not settings_in.shuffle_options:
+            room.variant_set_id = None
+
     updated_room = crud_room.update_settings(db=db, room=room, obj_in=settings_in)
     if (updated_room.progression_mode or "").lower() == "auto" and updated_room.status == "PLAYING":
         _trigger_auto_advance_if_enabled(db, updated_room)
+    background_tasks.add_task(
+        admin_room_manager.publish,
+        room_id=updated_room.id,
+        room_code=updated_room.room_code,
+        reason="ROOM_SETTINGS_UPDATED",
+    )
     return updated_room
 
 
@@ -932,8 +1108,10 @@ async def leave_room_endpoint(
     from app.models.room import Participant
     participant = db.query(Participant).filter(Participant.id == participant_id).first()
     room_code = None
+    room_id = None
     nickname = None
     if participant and participant.room:
+        room_id = participant.room.id
         room_code = participant.room.room_code
         nickname = participant.nickname
 
@@ -954,6 +1132,11 @@ async def leave_room_endpoint(
                 "player": nickname,
                 "players": active_nicknames
             }
+        )
+        await admin_room_manager.publish(
+            room_id=room_id,
+            room_code=room_code,
+            reason="PARTICIPANT_LEFT",
         )
         
     return {"message": "Successfully left the room."}

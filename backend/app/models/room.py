@@ -12,6 +12,12 @@ class Room(Base):
     quiz_id: Mapped[int] = mapped_column(Integer, ForeignKey("quizzes.id"), nullable=False)
     host_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     group_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True)
+    variant_set_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("quiz_variant_sets.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     room_code: Mapped[Optional[str]] = mapped_column(String, unique=True, index=True, nullable=True)
     qr_code_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -37,6 +43,7 @@ class Room(Base):
     quiz = relationship("Quiz")
     host = relationship("User", foreign_keys=[host_id])
     group = relationship("Group")
+    variant_set = relationship("QuizVariantSet", foreign_keys=[variant_set_id])
     teams = relationship("RoomTeam", back_populates="room", cascade="all, delete-orphan")
     participants = relationship("Participant", back_populates="room", cascade="all, delete-orphan")
     qa_questions = relationship("LiveQAQuestion", back_populates="room", cascade="all, delete-orphan")
@@ -77,6 +84,12 @@ class Participant(Base):
     room_id: Mapped[int] = mapped_column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     team_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("room_teams.id", ondelete="SET NULL"), nullable=True)
+    quiz_variant_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("quiz_variants.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     nickname: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -92,6 +105,7 @@ class Participant(Base):
     room = relationship("Room", back_populates="participants")
     user = relationship("User", foreign_keys=[user_id])
     team = relationship("RoomTeam", back_populates="members")
+    quiz_variant = relationship("QuizVariant", foreign_keys=[quiz_variant_id])
     answers = relationship("ParticipantAnswer", back_populates="participant", cascade="all, delete-orphan")
 
 
@@ -102,6 +116,18 @@ class ParticipantAnswer(Base):
     participant_id: Mapped[int] = mapped_column(Integer, ForeignKey("participants.id", ondelete="CASCADE"), nullable=False)
     question_id: Mapped[int] = mapped_column(Integer, ForeignKey("questions.id"), nullable=False)
     selected_option_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("question_options.id"), nullable=True)
+    variant_question_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("quiz_variant_questions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    variant_option_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("quiz_variant_options.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     answer_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_correct: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -115,6 +141,8 @@ class ParticipantAnswer(Base):
     participant = relationship("Participant", back_populates="answers")
     question = relationship("Question")
     selected_option = relationship("QuestionOption")
+    variant_question = relationship("QuizVariantQuestion", foreign_keys=[variant_question_id])
+    variant_option = relationship("QuizVariantOption", foreign_keys=[variant_option_id])
 
 
 class LiveQAQuestion(Base):

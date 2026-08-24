@@ -25,11 +25,21 @@ def start_scheduler():
     """Start the APScheduler if it's not already running."""
     if hasattr(scheduler, 'running') and not scheduler.running:
         from app.services.media_asset_service import process_media_cleanup_jobs
+        from app.services.quiz_variant_service import process_pending_quiz_variant_sets
         scheduler.add_job(
             process_media_cleanup_jobs,
             "interval",
             seconds=60,
             id="media-asset-cleanup",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            process_pending_quiz_variant_sets,
+            "interval",
+            seconds=10,
+            id="quiz-variant-generation",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

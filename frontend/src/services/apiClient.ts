@@ -1,5 +1,8 @@
 const getBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL
+  // Keep compatibility with both environment variable names used by the
+  // existing Docker and hosted deployments. The relative fallback lets the
+  // production reverse proxy serve the API without hard-coding localhost.
+  const envUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL
   if (envUrl) return envUrl
   return '/api/v1'
 }
@@ -138,6 +141,17 @@ export const apiClient = {
       body,
       ...config,
     }).then(handleResponse<T>),
+
+  postMultipartStream: (endpoint: string, body: FormData, config?: RequestInit): Promise<Response> =>
+    fetchWithAuth(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': '' },
+      body,
+      ...config,
+    }).then(async response => {
+      if (!response.ok) await handleResponse<never>(response)
+      return response
+    }),
 
   postForm: <T = unknown>(endpoint: string, params: URLSearchParams): Promise<T> =>
     fetch(`${BASE_URL}${endpoint}`, {

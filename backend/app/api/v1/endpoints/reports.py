@@ -41,7 +41,7 @@ def get_reports(
         limit=pageSize
     )
 
-@router.get("/{session_id}/export", summary="Export report to ZIP containing CSVs")
+@router.get("/{session_id}/export", summary="Export participant and question reports as ZIP")
 def export_report(
     session_id: int,
     type: str = Query(..., description="Type of session: 'ROOM' or 'EXAM'"),
@@ -49,16 +49,20 @@ def export_report(
     current_admin = Depends(get_current_active_admin)
 ):
     """
-    Export detailed report for a specific room or exam as a ZIP file containing participants and questions accuracy data.
+    Export a ZIP with one participant workbook and one versioned question workbook.
     """
-    zip_content = crud_report.export_report_zip(db, session_id=session_id, session_type=type)
-    
-    # Create a StreamingResponse to serve the ZIP file
+    try:
+        zip_content = crud_report.export_report_zip(
+            db, session_id=session_id, session_type=type
+        )
+    except ValueError as error:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
     response = StreamingResponse(
         iter([zip_content]),
-        media_type="application/zip"
+        media_type="application/zip",
     )
-    # Set headers so the browser downloads it as a file
     filename = f"Report_{type.upper()}_{session_id}.zip"
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
