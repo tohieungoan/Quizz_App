@@ -21,7 +21,7 @@ from app.api.v1.endpoints import (
     upload,
     users,
 )
-from app.api.v1.websockets import ws_notifications, ws_room
+from app.api.v1.websockets import ws_admin_rooms, ws_notifications, ws_room
 
 api_router = APIRouter()
 
@@ -53,3 +53,4 @@ api_router.include_router(admin_settings.router, prefix="/admin/settings", tags=
 # WebSockets
 api_router.include_router(ws_notifications.router, tags=["WebSockets"])
 api_router.include_router(ws_room.router, tags=["WebSockets"])
+api_router.include_router(ws_admin_rooms.router, tags=["WebSockets"])

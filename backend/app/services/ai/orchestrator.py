@@ -22,9 +22,10 @@ class LLMOrchestrator:
     """
 
     GEMINI_MODELS = [
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
-        "gemini-2.0-flash-lite",
-        "gemini-flash-latest",
     ]
 
     @classmethod
@@ -32,10 +33,16 @@ class LLMOrchestrator:
         """
         Builds the fallback list of OpenRouter AI models.
         """
-        primary = settings.OPENROUTER_PRIMARY_MODEL or "inclusionai/ling-3.0-flash:free"
+        primary = settings.OPENROUTER_PRIMARY_MODEL or "openrouter/free"
         fallback = settings.OPENROUTER_FALLBACK_MODEL or "google/gemma-4-26b-a4b-it:free"
 
-        models = [primary, fallback, "openai/gpt-oss-20b:free", "openrouter/free"]
+        models = [
+            primary,
+            fallback,
+            "openai/gpt-oss-120b:free",
+            "openai/gpt-oss-20b:free",
+            "openrouter/free",
+        ]
         return list(dict.fromkeys([m for m in models if m]))
 
     @classmethod
@@ -45,7 +52,8 @@ class LLMOrchestrator:
         system_prompt: str,
         user_prompt: str,
         num_questions: int,
-        gemini_key: str
+        gemini_key: str,
+        response_schema: Dict[str, Any] | None = None,
     ) -> Tuple[Dict[str, Any], str]:
         """
         Invokes Google AI Studio Gemini API directly.
@@ -68,6 +76,8 @@ class LLMOrchestrator:
                     "temperature": 0.2
                 }
             }
+            if response_schema:
+                payload["generationConfig"]["responseJsonSchema"] = response_schema
 
             try:
                 logger.info(f"Đang gửi yêu cầu đến Google AI Studio: [{model}]...")
@@ -91,13 +101,26 @@ class LLMOrchestrator:
                     continue
 
                 raw_text = parts[0]["text"]
-                parsed_dict = JSONHealingService.heal_and_parse(raw_text)
+                parsed_dict = JSONHealingService.heal_and_parse(
+                    raw_text,
+                    preserve_root=response_schema is not None,
+                )
                 logger.info(f"Google AI Studio [{model}] tạo câu hỏi thành công!")
                 return parsed_dict, f"Google {model}"
 
+            except httpx.ConnectError as ex:
+                logger.warning(
+                    "Không thể kết nối Google Gemini (%s); bỏ qua các model Gemini còn lại.",
+                    type(ex).__name__,
+                )
+                raise LLMOrchestratorError("Không thể kết nối Google AI Studio.") from ex
             except Exception as ex:
-                logger.warning(f"Lỗi khi gọi Google Gemini [{model}]: {ex}")
-                last_error = str(ex)
+                logger.warning(
+                    "Lỗi khi gọi Google Gemini [%s] (%s)",
+                    model,
+                    type(ex).__name__,
+                )
+                last_error = type(ex).__name__
                 continue
 
         raise LLMOrchestratorError(f"Google AI Studio không phản hồi: {last_error}")
@@ -109,12 +132,13 @@ class LLMOrchestrator:
         system_prompt: str,
         user_prompt: str,
         num_questions: int,
-        api_key: str
+        api_key: str,
+        response_schema: Dict[str, Any] | None = None,
     ) -> Tuple[Dict[str, Any], str]:
         """
         Invokes OpenRouter multi-model fallback cascade.
         """
-        max_output_tokens = min(4000, max(2000, num_questions * 350))
+        max_output_tokens = min(12000, max(2500, num_questions * 650))
         models_to_try = cls.get_openrouter_cascade()
         last_error = None
 
@@ -139,7 +163,16 @@ class LLMOrchestrator:
                     "max_tokens": max_output_tokens
                 }
 
-                if "ling" not in model.lower() and "gpt-oss" not in model.lower():
+                if response_schema:
+                    payload["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "quiz_generation_response",
+                            "strict": True,
+                            "schema": response_schema,
+                        },
+                    }
+                elif "gpt-oss" not in model.lower():
                     payload["response_format"] = {"type": "json_object"}
 
                 response = await client.post(
@@ -149,7 +182,10 @@ class LLMOrchestrator:
                 )
 
                 if response.status_code == 400 and "response_format" in payload:
-                    del payload["response_format"]
+                    # Some free providers accept JSON mode but not strict JSON
+                    # Schema. Retain JSON-only output before falling back to
+                    # prompt enforcement and server-side validation.
+                    payload["response_format"] = {"type": "json_object"}
                     response = await client.post(
                         f"{settings.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions",
                         headers=headers,
@@ -171,13 +207,20 @@ class LLMOrchestrator:
                 if not raw_content or not raw_content.strip():
                     continue
 
-                parsed_dict = JSONHealingService.heal_and_parse(raw_content)
+                parsed_dict = JSONHealingService.heal_and_parse(
+                    raw_content,
+                    preserve_root=response_schema is not None,
+                )
                 logger.info(f"OpenRouter [{model}] tạo câu hỏi thành công!")
                 return parsed_dict, model
 
             except Exception as ex:
-                logger.warning(f"Lỗi OpenRouter {model}: {ex}")
-                last_error = str(ex)
+                logger.warning(
+                    "Lỗi OpenRouter [%s] (%s)",
+                    model,
+                    type(ex).__name__,
+                )
+                last_error = type(ex).__name__
                 continue
 
         raise LLMOrchestratorError(f"OpenRouter không phản hồi thành công: {last_error}")
@@ -188,7 +231,8 @@ class LLMOrchestrator:
         system_prompt: str,
         user_prompt: str,
         num_questions: int = 5,
-        timeout_seconds: float = 60.0
+        timeout_seconds: float = 60.0,
+        response_schema: Dict[str, Any] | None = None,
     ) -> Tuple[Dict[str, Any], str]:
         """
         Executes chat completion:
@@ -210,10 +254,14 @@ class LLMOrchestrator:
                         system_prompt=system_prompt,
                         user_prompt=user_prompt,
                         num_questions=num_questions,
-                        gemini_key=gemini_key
+                        gemini_key=gemini_key,
+                        response_schema=response_schema,
                     )
                 except Exception as g_err:
-                    logger.warning(f"Google AI Studio gặp sự cố: {g_err}. Đang chuyển sang OpenRouter Fallback...")
+                    logger.warning(
+                        "Google AI Studio gặp sự cố (%s). Đang chuyển sang OpenRouter Fallback...",
+                        type(g_err).__name__,
+                    )
 
             # 2. Secondary Fallback: OpenRouter
             if openrouter_key:
@@ -222,7 +270,8 @@ class LLMOrchestrator:
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     num_questions=num_questions,
-                    api_key=openrouter_key
+                    api_key=openrouter_key,
+                    response_schema=response_schema,
                 )
 
         raise LLMOrchestratorError("Tất cả các nhà cung cấp AI (Google AI Studio & OpenRouter) đều không phản hồi.")

@@ -1,6 +1,7 @@
 import json
 from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
+from fastapi.responses import StreamingResponse
 import logging
 
 from app.schemas.ai_quiz import (
@@ -31,6 +32,18 @@ async def _read_upload_with_limit(file: UploadFile) -> bytes:
             )
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+def _parse_string_list(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+    except (TypeError, ValueError):
+        pass
+    return [item.strip() for item in value.split("\n") if item.strip()]
 
 
 @router.post(
@@ -125,6 +138,91 @@ async def generate(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI generation failed unexpectedly. Please retry or contact support."
         )
+
+
+@router.post(
+    "/generate-stream",
+    summary="Generate validated AI questions as progressive NDJSON batches",
+)
+async def generate_stream(
+    file: Optional[UploadFile] = File(None),
+    custom_prompt: Optional[str] = Form(None),
+    num_questions: int = Form(5, ge=1, le=50),
+    difficulty: str = Form("MEDIUM"),
+    question_type: str = Form("multiple"),
+    language: str = Form("en"),
+    start_page: Optional[int] = Form(None),
+    end_page: Optional[int] = Form(None),
+    existing_questions: Optional[str] = Form(None),
+    deleted_blacklist: Optional[str] = Form(None),
+    current_user=Depends(get_current_active_user),
+):
+    allowed, _ = await consume_ai_generation_quota(current_user.id)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI generation hourly quota exceeded. Please try again later.",
+        )
+
+    file_bytes = None
+    filename = file.filename if file else "Direct Text Prompt"
+    if file:
+        extension = (file.filename or "").lower().rsplit(".", 1)[-1]
+        if extension not in {"pdf", "docx", "txt", "md", "markdown", "csv"}:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Supported AI documents are PDF, DOCX, TXT, Markdown, and CSV.",
+            )
+        file_bytes = await _read_upload_with_limit(file) or None
+    if not file_bytes and not custom_prompt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide a document file or text prompt content.",
+        )
+
+    async def stream_events():
+        try:
+            async for event in AIQuizService.generate_progressive(
+                file_bytes=file_bytes,
+                filename=filename,
+                custom_prompt=custom_prompt,
+                num_questions=num_questions,
+                difficulty=difficulty,
+                question_type=question_type,
+                language=language,
+                start_page=start_page,
+                end_page=end_page,
+                existing_questions=_parse_string_list(existing_questions),
+                deleted_blacklist=_parse_string_list(deleted_blacklist),
+            ):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except ValueError as error:
+            yield json.dumps(
+                {"type": "error", "message": str(error)},
+                ensure_ascii=False,
+            ) + "\n"
+        except Exception as error:
+            logger.exception(
+                "Progressive AI question generation failed (%s)",
+                type(error).__name__,
+            )
+            yield json.dumps(
+                {
+                    "type": "error",
+                    "message": "AI generation failed unexpectedly. Please retry.",
+                }
+            ) + "\n"
+
+    return StreamingResponse(
+        stream_events(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            # Prevent reverse proxies from collecting the whole response and
+            # defeating progressive rendering in production.
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post(

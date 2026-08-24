@@ -17,7 +17,12 @@ class JSONHealingService:
     """
 
     @classmethod
-    def heal_and_parse(cls, raw_text: str) -> Dict[str, Any]:
+    def heal_and_parse(
+        cls,
+        raw_text: str,
+        *,
+        preserve_root: bool = False,
+    ) -> Dict[str, Any]:
         """
         Parses raw LLM text into a normalized dictionary containing 'questions'.
         Applies multi-stage heuristic repair pipelines.
@@ -35,7 +40,7 @@ class JSONHealingService:
         # Step 2: Try direct standard JSON parsing first
         try:
             parsed = json.loads(cleaned)
-            return cls._normalize_structure(parsed)
+            return cls._finalize_structure(parsed, preserve_root)
         except json.JSONDecodeError:
             pass
 
@@ -47,7 +52,7 @@ class JSONHealingService:
 
         try:
             parsed = json.loads(repaired)
-            return cls._normalize_structure(parsed)
+            return cls._finalize_structure(parsed, preserve_root)
         except json.JSONDecodeError as err:
             logger.warning(f"Lỗi JSONDecodeError sau khi sửa sơ bộ: {err}. Thử chế độ sửa nâng cao...")
 
@@ -55,7 +60,7 @@ class JSONHealingService:
             advanced_repaired = cls._advanced_repair(repaired)
             try:
                 parsed = json.loads(advanced_repaired)
-                return cls._normalize_structure(parsed)
+                return cls._finalize_structure(parsed, preserve_root)
             except json.JSONDecodeError as final_err:
                 logger.error(f"Không thể phục hồi JSON: {final_err}. Nội dung: {repaired[:300]}...")
                 raise JSONHealingError(f"Không thể giải mã dữ liệu JSON từ AI: {final_err}")
@@ -137,3 +142,16 @@ class JSONHealingService:
             return {"questions": [parsed_data]}
 
         return {"questions": []}
+
+    @classmethod
+    def _finalize_structure(
+        cls,
+        parsed_data: Any,
+        preserve_root: bool,
+    ) -> Dict[str, Any]:
+        """Preserve typed contracts; normalize only legacy question output."""
+        if preserve_root:
+            if not isinstance(parsed_data, dict):
+                raise JSONHealingError("Structured AI output must be a JSON object.")
+            return parsed_data
+        return cls._normalize_structure(parsed_data)

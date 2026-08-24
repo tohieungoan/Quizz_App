@@ -23,6 +23,9 @@ interface QuizCreatorDialogsProps {
   questions: Question[];
   aiReviewQuestions: AIQuestionReviewItem[];
   aiReviewModelUsed: string;
+  aiReviewGenerating: boolean;
+  aiReviewRequestedCount: number;
+  aiReviewReceivedCount: number;
   deletedBlacklist: string[];
   quickAIPrompt: string;
   onCloseDelete: () => void;
@@ -45,7 +48,7 @@ export function QuizCreatorDialogs(props: QuizCreatorDialogsProps) {
     <ConfirmModal isOpen={props.publishConfirmOpen} onClose={props.onClosePublish} onConfirm={props.onConfirmPublish} title="Publish Quiz" message="Are you ready to publish this quiz? It will become visible to assigned users immediately." confirmText="Publish" variant="primary" />
     <AlertModal isOpen={props.alertState.isOpen} onClose={props.onCloseAlert} title={props.alertState.title} message={props.alertState.message} type={props.alertState.type} />
     <QuestionBankModal isOpen={props.bankModalOpen} onClose={props.onCloseBank} existingQuestionIds={props.questions.map(question => question.id)} onAddQuestions={props.onAddBankQuestions} />
-    <AIQuestionReviewModal isOpen={props.aiReviewOpen} questions={props.aiReviewQuestions} modelUsed={props.aiReviewModelUsed} onChange={props.onReviewChange} onCancel={props.onReviewCancel} onImport={props.onReviewImport} />
+    <AIQuestionReviewModal isOpen={props.aiReviewOpen} questions={props.aiReviewQuestions} modelUsed={props.aiReviewModelUsed} isGenerating={props.aiReviewGenerating} requestedCount={props.aiReviewRequestedCount} receivedCount={props.aiReviewReceivedCount} onChange={props.onReviewChange} onCancel={props.onReviewCancel} onImport={props.onReviewImport} />
     <AIQuizModal isOpen={props.aiModalOpen} onClose={props.onCloseAI} onStartGeneration={props.onStartAIGeneration} existingQuestions={props.questions.map(question => question.text)} deletedBlacklist={props.deletedBlacklist} initialPromptText={props.quickAIPrompt} />
   </>;
 }

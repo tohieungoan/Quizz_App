@@ -1,7 +1,7 @@
 import time
 import asyncio
 import math
-from typing import List, Optional
+from typing import AsyncIterator, List, Optional
 import logging
 
 from app.schemas.ai_quiz import (
@@ -148,6 +148,147 @@ class AIQuizService:
             questions=validated_questions,
             processing_time_ms=elapsed_ms
         )
+
+    @classmethod
+    async def generate_progressive(
+        cls,
+        file_bytes: Optional[bytes] = None,
+        filename: str = "Direct Text Prompt",
+        custom_prompt: Optional[str] = None,
+        num_questions: int = 5,
+        difficulty: str = "MEDIUM",
+        question_type: str = "multiple",
+        language: str = "en",
+        start_page: Optional[int] = None,
+        end_page: Optional[int] = None,
+        existing_questions: Optional[List[str]] = None,
+        deleted_blacklist: Optional[List[str]] = None,
+    ) -> AsyncIterator[dict]:
+        """Yield validated batches as soon as each provider request completes.
+
+        The source document is parsed once and the existing provider-level
+        parallelism is retained. Each event is independently normalized before
+        leaving the service, so clients never render unvalidated model output.
+        """
+        start_time = time.time()
+        raw_text = ""
+        author_instructions = custom_prompt if file_bytes else None
+        if file_bytes:
+            file_text, _ = DocumentParserService.extract_text(
+                file_bytes=file_bytes,
+                filename=filename,
+                start_page=start_page,
+                end_page=end_page,
+            )
+            raw_text = f"{file_text}\n\n"
+        elif custom_prompt:
+            raw_text = custom_prompt
+
+        if not raw_text or len(raw_text.strip()) < 20:
+            raise ValueError(
+                "Insufficient text content to generate quiz questions. Please provide more context."
+            )
+
+        chunked_text = DocumentParserService.smart_chunk_text(raw_text, num_questions)
+        system_prompt = PromptBuilder.build_system_prompt()
+        batch_size = max(3, math.ceil(num_questions / 5))
+        total_batches = math.ceil(num_questions / batch_size)
+        tasks: list[asyncio.Task] = []
+        remaining = num_questions
+        batch_index = 1
+        while remaining > 0:
+            current_batch = min(remaining, batch_size)
+            user_prompt = PromptBuilder.build_user_prompt(
+                document_content=chunked_text,
+                filename=filename,
+                num_questions=current_batch,
+                difficulty=difficulty,
+                question_type=question_type,
+                language=language,
+                existing_questions=existing_questions,
+                deleted_blacklist=deleted_blacklist,
+                custom_prompt=author_instructions,
+                batch_index=batch_index,
+                total_batches=total_batches,
+            )
+            tasks.append(
+                asyncio.create_task(
+                    LLMOrchestrator.invoke_chat_completion(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        num_questions=current_batch,
+                    )
+                )
+            )
+            remaining -= current_batch
+            batch_index += 1
+
+        emitted = 0
+        seen_content: set[str] = set()
+        models: list[str] = []
+        failures = 0
+        try:
+            for completed_task in asyncio.as_completed(tasks):
+                try:
+                    batch_dict, batch_model = await completed_task
+                    raw_questions = batch_dict.get("questions", [])
+                    if not isinstance(raw_questions, list):
+                        failures += 1
+                        continue
+                    validated = AIQuizValidator.validate_and_normalize(
+                        {"questions": raw_questions}
+                    )
+                    unique_questions = []
+                    for question in validated:
+                        key = " ".join(question.content.split()).casefold()
+                        if not key or key in seen_content:
+                            continue
+                        seen_content.add(key)
+                        unique_questions.append(question)
+                        if emitted + len(unique_questions) >= num_questions:
+                            break
+                    if not unique_questions:
+                        failures += 1
+                        continue
+
+                    models.append(batch_model)
+                    emitted += len(unique_questions)
+                    yield {
+                        "type": "batch",
+                        "questions": [
+                            question.model_dump(mode="json")
+                            for question in unique_questions
+                        ],
+                        "model_used": batch_model,
+                        "generated_count": emitted,
+                        "requested_count": num_questions,
+                    }
+                except Exception as error:
+                    failures += 1
+                    logger.warning(
+                        "Progressive AI question batch failed (%s)",
+                        type(error).__name__,
+                    )
+        finally:
+            pending = [task for task in tasks if not task.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
+        if emitted == 0:
+            raise ValueError(
+                "The AI model was unable to generate valid questions. Please try again."
+            )
+
+        yield {
+            "type": "complete",
+            "model_used": ", ".join(dict.fromkeys(models)) or "unknown",
+            "generated_count": emitted,
+            "requested_count": num_questions,
+            "failed_batches": failures,
+            "processing_time_ms": int((time.time() - start_time) * 1000),
+        }
 
     @classmethod
     def preview_document(

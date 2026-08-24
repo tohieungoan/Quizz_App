@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 class ExamAssignRequest(BaseModel):
     quiz_id: int
@@ -36,6 +36,7 @@ class ExamResponse(BaseModel):
     results_published: bool
     status: str
     created_at: datetime
+    variant_set_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,6 +51,7 @@ class ExamAssigneeResponse(BaseModel):
     feedback_comment: Optional[str]
     user_fullname: Optional[str] = None
     user_email: Optional[str] = None
+    quiz_variant_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,6 +80,8 @@ class UserExamResponse(BaseModel):
 class ExamAnswerRequest(BaseModel):
     question_id: int
     selected_option_id: Optional[int] = None
+    variant_question_id: Optional[int] = None
+    variant_option_id: Optional[int] = None
     answer_text: Optional[str] = None
 
 
@@ -87,6 +91,7 @@ class TakeQuestionOptionResponse(BaseModel):
     order: int
     media_url: Optional[str] = None
     audio_url: Optional[str] = None
+    variant_option_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -106,7 +111,9 @@ class TakeQuestionResponse(BaseModel):
     audio_url: Optional[str] = None
     audio_play_limit: Optional[int] = 0
     user_answer: Optional[UserAnswerDetailResponse] = None
-    options: List[TakeQuestionOptionResponse] = []
+    options: List[TakeQuestionOptionResponse] = Field(default_factory=list)
+    variant_question_id: Optional[int] = None
+    version_code: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -114,7 +121,8 @@ class TakeQuestionResponse(BaseModel):
 class ExamTakeResponse(BaseModel):
     exam: ExamResponse
     remaining_seconds: int
-    questions: List[TakeQuestionResponse] = []
+    questions: List[TakeQuestionResponse] = Field(default_factory=list)
+    version_code: Optional[str] = None
 
 
 class ExamFeedbackRequest(BaseModel):

@@ -115,6 +115,8 @@ class CRUDQuiz:
             # state transition handled by QuizDraftService.publish().
             status="Draft",
             shuffle_options=obj_in.shuffle_options if obj_in.shuffle_options is not None else True,
+            variant_enabled=obj_in.variant_enabled,
+            variant_count=obj_in.variant_count,
             version=1,
         )
         db.add(db_obj)
@@ -187,6 +189,8 @@ class CRUDQuiz:
             is_public=False, # Always private by default for a copy
             status="Draft",
             shuffle_options=original_quiz.shuffle_options,
+            variant_enabled=original_quiz.variant_enabled,
+            variant_count=original_quiz.variant_count,
             version=1,
         )
         db.add(new_quiz)

@@ -22,6 +22,51 @@ class PromptBuilder:
     }
 
     @classmethod
+    def build_quiz_variant_prompts(
+        cls,
+        source_questions: list[dict],
+        variant_indices: list[int],
+    ) -> tuple[str, str]:
+        """Build an ID-preserving request for equivalent, parameterized forms."""
+        system_prompt = """You are a senior assessment editor creating equivalent quiz forms.
+Preserve the tested concept, language, cognitive skill, difficulty, truth value, and each
+source option's correctness mapping. For a numeric or parameterized problem whose answer
+can be safely recomputed, change its operands/parameters in every generated version and
+recompute both the mapped correct option and all distractors. Each version must use values
+and a correct result different from the source and from the other requested versions.
+Example: source '1 + 1 = ?' with correct option 2 may become '2 + 1 = ?' with the same
+mapped correct option rewritten as 3. For fixed factual or conceptual questions, never
+invent a different fact or answer; only rephrase the wording. Preserve every supplied
+question and option source ID exactly. Return JSON only. Never add, remove, merge, split,
+or change the is_correct role of an answer option. Every generated question stem must be
+meaningfully different from its source stem and from the same question in every other
+requested version; never copy the source or reuse one generated wording across versions."""
+        contract = {
+            "variants": [
+                {
+                    "variant_index": "one of the requested integer indices",
+                    "original_question_id": "exact source question id",
+                    "content": "equivalent rephrased question",
+                    "options": [
+                        {
+                            "source_option_id": "exact source option id",
+                            "content": "equivalent rephrased option",
+                        }
+                    ],
+                }
+            ]
+        }
+        user_prompt = "\n".join(
+            [
+                "Create one complete equivalent copy for every requested variant index and source question.",
+                f"REQUESTED_VARIANT_INDICES: {json.dumps(variant_indices)}",
+                f"SOURCE_QUESTIONS: {json.dumps(source_questions, ensure_ascii=False)}",
+                f"OUTPUT_CONTRACT: {json.dumps(contract, ensure_ascii=False)}",
+            ]
+        )
+        return system_prompt, user_prompt
+
+    @classmethod
     def resolve_target_language(
         cls,
         language: str = "en",

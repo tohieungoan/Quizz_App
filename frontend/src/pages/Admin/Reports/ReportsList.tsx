@@ -233,7 +233,7 @@ export function ReportsList() {
                             </span>
                           </td>
                           <td className="px-3 md:px-4 py-4 text-right">
-                            <button onClick={(e) => handleDownload(e, r.id, r.type, r.quiz_title)} className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-lg transition-colors" title="Download ZIP">
+                            <button onClick={(e) => handleDownload(e, r.id, r.type, r.quiz_title)} className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container rounded-lg transition-colors" title="Download Excel report">
                               <Download className="w-5 h-5" />
                             </button>
                           </td>

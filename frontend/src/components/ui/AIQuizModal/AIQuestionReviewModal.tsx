@@ -22,6 +22,9 @@ interface AIQuestionReviewModalProps {
   isOpen: boolean;
   questions: AIQuestionReviewItem[];
   modelUsed: string;
+  isGenerating: boolean;
+  requestedCount: number;
+  receivedCount: number;
   onChange: (questions: AIQuestionReviewItem[]) => void;
   onCancel: () => void;
   onImport: (questions: AIQuestionReviewItem[], uploadedUrls: string[]) => void;
@@ -130,6 +133,9 @@ export function AIQuestionReviewModal({
   isOpen,
   questions,
   modelUsed,
+  isGenerating,
+  requestedCount,
+  receivedCount,
   onChange,
   onCancel,
   onImport,
@@ -138,6 +144,7 @@ export function AIQuestionReviewModal({
   const [uploadingQuestionId, setUploadingQuestionId] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const uploadedUrlsRef = useRef<Set<string>>(new Set());
   const questionsRef = useRef(questions);
@@ -241,13 +248,17 @@ export function AIQuestionReviewModal({
   };
 
   const discardReview = async () => {
+    if (isDiscarding) return;
+    setIsDiscarding(true);
     reviewActiveRef.current = false;
+    setConfirmDiscard(false);
+    setValidationMessage(null);
+    // Abort generation and close immediately; remote image cleanup can finish in the background.
+    onCancel();
     const uploadedUrls = [...uploadedUrlsRef.current];
     await Promise.allSettled(uploadedUrls.map(url => deleteFile(url)));
     uploadedUrlsRef.current.clear();
-    setConfirmDiscard(false);
-    setValidationMessage(null);
-    onCancel();
+    setIsDiscarding(false);
   };
 
   const importQuestions = async () => {
@@ -284,11 +295,14 @@ export function AIQuestionReviewModal({
                 <h2 className="truncate text-sm font-bold tracking-tight text-on-surface sm:text-lg">Review AI questions</h2>
               </div>
               <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] text-on-surface-variant sm:mt-1 sm:text-xs">
-                <span className="flex shrink-0 items-center gap-1"><ListChecks className="h-3.5 w-3.5" /> {questions.length} questions</span>
+                <span className="flex shrink-0 items-center gap-1">
+                  {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <ListChecks className="h-3.5 w-3.5" />}
+                  {isGenerating ? `${receivedCount}/${requestedCount} generated` : `${questions.length} questions`}
+                </span>
               </div>
             </div>
           </div>
-          <button type="button" disabled={Boolean(uploadingQuestionId)} onClick={() => setConfirmDiscard(true)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:w-10 sm:rounded-xl" aria-label="Close review">
+          <button type="button" disabled={isDiscarding} onClick={() => setConfirmDiscard(true)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:w-10 sm:rounded-xl" aria-label={isGenerating ? 'Cancel AI generation' : 'Close review'}>
             <X className="h-5 w-5" />
           </button>
         </header>
@@ -513,8 +527,8 @@ export function AIQuestionReviewModal({
             </div>
           </div>
           <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
-            <button type="button" disabled={Boolean(uploadingQuestionId)} onClick={() => setConfirmDiscard(true)} className="h-11 flex-1 rounded-xl border border-outline-variant/40 px-3 text-xs font-bold text-on-surface-variant transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:flex-none sm:border-0 sm:px-4">Discard</button>
-            <button type="button" disabled={Boolean(uploadingQuestionId) || questions.length === 0} onClick={() => void importQuestions()} className="flex h-11 flex-[1.7] items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-bold text-on-primary shadow-sm shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:flex-none sm:px-5"><Check className="h-4 w-4" /> Import {questions.length}</button>
+            <button type="button" disabled={isDiscarding} onClick={() => setConfirmDiscard(true)} className="h-11 flex-1 rounded-xl border border-outline-variant/40 px-3 text-xs font-bold text-on-surface-variant transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:flex-none sm:border-0 sm:px-4">{isGenerating ? 'Cancel' : 'Discard'}</button>
+            <button type="button" disabled={Boolean(uploadingQuestionId) || questions.length === 0 || isGenerating} onClick={() => void importQuestions()} className="flex h-11 flex-[1.7] items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-bold text-on-primary shadow-sm shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:flex-none sm:px-5">{isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {isGenerating ? `Generating ${receivedCount}/${requestedCount}` : `Import ${questions.length}`}</button>
           </div>
         </footer>
       </div>
@@ -532,9 +546,9 @@ export function AIQuestionReviewModal({
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-outline-variant/30 bg-surface-container-lowest p-5 shadow-[0_24px_70px_-20px_rgba(15,23,42,0.7)] sm:p-6">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-error/10 text-error"><AlertCircle className="h-5 w-5" /></div>
-            <h3 className="mt-4 text-base font-bold text-on-surface">Discard AI review?</h3>
-            <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">Generated questions and images that have not been imported will be permanently removed from this review.</p>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setConfirmDiscard(false)} className="h-11 rounded-xl px-4 text-xs font-bold text-on-surface-variant transition-colors hover:bg-surface-container sm:h-10">Continue reviewing</button><button type="button" onClick={() => void discardReview()} className="h-11 rounded-xl bg-error px-4 text-xs font-bold text-white shadow-sm transition-colors hover:bg-error/90 sm:h-10">Discard review</button></div>
+            <h3 className="mt-4 text-base font-bold text-on-surface">{isGenerating ? 'Cancel AI generation?' : 'Discard AI review?'}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">{isGenerating ? `Generation will stop now. The ${receivedCount} question${receivedCount === 1 ? '' : 's'} received so far will be discarded.` : 'Generated questions and images that have not been imported will be permanently removed from this review.'}</p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" disabled={isDiscarding} onClick={() => setConfirmDiscard(false)} className="h-11 rounded-xl px-4 text-xs font-bold text-on-surface-variant transition-colors hover:bg-surface-container disabled:opacity-40 sm:h-10">Continue reviewing</button><button type="button" disabled={isDiscarding} onClick={() => void discardReview()} className="h-11 rounded-xl bg-error px-4 text-xs font-bold text-white shadow-sm transition-colors hover:bg-error/90 disabled:opacity-50 sm:h-10">{isDiscarding ? 'Cancelling…' : isGenerating ? 'Cancel generation' : 'Discard review'}</button></div>
           </div>
         </div>
       )}

@@ -7,13 +7,11 @@ interface QuizSettingsPanelProps {
   subject: string;
   difficulty: string;
   isPublic: boolean;
-  shuffleOptions: boolean;
   onTitleChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onSubjectChange: (value: string) => void;
   onDifficultyChange: (value: string) => void;
   onPublicChange: (value: boolean) => void;
-  onShuffleOptionsChange: (value: boolean) => void;
 }
 
 const Toggle = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
@@ -49,10 +47,6 @@ export function QuizSettingsPanel(props: QuizSettingsPanelProps) {
         <div className="flex items-center justify-between">
           <div className="flex flex-col"><label className="font-label-bold text-on-surface-variant text-sm">Public Access</label><span className="text-xs text-on-surface-variant">Allow anyone to take this quiz</span></div>
           <Toggle checked={props.isPublic} onChange={props.onPublicChange} />
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col"><label className="font-label-bold text-on-surface-variant text-sm">Shuffle Options</label><span className="text-xs text-on-surface-variant">Randomize answers order</span></div>
-          <Toggle checked={props.shuffleOptions} onChange={props.onShuffleOptionsChange} />
         </div>
       </div>
     </aside>

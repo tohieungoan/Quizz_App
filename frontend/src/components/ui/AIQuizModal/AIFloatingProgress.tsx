@@ -5,6 +5,7 @@ import { ProgressStage } from '@/types/aiQuiz';
 interface AIFloatingProgressProps {
   stage: ProgressStage;
   numQuestions: number;
+  receivedQuestionCount: number;
   seconds: number;
   modelUsed?: string;
   onCancel: () => void;
@@ -16,6 +17,7 @@ interface AIFloatingProgressProps {
 export const AIFloatingProgress: React.FC<AIFloatingProgressProps> = ({
   stage,
   numQuestions,
+  receivedQuestionCount,
   seconds,
   modelUsed,
   onCancel,
@@ -39,7 +41,7 @@ export const AIFloatingProgress: React.FC<AIFloatingProgressProps> = ({
       case 'parsing':
         return 30;
       case 'generating':
-        return 75;
+        return Math.max(35, Math.min(88, 35 + (receivedQuestionCount / Math.max(1, numQuestions)) * 53));
       case 'validating':
         return 92;
       case 'completed':
@@ -54,11 +56,11 @@ export const AIFloatingProgress: React.FC<AIFloatingProgressProps> = ({
       case 'parsing':
         return 'Document Parsing & Analysis';
       case 'generating':
-        return `Crafting ${numQuestions} Questions`;
+        return `Generated ${receivedQuestionCount} of ${numQuestions} Questions`;
       case 'validating':
         return 'Quality Validation & Formatting';
       case 'completed':
-        return `Successfully Generated ${numQuestions} Questions!`;
+        return `Successfully Generated ${receivedQuestionCount} Questions!`;
       default:
         return 'AI Generation Running';
     }

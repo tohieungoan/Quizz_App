@@ -10,6 +10,7 @@ interface Option {
   id: number
   key: string // A, B, C, D
   label: string
+  variant_option_id?: number | null
 }
 
 interface ActiveQuestion {
@@ -21,6 +22,8 @@ interface ActiveQuestion {
   audio_url?: string | null
   media_url?: string | null
   audio_play_limit?: number | null
+  variant_question_id?: number | null
+  version_code?: string | null
 }
 
 const AVATAR_COLORS = [
@@ -258,7 +261,7 @@ export const ParticipantAnswer: React.FC = () => {
     if (!roomCode) return
     setLoading(true)
     try {
-      const roomData = await roomService.getRoom(roomCode)
+      const roomData = await roomService.getRoom(roomCode, participantId)
 
       if (roomData.qa_state) {
         if (roomData.qa_state.is_active || String(roomData.qa_state.is_active) === 'true') {
@@ -303,7 +306,9 @@ export const ParticipantAnswer: React.FC = () => {
           options: roomData.active_question.options || [],
           audio_url: roomData.active_question.audio_url,
           media_url: roomData.active_question.media_url,
-          audio_play_limit: roomData.active_question.audio_play_limit
+          audio_play_limit: roomData.active_question.audio_play_limit,
+          variant_question_id: roomData.active_question.variant_question_id,
+          version_code: roomData.active_question.version_code,
         })
         if (roomData.active_question.correct_option_key) {
           setCorrectOptionKey(roomData.active_question.correct_option_key)
@@ -672,6 +677,8 @@ export const ParticipantAnswer: React.FC = () => {
         participant_id: participantId,
         question_id: submittedQuestionId,
         selected_option_id: optionId as any,
+        variant_question_id: activeQuestion.variant_question_id,
+        variant_option_id: activeQuestion.variant_question_id ? optionId as any : undefined,
         answer_text: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
         active_power_up: activePowerUp || undefined,
         streak: streak

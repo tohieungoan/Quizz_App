@@ -1,6 +1,7 @@
 import React, {
   createContext,
   useContext,
+  useEffect,
   useState,
   useRef,
   ReactNode,
@@ -16,12 +17,13 @@ interface AIQuizContextType {
   stage: ProgressStage;
   numQuestions: number;
   seconds: number;
+  receivedQuestionCount: number;
   modelUsed?: string;
   targetPath?: string;
-  unconsumedQuestions: { questions: AIQuestionItem[]; modelUsed: string } | null;
+  unconsumedQuestions: { questions: AIQuestionItem[]; modelUsed: string; deliveryId: number } | null;
   startGeneration: (formData: FormData, numQuestions: number, customTargetPath?: string) => void;
   cancelGeneration: () => void;
-  consumeQuestions: () => { questions: AIQuestionItem[]; modelUsed: string } | null;
+  consumeQuestions: () => { questions: AIQuestionItem[]; modelUsed: string; deliveryId: number } | null;
 }
 
 const AIQuizContext = createContext<AIQuizContextType | undefined>(undefined);
@@ -34,15 +36,33 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [stage, setStage] = useState<ProgressStage>('idle');
   const [numQuestions, setNumQuestions] = useState(5);
   const [seconds, setSeconds] = useState(0);
+  const [receivedQuestionCount, setReceivedQuestionCount] = useState(0);
   const [modelUsed, setModelUsed] = useState<string | undefined>(undefined);
   const [targetPath, setTargetPath] = useState<string>('/create-quiz');
   const [unconsumedQuestions, setUnconsumedQuestions] = useState<{
     questions: AIQuestionItem[];
     modelUsed: string;
+    deliveryId: number;
   } | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const timerRef = useRef<number | null>(null);
+  const stageTimerRef = useRef<number | null>(null);
+  const validationTimerRef = useRef<number | null>(null);
+  const completionTimerRef = useRef<number | null>(null);
+  const generationSequenceRef = useRef(0);
+  const deliverySequenceRef = useRef(0);
+
+  const clearGenerationTimers = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (stageTimerRef.current) clearTimeout(stageTimerRef.current);
+    if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
+    if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
+    timerRef.current = null;
+    stageTimerRef.current = null;
+    validationTimerRef.current = null;
+    completionTimerRef.current = null;
+  };
 
   const startGeneration = (
     formData: FormData,
@@ -53,9 +73,11 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    clearGenerationTimers();
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    const generationId = ++generationSequenceRef.current;
 
     const chosenPath = customTargetPath || location.pathname;
     setTargetPath(chosenPath);
@@ -63,30 +85,50 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setIsGenerating(true);
     setStage('parsing');
     setSeconds(0);
+    setReceivedQuestionCount(0);
     setModelUsed(undefined);
+    setUnconsumedQuestions(null);
 
-    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = window.setInterval(() => {
       setSeconds((prev) => prev + 1);
     }, 1000);
 
-    const stageTimer = setTimeout(() => {
+    stageTimerRef.current = window.setTimeout(() => {
+      if (generationId !== generationSequenceRef.current || controller.signal.aborted) return;
       setStage((current) => (current === 'parsing' ? 'generating' : current));
     }, 1200);
 
     aiQuizService
-      .generate(formData, { signal: controller.signal })
+      .generateProgressive(
+        formData,
+        batch => {
+          if (generationId !== generationSequenceRef.current || controller.signal.aborted) return;
+          deliverySequenceRef.current += 1;
+          const deliveryId = deliverySequenceRef.current;
+          setStage('generating');
+          setModelUsed(batch.model_used);
+          setReceivedQuestionCount(batch.generated_count);
+          setUnconsumedQuestions(previous => ({
+            questions: [
+              ...(previous?.questions || []),
+              ...batch.questions,
+            ],
+            modelUsed: batch.model_used || previous?.modelUsed || 'unknown',
+            deliveryId,
+          }));
+        },
+        { signal: controller.signal },
+      )
       .then((response) => {
-        clearTimeout(stageTimer);
+        if (generationId !== generationSequenceRef.current || controller.signal.aborted) return;
+        if (stageTimerRef.current) clearTimeout(stageTimerRef.current);
+        stageTimerRef.current = null;
         setStage('validating');
         setModelUsed(response.model_used);
 
-        setTimeout(() => {
+        validationTimerRef.current = window.setTimeout(() => {
+          if (generationId !== generationSequenceRef.current || controller.signal.aborted) return;
           setStage('completed');
-          setUnconsumedQuestions({
-            questions: response.questions,
-            modelUsed: response.model_used,
-          });
 
           if (timerRef.current) {
             clearInterval(timerRef.current);
@@ -101,7 +143,7 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                   <div>
                     <p className="font-bold text-xs">AI Quiz Ready!</p>
                     <p className="text-[11px] text-slate-500">
-                      Generated {response.questions.length} questions.
+                      Generated {response.generated_count} questions.
                     </p>
                   </div>
                   <button
@@ -120,7 +162,8 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           }
 
           // Hide dock after completion
-          setTimeout(() => {
+          completionTimerRef.current = window.setTimeout(() => {
+            if (generationId !== generationSequenceRef.current || controller.signal.aborted) return;
             setIsGenerating(false);
             setStage('idle');
             setSeconds(0);
@@ -128,11 +171,8 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }, 600);
       })
       .catch((err: any) => {
-        clearTimeout(stageTimer);
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
+        if (generationId !== generationSequenceRef.current) return;
+        clearGenerationTimers();
 
         if (
           err.name === 'CanceledError' ||
@@ -156,23 +196,36 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             'AI question generation encountered an error. Please try again.',
           { duration: 5000 }
         );
+      })
+      .finally(() => {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
       });
   };
 
   const cancelGeneration = () => {
+    const wasGenerating = isGenerating;
+    generationSequenceRef.current += 1;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    clearGenerationTimers();
     setIsGenerating(false);
     setStage('idle');
     setSeconds(0);
-    toast('AI generation cancelled.', { icon: 'ℹ️' });
+    setReceivedQuestionCount(0);
+    setModelUsed(undefined);
+    setUnconsumedQuestions(null);
+    if (wasGenerating) toast('AI generation cancelled.', { icon: 'ℹ️' });
   };
+
+  useEffect(() => () => {
+    generationSequenceRef.current += 1;
+    abortControllerRef.current?.abort();
+    clearGenerationTimers();
+  }, []);
 
   const consumeQuestions = () => {
     if (!unconsumedQuestions) return null;
@@ -188,6 +241,7 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         stage,
         numQuestions,
         seconds,
+        receivedQuestionCount,
         modelUsed,
         targetPath,
         unconsumedQuestions,
@@ -203,6 +257,7 @@ export const AIQuizProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         <AIFloatingProgress
           stage={stage}
           numQuestions={numQuestions}
+          receivedQuestionCount={receivedQuestionCount}
           seconds={seconds}
           modelUsed={modelUsed}
           onCancel={cancelGeneration}

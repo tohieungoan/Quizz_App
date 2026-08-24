@@ -1,4 +1,8 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
+// Support the original VITE_API_URL name as well as the documented
+// VITE_API_BASE_URL name. Without this fallback the app silently targets
+// localhost, which causes browser-level "Failed to fetch" errors when the
+// configured API is hosted elsewhere.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
 let refreshPromise: Promise<void> | null = null
 
@@ -133,6 +137,17 @@ export const apiClient = {
       body,
       ...config,
     }).then(handleResponse<T>),
+
+  postMultipartStream: (endpoint: string, body: FormData, config?: RequestInit): Promise<Response> =>
+    fetchWithAuth(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': '' },
+      body,
+      ...config,
+    }).then(async response => {
+      if (!response.ok) await handleResponse<never>(response)
+      return response
+    }),
 
   postForm: <T = unknown>(endpoint: string, params: URLSearchParams): Promise<T> =>
     fetch(`${BASE_URL}${endpoint}`, {

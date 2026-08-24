@@ -240,6 +240,9 @@ def delete_question(
         if opt.audio_url:
             urls_to_check.add(opt.audio_url)
             
+    from app.services.quiz_variant_service import quiz_variant_service
+
+    quiz_variant_service.sync_deleted_source_questions(db, quiz, [question_id])
     crud_question.delete(db=db, question_id=question_id)
     
     # Trigger background tasks to delete associated media if they are no longer referenced

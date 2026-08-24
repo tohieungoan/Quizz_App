@@ -8,15 +8,18 @@ from app.api.v1.api import api_router
 from contextlib import asynccontextmanager
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.api.v1.websockets.room_manager import room_websocket_manager
+from app.api.v1.websockets.admin_room_manager import admin_room_manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     start_scheduler()
     room_websocket_manager.start_listener_task()
+    admin_room_manager.start_listener_task()
     yield
     # Shutdown
     room_websocket_manager.stop_listener_task()
+    admin_room_manager.stop_listener_task()
     shutdown_scheduler()
 
 app = FastAPI(

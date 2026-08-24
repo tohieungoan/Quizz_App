@@ -1,5 +1,5 @@
 import { X, Search, Clock, Users, PlayCircle, StopCircle, PauseCircle, CheckCircle2, User, UserX, UserCheck, ShieldAlert, BookOpen, HelpCircle, Activity, Loader2 } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { roomService } from '@/services/roomService';
 
 interface Room {
@@ -18,31 +18,36 @@ interface RoomDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   room: Room | null;
+  refreshKey?: number;
 }
 
-export function RoomDetailsModal({ isOpen, onClose, room }: RoomDetailsModalProps) {
+export function RoomDetailsModal({ isOpen, onClose, room, refreshKey = 0 }: RoomDetailsModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [participants, setParticipants] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const loadedRoomIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isOpen && room?.id) {
-      setIsLoading(true);
+      const roomId = String(room.id);
+      const isInitialLoad = loadedRoomIdRef.current !== roomId;
+      if (isInitialLoad) setIsLoading(true);
       roomService.getRoomParticipants(room.id)
         .then((data) => {
           setParticipants(Array.isArray(data) ? data : []);
+          loadedRoomIdRef.current = roomId;
         })
         .catch((err) => {
           console.error('Failed to fetch room participants:', err);
           setParticipants([]);
         })
         .finally(() => {
-          setIsLoading(false);
+          if (isInitialLoad) setIsLoading(false);
         });
     } else {
       setParticipants([]);
     }
-  }, [isOpen, room?.id]);
+  }, [isOpen, room?.id, refreshKey]);
 
   if (!isOpen || !room) return null;
 

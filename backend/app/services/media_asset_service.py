@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.quiz import Question, QuestionOption, Quiz, UploadFile
+from app.models.quiz_variant import QuizVariantOption, QuizVariantQuestion
 from app.utils.cloudinary_utils import extract_public_id, is_managed_cloudinary_url
 
 logger = logging.getLogger(__name__)
@@ -231,6 +232,14 @@ class MediaAssetService:
             return True
         if db.query(QuestionOption.id).filter(
             or_(QuestionOption.media_url == url, QuestionOption.audio_url == url)
+        ).first():
+            return True
+        if db.query(QuizVariantQuestion.id).filter(
+            or_(QuizVariantQuestion.media_url == url, QuizVariantQuestion.audio_url == url)
+        ).first():
+            return True
+        if db.query(QuizVariantOption.id).filter(
+            or_(QuizVariantOption.media_url == url, QuizVariantOption.audio_url == url)
         ).first():
             return True
         draft_states = db.query(Quiz.draft_builder_state).filter(

@@ -6,6 +6,7 @@ import datetime
 import logging
 
 from app.api.v1.websockets.room_manager import room_websocket_manager
+from app.api.v1.websockets.admin_room_manager import admin_room_manager
 from app.api.deps import get_db
 from app.crud.crud_room import crud_room
 from app.services.redis_room_service import redis_room_service
@@ -204,9 +205,14 @@ async def websocket_room(
                                 "pid": participant_id,
                                 "nickname": f"Participant_{participant_id}",
                                 "u": f"Participant_{participant_id}",
-                                "is_correct": True,
-                                "c": True,
+                                "is_correct": is_correct,
+                                "c": is_correct,
                             }
+                        )
+                        admin_room_manager.schedule_invalidation(
+                            room_id=room_id,
+                            room_code=room_code,
+                            reason="PARTICIPANT_SCORE_UPDATED",
                         )
                     except Exception as sub_err:
                         logger.error(f"Error handling WebSocket SUBMIT_ANSWER: {sub_err}")
