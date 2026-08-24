@@ -17,14 +17,13 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
   const [selectedGroupId, setSelectedGroupId] = useState<string>('freedom');
   
   // Room Settings States
-  const [selectedGameMode, setSelectedGameMode] = useState<'CLASSIC' | 'TEAM' | 'EXAM'>('CLASSIC');
+  const [selectedGameMode, setSelectedGameMode] = useState<'CLASSIC' | 'EXAM'>('CLASSIC');
   const [progressionMode, setProgressionMode] = useState<'manual' | 'auto'>('manual');
   const [allowShowRank, setAllowShowRank] = useState(true);
   const [shuffleOptions, setShuffleOptions] = useState(true);
   const [allowSkipQuestion, setAllowSkipQuestion] = useState(true);
   const [allowAnonymousQuestion, setAllowAnonymousQuestion] = useState(true);
-  const [allowVoiceQuestion, setAllowVoiceQuestion] = useState(false);
-  const [useAiQuestion, setUseAiQuestion] = useState(false);
+  const [useAiQuestion, setUseAiQuestion] = useState(true);
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -71,7 +70,7 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
         allow_skip_question: allowSkipQuestion,
         allow_show_rank: allowShowRank,
         allow_anonymous_question: allowAnonymousQuestion,
-        allow_voice_question: allowVoiceQuestion,
+        allow_voice_question: false,
         use_ai_question: useAiQuestion,
         shuffle_options: shuffleOptions
       });
@@ -164,10 +163,9 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
             <label className="block text-xs font-extrabold mb-1.5 uppercase tracking-wider text-on-surface-variant">
               Room Game Mode
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { id: 'CLASSIC', label: 'Classic', desc: 'Standard FFA Quiz' },
-                { id: 'TEAM', label: 'Team', desc: 'Team Battle' },
                 { id: 'EXAM', label: 'Exam', desc: 'Strict Exam Mode' },
               ].map((m) => (
                 <button
@@ -221,26 +219,28 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
               </div>
             </div>
 
-            {/* Show Live Leaderboard */}
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-on-surface">Show Live Leaderboard</span>
-                <span className="text-[10px] text-on-surface-variant">Display standings after each round</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAllowShowRank(!allowShowRank)}
-                className={`w-9 h-5 rounded-full relative p-0.5 transition-colors cursor-pointer ${
-                  allowShowRank ? 'bg-secondary' : 'bg-outline-variant/40'
-                }`}
-              >
-                <div
-                  className={`w-4 h-4 bg-white rounded-full shadow-xs transition-transform ${
-                    allowShowRank ? 'translate-x-4' : 'translate-x-0'
+            {/* Show Live Leaderboard (Disabled in EXAM mode) */}
+            {selectedGameMode !== 'EXAM' && (
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-on-surface">Show Live Leaderboard</span>
+                  <span className="text-[10px] text-on-surface-variant">Display standings after each round</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAllowShowRank(!allowShowRank)}
+                  className={`w-9 h-5 rounded-full relative p-0.5 transition-colors cursor-pointer ${
+                    allowShowRank ? 'bg-secondary' : 'bg-outline-variant/40'
                   }`}
-                />
-              </button>
-            </div>
+                >
+                  <div
+                    className={`w-4 h-4 bg-white rounded-full shadow-xs transition-transform ${
+                      allowShowRank ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
 
             {/* Shuffle Answer Choices */}
             <div className="flex items-center justify-between">
@@ -263,26 +263,28 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
               </button>
             </div>
 
-            {/* Allow Skip Questions */}
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-on-surface">Allow Skip Question</span>
-                <span className="text-[10px] text-on-surface-variant">Let participants skip question if stuck</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAllowSkipQuestion(!allowSkipQuestion)}
-                className={`w-9 h-5 rounded-full relative p-0.5 transition-colors cursor-pointer ${
-                  allowSkipQuestion ? 'bg-secondary' : 'bg-outline-variant/40'
-                }`}
-              >
-                <div
-                  className={`w-4 h-4 bg-white rounded-full shadow-xs transition-transform ${
-                    allowSkipQuestion ? 'translate-x-4' : 'translate-x-0'
+            {/* Allow Skip Question (Disabled in EXAM mode) */}
+            {selectedGameMode !== 'EXAM' && (
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-on-surface">Allow Skip Question</span>
+                  <span className="text-[10px] text-on-surface-variant">Let participants skip question if stuck</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAllowSkipQuestion(!allowSkipQuestion)}
+                  className={`w-9 h-5 rounded-full relative p-0.5 transition-colors cursor-pointer ${
+                    allowSkipQuestion ? 'bg-secondary' : 'bg-outline-variant/40'
                   }`}
-                />
-              </button>
-            </div>
+                >
+                  <div
+                    className={`w-4 h-4 bg-white rounded-full shadow-xs transition-transform ${
+                      allowSkipQuestion ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
 
             {/* Allow Anonymous Questions */}
             <div className="flex items-center justify-between">
@@ -305,32 +307,11 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
               </button>
             </div>
 
-            {/* Allow Voice Questions */}
+            {/* Enable AI Similar Questions */}
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="text-xs font-bold text-on-surface">Allow Voice Questions</span>
-                <span className="text-[10px] text-on-surface-variant">Enable audio voice recordings in Q&A</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAllowVoiceQuestion(!allowVoiceQuestion)}
-                className={`w-9 h-5 rounded-full relative p-0.5 transition-colors cursor-pointer ${
-                  allowVoiceQuestion ? 'bg-secondary' : 'bg-outline-variant/40'
-                }`}
-              >
-                <div
-                  className={`w-4 h-4 bg-white rounded-full shadow-xs transition-transform ${
-                    allowVoiceQuestion ? 'translate-x-4' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* AI Question Assistant */}
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-on-surface">AI Question Helper</span>
-                <span className="text-[10px] text-on-surface-variant">Enable AI hint assistant for participants</span>
+                <span className="text-xs font-bold text-on-surface">Enable AI Similar Questions</span>
+                <span className="text-[10px] text-on-surface-variant">Allow generating and practicing similar questions created by AI</span>
               </div>
               <button
                 type="button"

@@ -42,8 +42,11 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
     Server-side background task that waits for question time limit + delay,
     then automatically advances the room to the next question if progression_mode is 'auto'.
     """
-    await asyncio.sleep(delay_seconds)
-    
+    try:
+        await asyncio.sleep(delay_seconds)
+    except asyncio.CancelledError:
+        return
+
     db = SessionLocal()
     try:
         room = crud_room.get(db=db, room_id=room_id)
@@ -51,7 +54,7 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
             return
             
         if room.status == "PLAYING" and (room.progression_mode or "manual").lower() == "auto":
-            if room.current_question_index == expected_question_index:
+            if room.current_question_index == expected_question_index and room.room_code:
                 updated_room = crud_room.next_question(db=db, room=room)
                 if updated_room.status == "ENDED":
                     await room_websocket_manager.broadcast_to_room(
@@ -77,6 +80,7 @@ async def _auto_advance_room_task(room_id: int, expected_question_index: int, de
     except Exception as e:
         logger.error(f"Error in _auto_advance_room_task for room {room_id}: {e}")
     finally:
+        _auto_advance_tasks.pop(room_id, None)
         db.close()
 
 
@@ -88,6 +92,11 @@ def _trigger_auto_advance_if_enabled(db: Session, room):
         return
     if (room.progression_mode or "manual").lower() != "auto":
         return
+
+    # Cancel any previous auto advance task for this room
+    existing_task = _auto_advance_tasks.get(room.id)
+    if existing_task and not existing_task.done():
+        existing_task.cancel()
 
     time_limit = 20
     if room.quiz and room.quiz.questions:
@@ -359,15 +368,14 @@ def get_my_active_rooms(
             sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
             if 1 <= room.current_question_index <= len(sorted_questions):
                 q = sorted_questions[room.current_question_index - 1]
-                KEYS = ["A", "B", "C", "D"]
-                sorted_opts = sorted(q.options, key=lambda o: o.id)
-                options_live = []
-                for idx, opt in enumerate(sorted_opts):
-                    options_live.append({
-                        "id": opt.id,
-                        "key": KEYS[idx] if idx < len(KEYS) else "A",
-                        "label": opt.content or ""
-                    })
+                from app.utils.option_utils import format_question_options
+                should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+                seed = (room.id * 10007) + (q.id * 97) if should_shuffle else None
+                options_live, _ = format_question_options(
+                    options=q.options or [],
+                    should_shuffle=should_shuffle,
+                    seed=seed
+                )
                 raw_type = (q.type or "multiple_choice").lower().strip()
                 is_short = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
                 active_q = {
@@ -389,6 +397,7 @@ def get_my_active_rooms(
 @router.get("/{room_code}", response_model=RoomResponse, summary="Get active room by code")
 async def get_room_by_code(
     room_code: str,
+    nickname: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     participant_id: Optional[int] = Query(None, ge=1),
 ) -> Any:
@@ -425,21 +434,34 @@ async def get_room_by_code(
                         QuizVariantQuestion.original_question_id == q.id,
                     ).first()
 
-            KEYS = [chr(ord("A") + index) for index in range(20)]
-            displayed_options = list(variant_question.options) if variant_question else list(q.options)
-            sorted_opts = sorted(
-                displayed_options,
-                key=(lambda option: option.position) if variant_question else (lambda option: option.id),
-            )
-            options_live = []
-            for idx, opt in enumerate(sorted_opts):
-                key = KEYS[idx] if idx < len(KEYS) else "A"
-                options_live.append({
-                    "id": opt.id,
-                    "variant_option_id": opt.id if variant_question else None,
-                    "key": key,
-                    "label": opt.content or ""
-                })
+            if variant_question:
+                keys = [chr(ord("A") + index) for index in range(20)]
+                displayed_options = sorted(
+                    variant_question.options,
+                    key=lambda option: (option.position, option.id),
+                )
+                options_live = [
+                    {
+                        "id": option.id,
+                        "variant_option_id": option.id,
+                        "key": keys[index] if index < len(keys) else str(index + 1),
+                        "label": option.content or "",
+                    }
+                    for index, option in enumerate(displayed_options)
+                ]
+            else:
+                from app.utils.option_utils import format_question_options, get_shuffle_seed
+
+                should_shuffle = bool(
+                    getattr(room, "shuffle_options", False)
+                    or (room.quiz and getattr(room.quiz, "shuffle_options", False))
+                )
+                seed = get_shuffle_seed(room.id, q.id, nickname) if should_shuffle else None
+                options_live, _ = format_question_options(
+                    options=q.options or [],
+                    should_shuffle=should_shuffle,
+                    seed=seed,
+                )
 
             raw_type = ((variant_question.type if variant_question else q.type) or "multiple_choice").lower().strip()
             is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
@@ -460,16 +482,20 @@ async def get_room_by_code(
             }
 
     # Populate room fields dynamically
-    room.active_question = active_q
+    setattr(room, "active_question", active_q)
+    if hasattr(room, "host") and room.host:
+        setattr(room, "host_name", room.host.fullname)
+        setattr(room, "host_avatar", room.host.avatar)
 
     # Attach live Q&A state, top voted questions & chat messages
-    try:
-        from app.services.redis_room_service import redis_room_service
-        setattr(room, "top_voted_questions", await redis_room_service.get_top_voted_questions(room.room_code))
-        setattr(room, "qa_state", await redis_room_service.get_qa_session_state(room.room_code))
-        setattr(room, "chat_messages", await redis_room_service.get_chat_messages(room.room_code))
-    except Exception as e_qa:
-        logger.warning(f"Failed to load live qa_state for room {room.room_code}: {e_qa}")
+    if room.room_code:
+        try:
+            from app.services.redis_room_service import redis_room_service
+            setattr(room, "top_voted_questions", await redis_room_service.get_top_voted_questions(room.room_code))
+            setattr(room, "qa_state", await redis_room_service.get_qa_session_state(room.room_code))
+            setattr(room, "chat_messages", await redis_room_service.get_chat_messages(room.room_code))
+        except Exception as e_qa:
+            logger.warning(f"Failed to load live qa_state for room {room.room_code}: {e_qa}")
 
     return room
 
@@ -499,15 +525,16 @@ async def end_room(
 
     from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.update_status(db=db, room=room, status="ENDED")
-    # Broadcast game ended to all websocket clients
-    await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
-    # Batch flush cached Redis answers to PostgreSQL database
-    await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
-    await admin_room_manager.publish(
-        room_id=updated_room.id,
-        room_code=updated_room.room_code,
-        reason="ROOM_ENDED",
-    )
+    if room.room_code:
+        # Broadcast game ended to all websocket clients
+        await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_ENDED"})
+        # Batch flush cached Redis answers to PostgreSQL database
+        await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
+        await admin_room_manager.publish(
+            room_id=updated_room.id,
+            room_code=updated_room.room_code,
+            reason="ROOM_ENDED",
+        )
     return updated_room
 
 
@@ -693,12 +720,13 @@ async def start_room(
 
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast game started to all websocket clients in room
-    await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
-    await admin_room_manager.publish(
-        room_id=updated_room.id,
-        room_code=updated_room.room_code,
-        reason="ROOM_STARTED",
-    )
+    if room.room_code:
+        await room_websocket_manager.broadcast_to_room(room.room_code, {"type": "GAME_STARTED"})
+        await admin_room_manager.publish(
+            room_id=updated_room.id,
+            room_code=updated_room.room_code,
+            reason="ROOM_STARTED",
+        )
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -729,19 +757,14 @@ async def get_live_session(
     if 1 <= room.current_question_index <= len(sorted_questions):
         q = sorted_questions[room.current_question_index - 1]
         
-        # Format Options with keys A, B, C, D
-        KEYS = ["A", "B", "C", "D"]
-        sorted_opts = sorted(q.options, key=lambda o: o.id)
-        options_live = []
-        correct_option_key = None
-        for idx, opt in enumerate(sorted_opts):
-            options_live.append({
-                "id": opt.id,
-                "key": KEYS[idx] if idx < len(KEYS) else "A",
-                "label": opt.content or ""
-            })
-            if opt.is_correct:
-                correct_option_key = KEYS[idx] if idx < len(KEYS) else "A"
+        from app.utils.option_utils import format_question_options
+        should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+        seed = (room.id * 10007) + (q.id * 97) if should_shuffle else None
+        options_live, correct_option_key = format_question_options(
+            options=q.options or [],
+            should_shuffle=should_shuffle,
+            seed=seed
+        )
             
         raw_type = (q.type or "multiple_choice").lower().strip()
         is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
@@ -782,10 +805,7 @@ async def get_live_session(
         )
         return title_row[0] if title_row else None
 
-    is_short_ans = False
-    if active_question:
-        raw_type = (q.type or "multiple_choice").lower().strip()
-        is_short_ans = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+    is_short_ans = active_question is not None and active_question.get("type") == "SHORT_ANSWER"
 
     if is_short_ans and active_question:
         for p in room.participants:
@@ -818,17 +838,21 @@ async def get_live_session(
                 ).first()
                 if ans:
                     answered = True
-                    selected_source_option_id = ans.selected_option_id
+                    selected_key = None
                     if ans.variant_option is not None:
-                        selected_source_option_id = ans.variant_option.original_option_id
-                    selected_key = next(
-                        (
-                            option["key"]
-                            for option in active_question["options"]
-                            if option["id"] == selected_source_option_id
-                        ),
-                        None,
-                    )
+                        selected_key = chr(ord("A") + ans.variant_option.position)
+                    else:
+                        options = active_question.get("options")
+                        if isinstance(options, list):
+                            selected_key = next(
+                                (
+                                    option.get("key")
+                                    for option in options
+                                    if isinstance(option, dict)
+                                    and option.get("id") == ans.selected_option_id
+                                ),
+                                None,
+                            )
                     if selected_key in distribution:
                         distribution[selected_key] += 1
             participants_live.append({
@@ -891,21 +915,22 @@ async def next_question(
     from app.services.redis_room_service import redis_room_service
     updated_room = crud_room.next_question(db=db, room=room)
     # Broadcast NEXT_QUESTION to all client WebSockets in room
-    await room_websocket_manager.broadcast_to_room(
-        room.room_code,
-        {
-            "type": "NEXT_QUESTION",
-            "current_question_index": updated_room.current_question_index,
-            "status": updated_room.status
-        }
-    )
-    # Batch flush cached Redis answers to PostgreSQL database
-    await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
-    await admin_room_manager.publish(
-        room_id=updated_room.id,
-        room_code=updated_room.room_code,
-        reason="ROOM_ENDED" if updated_room.status == "ENDED" else "ROOM_ADVANCED",
-    )
+    if room.room_code:
+        await room_websocket_manager.broadcast_to_room(
+            room.room_code,
+            {
+                "type": "NEXT_QUESTION",
+                "current_question_index": updated_room.current_question_index,
+                "status": updated_room.status
+            }
+        )
+        # Batch flush cached Redis answers to PostgreSQL database
+        await redis_room_service.flush_room_answers_to_db(room.room_code, room.id)
+        await admin_room_manager.publish(
+            room_id=updated_room.id,
+            room_code=updated_room.room_code,
+            reason="ROOM_ENDED" if updated_room.status == "ENDED" else "ROOM_ADVANCED",
+        )
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
 
@@ -960,35 +985,38 @@ async def submit_answer(
             answer_text=answer_in.answer_text,
             active_power_up=answer_in.active_power_up,
             client_streak=answer_in.streak,
+            is_skipped=answer_in.is_skipped or False,
             now=now
         )
 
         # High-concurrency Redis Store update
-        redis_total_score, _ = await redis_room_service.submit_answer_redis(
-            room_code=room.room_code,
-            participant_id=participant.id,
-            question_id=answer_in.question_id,
-            selected_option_id=answer_in.variant_option_id or answer_in.selected_option_id,
-            answer_text=answer_in.answer_text,
-            is_correct=is_correct,
-            score=score,
-            correct_option_key=correct_option_key,
-        )
+        redis_total_score = None
+        if room.room_code:
+            redis_total_score, _ = await redis_room_service.submit_answer_redis(
+                room_code=room.room_code,
+                participant_id=participant.id,
+                question_id=answer_in.question_id,
+                selected_option_id=answer_in.variant_option_id or answer_in.selected_option_id,
+                answer_text=answer_in.answer_text,
+                is_correct=is_correct,
+                score=score,
+                correct_option_key=correct_option_key,
+            )
 
-        # Real-time WebSocket notification to host panel
-        await room_websocket_manager.broadcast_to_room(
-            room.room_code,
-            {
-                "type": "ANSWER_SUBMITTED",
-                "participant_id": participant.id,
-                "question_id": answer_in.question_id
-            }
-        )
-        admin_room_manager.schedule_invalidation(
-            room_id=room.id,
-            room_code=room.room_code,
-            reason="PARTICIPANT_SCORE_UPDATED",
-        )
+            # Real-time WebSocket notification to host panel
+            await room_websocket_manager.broadcast_to_room(
+                room.room_code,
+                {
+                    "type": "ANSWER_SUBMITTED",
+                    "participant_id": participant.id,
+                    "question_id": answer_in.question_id
+                }
+            )
+            admin_room_manager.schedule_invalidation(
+                room_id=room.id,
+                room_code=room.room_code,
+                reason="PARTICIPANT_SCORE_UPDATED",
+            )
 
         if participant.user:
             pts = 15 if is_correct else 10
@@ -1217,6 +1245,7 @@ async def send_chat_message_endpoint(
         {
             "type": "CHAT_MESSAGE_RECEIVED",
             "t": "CMR",
+            "id": msg_item.get("id"),
             "sender": msg_item["sender"],
             "text": msg_item["text"],
             "message": msg_item["text"],
@@ -1227,8 +1256,11 @@ async def send_chat_message_endpoint(
 
     return {
         "status": "ok",
+        "id": msg_item.get("id"),
         "sender": sender,
-        "text": text
+        "text": text,
+        "avatar": avatar,
+        "timestamp": msg_item["timestamp"]
     }
 
 

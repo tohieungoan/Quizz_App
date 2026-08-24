@@ -65,6 +65,20 @@ export const HistoryTab: React.FC = () => {
     fetchHistory();
   }, []);
 
+  // Auto open exam details modal if navigated from Global Search
+  useEffect(() => {
+    const pendingSelectedId = sessionStorage.getItem('selected_history_exam_id');
+    if (pendingSelectedId && allHistory.length > 0) {
+      const examId = Number(pendingSelectedId);
+      const target = allHistory.find((item) => item.exam_id === examId || item.assignee_id === examId);
+      if (target && target.results_published) {
+        setSelectedExamId(examId);
+        setExamModalOpen(true);
+      }
+      sessionStorage.removeItem('selected_history_exam_id');
+    }
+  }, [allHistory]);
+
   const filteredHistory = useMemo(() => {
     return allHistory.filter((item) =>
       item.exam_title.toLowerCase().includes(historySearch.toLowerCase()) ||

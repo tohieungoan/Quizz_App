@@ -13,9 +13,14 @@ import {
   TrendingUp,
   Zap,
   Star,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { roomService } from '@/services';
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper';
+import { soundFx } from '@/utils/soundEffects';
+import { confettiFx } from '@/utils/confettiEffects';
+import { getWebSocketUrl } from '@/utils/getWebSocketUrl';
 
 interface LeaderboardPlayer {
   id: string;
@@ -141,6 +146,7 @@ export const LiveLeaderboard: React.FC = () => {
   const [players, setPlayers] = useState<LeaderboardPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<'initial' | 'adding_scores' | 'ranking_shift' | 'podium_reveal'>('initial');
+  const [isMuted, setIsMuted] = useState(false);
 
   // Persist session parameters
   useEffect(() => {
@@ -216,11 +222,8 @@ export const LiveLeaderboard: React.FC = () => {
   useEffect(() => {
     if (!roomCode) return;
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-    const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
     const token = localStorage.getItem('token');
-    const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=false${token ? `&token=${token}` : ''}`;
+    const wsUrl = getWebSocketUrl(`/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=false${token ? `&token=${token}` : ''}`);
 
     let socket: WebSocket | null = null;
     try {
@@ -250,7 +253,7 @@ export const LiveLeaderboard: React.FC = () => {
     };
   }, [roomCode, nickname, roomId, navigate, fromSource, activeTab]);
 
-  // Trigger podium reveal animation phases with count-up ticks
+  // Trigger podium reveal animation phases with count-up ticks & victory fanfare
   useEffect(() => {
     if (loading || players.length === 0) return;
 
@@ -263,6 +266,9 @@ export const LiveLeaderboard: React.FC = () => {
       const tickerInterval = setInterval(() => {
         step += 1;
         const ratio = step / totalSteps;
+        if (step % 2 === 0) {
+          soundFx.playScoreTicker();
+        }
         setPlayers((prev) =>
           prev.map((p) => ({
             ...p,
@@ -276,6 +282,8 @@ export const LiveLeaderboard: React.FC = () => {
             setPhase('ranking_shift');
             setTimeout(() => {
               setPhase('podium_reveal');
+              soundFx.playLeaderboardVictory();
+              confettiFx.fire(120);
             }, 600);
           }, 400);
         }
@@ -283,7 +291,7 @@ export const LiveLeaderboard: React.FC = () => {
     }, 400);
 
     return () => clearTimeout(timer1);
-  }, [loading]);
+  }, [loading, players.length]);
 
   const currentSorted = [...players].sort((a, b) => a.newRank - b.newRank);
   const top1 = currentSorted.find((p) => p.newRank === 1);
@@ -364,12 +372,26 @@ export const LiveLeaderboard: React.FC = () => {
               </p>
             </div>
           </div>
-          <button
-            onClick={handleNextAction}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-700/60 border border-white/10 text-slate-300 rounded-xl hover:bg-slate-700 transition-all text-xs font-bold cursor-pointer hover:text-white"
-          >
-            <LogOut className="w-3.5 h-3.5" /> Leave
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const muted = soundFx.toggleMute();
+                setIsMuted(muted);
+              }}
+              className="p-2 rounded-xl bg-slate-700/60 border border-white/10 text-slate-300 hover:bg-slate-700 transition-all cursor-pointer"
+              title={isMuted ? 'Unmute Leaderboard Sounds' : 'Mute Leaderboard Sounds'}
+            >
+              {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+            </button>
+
+            <button
+              onClick={handleNextAction}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-700/60 border border-white/10 text-slate-300 rounded-xl hover:bg-slate-700 transition-all text-xs font-bold cursor-pointer hover:text-white"
+            >
+              <LogOut className="w-3.5 h-3.5" /> Leave
+            </button>
+          </div>
         </header>
 
         {/* My Score Banner with Shine Sheen Animation */}

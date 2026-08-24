@@ -1,8 +1,12 @@
-// Support the original VITE_API_URL name as well as the documented
-// VITE_API_BASE_URL name. Without this fallback the app silently targets
-// localhost, which causes browser-level "Failed to fetch" errors when the
-// configured API is hosted elsewhere.
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+const getBaseUrl = () => {
+  // Keep compatibility with both environment variable names used by the
+  // existing Docker and hosted deployments. The relative fallback lets the
+  // production reverse proxy serve the API without hard-coding localhost.
+  const envUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL
+  if (envUrl) return envUrl
+  return '/api/v1'
+}
+const BASE_URL = getBaseUrl()
 
 let refreshPromise: Promise<void> | null = null
 

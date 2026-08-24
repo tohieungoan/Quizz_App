@@ -38,8 +38,11 @@ export const roomService = {
   joinRoom: (roomCode: string, nickname: string): Promise<any> =>
     apiClient.post<any>(`/rooms/${roomCode}/join`, { nickname }),
 
-  getRoom: (roomCode: string, participantId?: number): Promise<any> => {
-    const query = participantId ? `?participant_id=${participantId}` : '';
+  getRoom: (roomCode: string, participantId?: number, nickname?: string): Promise<any> => {
+    const params = new URLSearchParams();
+    if (participantId) params.set('participant_id', String(participantId));
+    if (nickname) params.set('nickname', nickname);
+    const query = params.size ? `?${params.toString()}` : '';
     return apiClient.get<any>(`/rooms/${roomCode}${query}`);
   },
 
@@ -70,6 +73,7 @@ export const roomService = {
     answer_text?: string
     active_power_up?: string
     streak?: number
+    is_skipped?: boolean
   }): Promise<any> =>
     apiClient.post<any>(`/rooms/${roomCode}/submit-answer`, params),
 

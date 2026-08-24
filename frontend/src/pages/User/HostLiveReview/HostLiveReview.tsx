@@ -4,6 +4,7 @@ import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, Bar
 import { roomService } from '@/services'
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
 import { useHostAudioStream, QAChatBox, TopVotedQuestionsList, ChatMessage, QuestionVoteItem } from '@/features/QA'
+import { getWebSocketUrl } from '@/utils/getWebSocketUrl'
 
 interface ParticipantAnswerState {
   id: string
@@ -184,10 +185,7 @@ export const HostLiveReview: React.FC = () => {
     fetchLiveSession()
 
     // 1. Establish WebSocket for instant event-driven updates (zero log spam)
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
-    const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '')
-    const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=Host&isHost=true${token ? `&token=${token}` : ''}`
+    const wsUrl = getWebSocketUrl(`/api/v1/ws/rooms/${roomCode}?nickname=Host&isHost=true${token ? `&token=${token}` : ''}`)
 
     let socket: WebSocket | null = null
     let pingTimer: any = null
@@ -229,13 +227,11 @@ export const HostLiveReview: React.FC = () => {
             if (msg.type === "CHAT_MESSAGE_RECEIVED" || msg.t === "CMR") {
               const msgText = msg.text || msg.message || ""
               const msgSender = msg.sender || "User"
+              const msgId = msg.id || null
               if (msgText) {
                 setChatMessages((prev) => {
-                  const isDup = prev.some(
-                    (m) => m.sender === msgSender && m.text === msgText && (!msg.timestamp || !m.timestamp || m.timestamp === msg.timestamp)
-                  )
-                  if (isDup) return prev
-                  return [...prev, { sender: msgSender, text: msgText, avatar: msg.avatar, timestamp: msg.timestamp }]
+                  if (msgId && prev.some((m) => m.id === msgId)) return prev
+                  return [...prev, { id: msgId, sender: msgSender, text: msgText, avatar: msg.avatar, timestamp: msg.timestamp }]
                 })
               }
             }
@@ -422,6 +418,23 @@ export const HostLiveReview: React.FC = () => {
     } catch (e) {}
   }
 
+  const getHostAvatar = (): string | null => {
+    try {
+      const pStr = localStorage.getItem('user_profile')
+      if (pStr) {
+        const p = JSON.parse(pStr)
+        if (p?.avatar || p?.avatar_url) return p.avatar || p.avatar_url
+      }
+      const uStr = localStorage.getItem('user')
+      if (uStr) {
+        const u = JSON.parse(uStr)
+        if (u?.avatar || u?.avatar_url) return u.avatar || u.avatar_url
+      }
+    } catch (e) {}
+    return null
+  }
+  const hostAvatar = getHostAvatar()
+
   const handleSendChatMessage = async (msgContent: string) => {
     const text = msgContent.trim()
     if (!text) return
@@ -429,7 +442,7 @@ export const HostLiveReview: React.FC = () => {
     let sentViaWS = false
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
       try {
-        wsSocket.send(JSON.stringify({ type: "SEND_CHAT_MESSAGE", t: "SCM", sender: "Host", message: text }))
+        wsSocket.send(JSON.stringify({ type: "SEND_CHAT_MESSAGE", t: "SCM", sender: "Host", message: text, avatar: hostAvatar }))
         sentViaWS = true
       } catch (wsErr) {
         console.warn("WebSocket send chat message failed, using REST fallback:", wsErr)
@@ -438,14 +451,14 @@ export const HostLiveReview: React.FC = () => {
 
     if (!sentViaWS) {
       try {
-        const res = await roomService.sendChatMessage(roomCode, "Host", text)
+        const res = await roomService.sendChatMessage(roomCode, "Host", text, hostAvatar)
         if (res && res.text) {
           setChatMessages((prev) => {
             const isDuplicate = prev.some(
               (m) => m.text === res.text && m.sender === "Host"
             )
             if (isDuplicate) return prev
-            return [...prev, { sender: "Host", text: res.text, avatar: res.avatar, timestamp: res.timestamp }]
+            return [...prev, { sender: "Host", text: res.text, avatar: res.avatar || hostAvatar, timestamp: res.timestamp }]
           })
         }
       } catch (err) {
@@ -744,6 +757,7 @@ export const HostLiveReview: React.FC = () => {
                   messages={chatMessages}
                   onSendMessage={handleSendChatMessage}
                   currentNickname="Host"
+                  currentAvatar={hostAvatar}
                 />
               </div>
             </div>

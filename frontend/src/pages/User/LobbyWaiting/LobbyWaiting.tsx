@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 
 import { roomService } from '@/services'
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
+import { getWebSocketUrl } from '@/utils/getWebSocketUrl'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Player {
@@ -135,6 +136,8 @@ export const LobbyWaiting: React.FC = () => {
   const [hostMembers, setHostMembers] = useState<HostMember[]>([])
   const [createdAt, setCreatedAt] = useState<string>('')
   const [qrCodeUrl, setQrCodeUrl] = useState<string>((location.state as any)?.qrCodeUrl || '')
+  const [roomHostName, setRoomHostName] = useState<string | null>(null)
+  const [roomHostAvatar, setRoomHostAvatar] = useState<string | null>(null)
 
   // 1. Fetch room details to get status, created_at, and qr_code_url
   useEffect(() => {
@@ -166,6 +169,12 @@ export const LobbyWaiting: React.FC = () => {
         }
         if (res.qr_code_url) {
           setQrCodeUrl(res.qr_code_url)
+        }
+        if (res.host_name) {
+          setRoomHostName(res.host_name)
+        }
+        if (res.host_avatar) {
+          setRoomHostAvatar(res.host_avatar)
         }
       })
       .catch((err) => {
@@ -284,11 +293,8 @@ export const LobbyWaiting: React.FC = () => {
     const isReadyToConnect = isHost ? (roomId > 0) : (participantId > 0)
     if (!roomCode || !isReadyToConnect) return
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
-    const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '')
     const token = localStorage.getItem('token')
-    const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=${isHost}${token ? `&token=${token}` : ''}`
+    const wsUrl = getWebSocketUrl(`/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=${isHost}${token ? `&token=${token}` : ''}`)
 
     let socket: WebSocket | null = null
     let pingTimer: any = null
@@ -774,13 +780,23 @@ export const LobbyWaiting: React.FC = () => {
         <main className="flex-grow flex flex-col items-center justify-start px-4 md:px-10 gap-6 pb-6">
           {/* Center Card */}
           <section className="w-full bg-surface-container-lowest rounded-xl shadow-[0px_4px_12px_rgba(30,41,59,0.05)] border-2 border-primary-fixed p-8 flex flex-col items-center text-center gap-2">
-            <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center mb-2">
-              <span className="material-symbols-outlined text-primary text-4xl">school</span>
+            <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center mb-2 overflow-hidden shadow-inner border border-primary/20">
+              {roomHostAvatar ? (
+                <img src={roomHostAvatar} alt={roomHostName || 'Host'} className="w-full h-full object-cover" />
+              ) : (
+                <span className="material-symbols-outlined text-primary text-4xl">school</span>
+              )}
             </div>
 
             <h1 className="font-headline-md text-headline-md text-on-surface">
               Waiting for the Game to Start
             </h1>
+
+            {roomHostName && (
+              <span className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-1 bg-amber-50 text-amber-900 border border-amber-300/80 rounded-full text-xs font-black shadow-2xs">
+                👑 Host: {roomHostName}
+              </span>
+            )}
 
             {/* Room code */}
             <div className="mt-5 flex flex-col items-center">

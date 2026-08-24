@@ -295,12 +295,14 @@ class CRUDRoom:
         answer_text: Optional[str] = None,
         active_power_up: Optional[str] = None,
         client_streak: Optional[int] = None,
+        is_skipped: bool = False,
         now: Optional[datetime.datetime] = None
     ) -> Tuple[bool, float, float, Optional[str]]:
         """
         Submit participant's answer to the active question.
         Supports both MULTIPLE_CHOICE (using selected_option_id) and SHORT_ANSWER (using answer_text).
         Validates timeouts, calculates dynamic scores based on speed, streak bonus, and aggregates participant score.
+        If is_skipped is True (or active_power_up == 'skip'), score is 0 but winning streak is preserved intact.
         """
         if now is None:
             now = datetime.datetime.utcnow()
@@ -340,6 +342,7 @@ class CRUDRoom:
         selected_variant_option = None
         variant_question = None
         is_correct = False
+        is_skip_action = bool(is_skipped or active_power_up == 'skip' or (selected_option_id is None and answer_text is None))
 
         if participant.quiz_variant_id:
             variant_question = db.query(QuizVariantQuestion).filter(
@@ -348,43 +351,60 @@ class CRUDRoom:
             ).first()
             if not variant_question:
                 raise ValueError("Question is unavailable in your assigned quiz version.")
-            variant_options = list(variant_question.options)
-            if is_short_answer:
-                normalized = (answer_text or "").strip().casefold()
-                selected_variant_option = next(
-                    (
-                        option for option in variant_options
-                        if option.is_correct and normalized == (option.content or "").strip().casefold()
-                    ),
-                    None,
-                )
-                is_correct = selected_variant_option is not None
-            elif selected_option_id is not None:
-                selected_variant_option = db.query(QuizVariantOption).filter(
-                    QuizVariantOption.id == selected_option_id,
-                    QuizVariantOption.variant_question_id == variant_question.id,
-                ).first()
-                if not selected_variant_option:
-                    raise ValueError("Selected option is invalid for your assigned quiz version.")
-                is_correct = selected_variant_option.is_correct
-        elif is_short_answer:
-            if answer_text:
-                match_text = answer_text.strip().lower()
-                for opt in options:
-                    if opt.is_correct and opt.content and opt.content.strip().lower() == match_text:
-                        selected_option = opt
-                        is_correct = True
-                        break
-                if not selected_option and options:
-                    selected_option = options[0]
-        else:
-            if selected_option_id is not None:
-                selected_option = next((o for o in options if o.id == selected_option_id), None)
-                if not selected_option:
-                    raise ValueError("Selected option is invalid for this question.")
-                is_correct = selected_option.is_correct or False
+
+        if not is_skip_action:
+            if variant_question:
+                variant_options = list(variant_question.options)
+                variant_type = (variant_question.type or question.type or "").lower().strip()
+                is_short_answer = variant_type in [
+                    "short_answer", "short answer", "short", "fill in the blank",
+                    "fill_in_the_blank", "fill_in",
+                ]
+                if is_short_answer:
+                    normalized = (answer_text or "").strip().casefold()
+                    selected_variant_option = next(
+                        (
+                            option for option in variant_options
+                            if option.is_correct
+                            and normalized == (option.content or "").strip().casefold()
+                        ),
+                        None,
+                    )
+                    is_correct = selected_variant_option is not None
+                elif selected_option_id is not None:
+                    try:
+                        target_option_id = int(selected_option_id)
+                    except (ValueError, TypeError):
+                        target_option_id = selected_option_id
+                    selected_variant_option = db.query(QuizVariantOption).filter(
+                        QuizVariantOption.id == target_option_id,
+                        QuizVariantOption.variant_question_id == variant_question.id,
+                    ).first()
+                    if not selected_variant_option:
+                        raise ValueError("Selected option is invalid for your assigned quiz version.")
+                    is_correct = bool(selected_variant_option.is_correct)
+            elif is_short_answer:
+                if answer_text:
+                    match_text = answer_text.strip().lower()
+                    for opt in options:
+                        if opt.is_correct and opt.content and opt.content.strip().lower() == match_text:
+                            selected_option = opt
+                            is_correct = True
+                            break
+                    if not selected_option and options:
+                        selected_option = options[0]
             else:
-                is_correct = False
+                if selected_option_id is not None:
+                    try:
+                        target_opt_id = int(selected_option_id)
+                    except (ValueError, TypeError):
+                        target_opt_id = selected_option_id
+                    selected_option = next((o for o in options if o.id == target_opt_id), None)
+                    if not selected_option:
+                        raise ValueError("Selected option is invalid for this question.")
+                    is_correct = bool(selected_option.is_correct)
+                else:
+                    is_correct = False
 
         # 3. Check Timeout
         is_timeout = False
@@ -396,9 +416,8 @@ class CRUDRoom:
 
         current_streak = participant.streak if participant.streak is not None else (client_streak or 0)
 
-        # 4. Calculate dynamic score (max 1000, min 500) + speed order bonus (1st: +100, 2nd & 3rd: +50) + streak bonus (streak * 10)
-        score = 0.0
-        if is_correct and not is_timeout:
+        # 4. Calculate dynamic score + streak bonus
+        if is_correct and not is_timeout and not is_skip_action:
             new_streak = current_streak + 1
             participant.streak = new_streak
 
@@ -416,32 +435,26 @@ class CRUDRoom:
                 ParticipantAnswer.is_correct == True
             ).scalar() or 0
 
-            # Order bonus: 1st person -> +100, 2nd & 3rd person -> +50, 4th+ -> +0
+            speed_bonus = 0.0
             if correct_count == 0:
                 speed_bonus = 100.0
-            elif correct_count in (1, 2):
+            elif correct_count < 3:
                 speed_bonus = 50.0
-            else:
-                speed_bonus = 0.0
 
-            # Streak bonus: +10 per streak count (e.g. 7th streak = +70 pts)
-            streak_bonus = new_streak * 10.0
-
+            streak_bonus = float(new_streak * 10)
             raw_score = base_score + speed_bonus + streak_bonus
-
-            # Power-up bonus: double points
             if active_power_up == 'double':
                 raw_score *= 2.0
-
             score = float(round(raw_score))
         else:
-            if active_power_up == 'shield':
+            if active_power_up == 'shield' or active_power_up == 'skip' or is_skip_action:
                 participant.streak = current_streak
             else:
                 participant.streak = 0
+            score = 0.0
 
-        # 5. Save ParticipantAnswer
-        db_answer = ParticipantAnswer(
+        # Create or Record Answer
+        pa = ParticipantAnswer(
             participant_id=participant.id,
             question_id=question_id,
             selected_option_id=selected_option.id if selected_option else None,
@@ -452,32 +465,42 @@ class CRUDRoom:
             score=score,
             answered_at=now
         )
-        db.add(db_answer)
+        db.add(pa)
 
-        # 6. Aggregate score to Participant
+        # Update participant aggregate score
         participant.score = float(round(participant.score + score))
         db.add(participant)
 
         db.commit()
         db.refresh(participant)
 
-        # Determine the correct answer key to send back.
+        # Determine the correct answer key to send back (Suppressed in EXAM mode).
         correct_option_key = None
-        if is_short_answer:
+        if room.mode == "EXAM":
+            correct_option_key = None
+        elif is_short_answer:
             answer_options = list(variant_question.options) if variant_question else options
             correct_opt = next((o for o in answer_options if o.is_correct), None)
             correct_option_key = correct_opt.content if correct_opt else None
-        else:
-            KEYS = ["A", "B", "C", "D"]
-            answer_options = list(variant_question.options) if variant_question else options
+        elif variant_question:
+            keys = [chr(ord("A") + index) for index in range(20)]
             sorted_options = sorted(
-                answer_options,
-                key=(lambda option: option.position) if variant_question else (lambda option: option.id),
+                variant_question.options,
+                key=lambda option: (option.position, option.id),
             )
-            for idx, opt in enumerate(sorted_options):
-                if opt.is_correct:
-                    correct_option_key = KEYS[idx] if idx < len(KEYS) else "A"
+            for index, option in enumerate(sorted_options):
+                if option.is_correct:
+                    correct_option_key = keys[index] if index < len(keys) else str(index + 1)
                     break
+        else:
+            from app.utils.option_utils import format_question_options, get_shuffle_seed
+            should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+            seed = get_shuffle_seed(room.id, question_id, participant.nickname) if should_shuffle else None
+            _, correct_option_key = format_question_options(
+                options=options,
+                should_shuffle=should_shuffle,
+                seed=seed
+            )
 
         return is_correct, score, participant.score, correct_option_key
 
@@ -516,6 +539,7 @@ class CRUDRoom:
             Room.ended_at,
             Quiz.title.label("quiz_title"),
             User.fullname.label("host_name"),
+            User.avatar.label("host_avatar"),
             func.count(Participant.id).label("participant_count")
         ).join(
             Quiz, Room.quiz_id == Quiz.id
@@ -593,6 +617,7 @@ class CRUDRoom:
                 title=f"Room {r.room_code}", 
                 room_code=r.room_code,
                 host_name=r.host_name or "Unknown",
+                host_avatar=r.host_avatar or None,
                 quiz_title=r.quiz_title or "Unknown",
                 status=r.status or "WAITING",
                 participant_count=r.participant_count or 0,
