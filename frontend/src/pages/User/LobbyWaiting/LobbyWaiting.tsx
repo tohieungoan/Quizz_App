@@ -290,8 +290,8 @@ export const LobbyWaiting: React.FC = () => {
 
   // WebSocket real-time synchronization hook for participant roster and state sync
   useEffect(() => {
-    const isReadyToConnect = isHost ? (roomId > 0) : (participantId > 0)
-    if (!roomCode || !isReadyToConnect) return
+    const isReadyToConnect = !!roomCode
+    if (!isReadyToConnect) return
 
     const token = localStorage.getItem('token')
     const wsUrl = getWebSocketUrl(`/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=${isHost}${token ? `&token=${token}` : ''}`)
@@ -382,38 +382,47 @@ export const LobbyWaiting: React.FC = () => {
               }
 
               // 2. Re-fetch full participant details (with equipped titles and avatars) from API
-              const targetRoomId = roomIdRef.current || roomId || state?.roomId
-              if (targetRoomId) {
-                roomService.getParticipants(targetRoomId)
-                  .then((res: any[]) => {
-                    const loggedAvatar = getLoggedInUserAvatar()
-                    if (isHost) {
-                      setHostMembers(res.map((p: any): HostMember => ({
-                        nickname: p.nickname || 'Guest',
-                        avatar: p.avatar || null,
+              const syncRosterFromAPI = async () => {
+                try {
+                  let res: any[] = []
+                  const targetRoomId = roomIdRef.current || roomId || state?.roomId
+                  if (targetRoomId) {
+                    res = await roomService.getParticipants(targetRoomId)
+                  } else if (roomCode) {
+                    const roomData = await roomService.getRoom(roomCode)
+                    if (roomData?.id) roomIdRef.current = roomData.id
+                    res = roomData.participants || []
+                  }
+                  const loggedAvatar = getLoggedInUserAvatar()
+                  if (isHost) {
+                    setHostMembers(res.map((p: any): HostMember => ({
+                      nickname: p.nickname || 'Guest',
+                      avatar: p.avatar || null,
+                      equipped_title: p.equipped_title ?? null,
+                    })))
+                  } else {
+                    const mapped: Player[] = res.map((p: any): Player => {
+                      const nick = p.nickname || 'Guest'
+                      const isMe = nick === nickname
+                      const color = getAvatarColor(String(p.id) + nick)
+                      return {
+                        id: String(p.id),
+                        name: nick,
+                        initials: getInitials(nick),
+                        avatar: p.avatar || (isMe ? loggedAvatar : null),
+                        avatarBg: isMe ? 'bg-primary' : color.bg,
+                        avatarText: isMe ? 'text-on-primary' : color.text,
+                        isMe,
                         equipped_title: p.equipped_title ?? null,
-                      })))
-                    } else {
-                      const mapped: Player[] = res.map((p: any): Player => {
-                        const nick = p.nickname || 'Guest'
-                        const isMe = nick === nickname
-                        const color = getAvatarColor(String(p.id) + nick)
-                        return {
-                          id: String(p.id),
-                          name: nick,
-                          initials: getInitials(nick),
-                          avatar: p.avatar || (isMe ? loggedAvatar : null),
-                          avatarBg: isMe ? 'bg-primary' : color.bg,
-                          avatarText: isMe ? 'text-on-primary' : color.text,
-                          isMe,
-                          equipped_title: p.equipped_title ?? null,
-                        }
-                      })
-                      setPlayers(mapped)
-                    }
-                  })
-                  .catch((err: any) => console.error("Failed to refresh participants:", err))
+                      }
+                    })
+                    setPlayers(mapped)
+                  }
+                } catch (err: any) {
+                  console.error("Failed to refresh participants:", err)
+                }
               }
+              syncRosterFromAPI()
             } else if (data.type === "GAME_STARTED") {
               if (!isHost) {
                 navigate('/play', {
