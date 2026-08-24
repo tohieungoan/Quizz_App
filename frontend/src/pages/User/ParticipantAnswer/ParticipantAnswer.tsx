@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award, ThumbsUp, Mic, MessageSquare, Volume2 } from 'lucide-react'
+import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award, ThumbsUp, Mic, MessageSquare, Volume2, FastForward } from 'lucide-react'
 import { roomService } from '../../../services/roomService'
 import { useAuth } from '../../../hooks/useAuth'
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
@@ -69,7 +69,6 @@ export const ParticipantAnswer: React.FC = () => {
   const [streak, setStreak] = useState<number>(() => state?.streak ?? Number(sessionStorage.getItem('play_streak') || 0))
   const [roomMode, setRoomMode] = useState<string>(() => state?.mode || sessionStorage.getItem('play_room_mode') || 'CLASSIC')
   const activePowerUp = state?.activePowerUp || null
-  const effectivePowerUp = roomMode === 'EXAM' ? null : activePowerUp
   const fromSource = state?.fromSource || (localStorage.getItem('token') ? 'dashboard' : 'landing')
   const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room'
 
@@ -98,6 +97,8 @@ export const ParticipantAnswer: React.FC = () => {
 
   // Dynamic Gameplay States
   const [activeQuestion, setActiveQuestion] = useState<ActiveQuestion | null>(null)
+  const isFiftyUnsupportedForActiveQuestion = activeQuestion?.type === 'TRUE_FALSE' || activeQuestion?.type === 'SHORT_ANSWER' || activeQuestion?.type === 'SHORT_TEXT' || (activeQuestion?.options && activeQuestion.options.length <= 2)
+  const effectivePowerUp = roomMode === 'EXAM' ? null : (activePowerUp === 'fifty' && isFiftyUnsupportedForActiveQuestion ? null : activePowerUp)
   const [questionIndex, setQuestionIndex] = useState(1)
   const [timeLeft, setTimeLeft] = useState(20)
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null)
@@ -111,6 +112,8 @@ export const ParticipantAnswer: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [audioPlayCount, setAudioPlayCount] = useState(0)
   const [allowShowRank, setAllowShowRank] = useState(true)
+  const [allowSkipQuestion, setAllowSkipQuestion] = useState(true)
+  const [allowAnonymousQuestion, setAllowAnonymousQuestion] = useState(true)
   const [leaderboardRoster, setLeaderboardRoster] = useState<any[]>([])
 
   // Q&A & Voting states
@@ -258,7 +261,7 @@ export const ParticipantAnswer: React.FC = () => {
     if (!roomCode) return
     setLoading(true)
     try {
-      const roomData = await roomService.getRoom(roomCode)
+      const roomData = await roomService.getRoom(roomCode, nickname)
 
       if (roomData.qa_state) {
         if (roomData.qa_state.is_active || String(roomData.qa_state.is_active) === 'true') {
@@ -285,6 +288,12 @@ export const ParticipantAnswer: React.FC = () => {
       }
       if (roomData.allow_show_rank !== undefined) {
         setAllowShowRank(roomData.allow_show_rank)
+      }
+      if (roomData.allow_skip_question !== undefined) {
+        setAllowSkipQuestion(roomData.allow_skip_question)
+      }
+      if (roomData.allow_anonymous_question !== undefined) {
+        setAllowAnonymousQuestion(roomData.allow_anonymous_question)
       }
       
       if (roomData.status === 'ENDED') {
@@ -630,14 +639,14 @@ export const ParticipantAnswer: React.FC = () => {
   }, [loading, activeQuestion, startedAtMs, isAnswered])
 
   // Submit Answer to API (WebSocket primary, REST HTTP fallback)
-  const handleAnswerSubmit = async (optionId: number | null, keyOrText: string | null) => {
+  const handleAnswerSubmit = async (optionId: number | null, keyOrText: string | null, isSkipped: boolean = false) => {
     if (isAnswered) return
     if (!activeQuestion) return
 
     const submittedQuestionId = activeQuestion.id
 
     setIsAnswered(true)
-    setSelectedKey(keyOrText)
+    setSelectedKey(isSkipped ? 'SKIPPED' : keyOrText)
 
     // Fast-path: Submit over persistent WebSocket connection (<5ms latency)
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -653,10 +662,12 @@ export const ParticipantAnswer: React.FC = () => {
           selected_option_id: optionId,
           txt: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
           answer_text: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
-          pw: activePowerUp || undefined,
-          active_power_up: activePowerUp || undefined,
+          pw: isSkipped ? 'skip' : (activePowerUp || undefined),
+          active_power_up: isSkipped ? 'skip' : (activePowerUp || undefined),
           st: streak,
-          streak: streak
+          streak: streak,
+          is_skipped: isSkipped,
+          is_skip: isSkipped,
         }))
         return
       } catch (wsErr) {
@@ -671,8 +682,9 @@ export const ParticipantAnswer: React.FC = () => {
         question_id: submittedQuestionId,
         selected_option_id: optionId as any,
         answer_text: activeQuestion.type === 'SHORT_ANSWER' ? (keyOrText || '') : undefined,
-        active_power_up: activePowerUp || undefined,
-        streak: streak
+        active_power_up: isSkipped ? 'skip' : (activePowerUp || undefined),
+        streak: streak,
+        is_skipped: isSkipped,
       })
 
       // If active question has transitioned during the network request, discard results
@@ -685,7 +697,7 @@ export const ParticipantAnswer: React.FC = () => {
       const pointsForThisQuestion = Math.round(res.score || 0)
 
       const totalNewScore = res.total_score !== undefined && res.total_score !== null ? res.total_score : accumulatedScore + (isAnsCorrect ? pointsForThisQuestion : 0)
-      const updatedStreak = isAnsCorrect ? streak + 1 : (activePowerUp === 'shield' ? streak : 0)
+      const updatedStreak = isAnsCorrect ? streak + 1 : (isSkipped || activePowerUp === 'shield' ? streak : 0)
 
       setIsCorrect(isAnsCorrect)
       setPointsEarned(isAnsCorrect ? pointsForThisQuestion : 0)
@@ -715,7 +727,7 @@ export const ParticipantAnswer: React.FC = () => {
       console.error("Failed to submit answer:", err)
       if (activeQuestionIdRef.current !== submittedQuestionId) return
 
-      const updatedStreak = activePowerUp === 'shield' ? streak : 0
+      const updatedStreak = isSkipped || activePowerUp === 'shield' ? streak : 0
       setStreak(updatedStreak)
       sessionStorage.setItem('play_streak', String(updatedStreak))
       sessionStorage.setItem('play_final_streak', String(updatedStreak))
@@ -749,6 +761,14 @@ export const ParticipantAnswer: React.FC = () => {
 
   const getOptionStyle = (key: string) => {
     if (isAnswered) {
+      if (roomMode === 'EXAM') {
+        const isSelected = selectedKey === key;
+        if (isSelected) {
+          return 'border-2 border-indigo-500 bg-indigo-600 text-white ring-4 ring-indigo-500/20 scale-[1.02] shadow-lg font-bold';
+        }
+        return 'border border-slate-200 bg-slate-50 text-slate-400 opacity-50';
+      }
+
       const isSelected = selectedKey === key;
       const isCorrectOption = key === correctOptionKey;
 
@@ -894,6 +914,8 @@ export const ParticipantAnswer: React.FC = () => {
                 onSendMessage={handleSendChatMessage}
                 currentNickname={nickname}
                 currentAvatar={myAvatar}
+                allowAnonymousQuestion={allowAnonymousQuestion}
+                isGuestUser={status !== 'authenticated' || (!localStorage.getItem('user_profile') && !localStorage.getItem('user'))}
               />
             </div>
           </div>
@@ -958,15 +980,17 @@ export const ParticipantAnswer: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs font-black">
-                <Flame className="w-3.5 h-3.5 fill-current text-amber-500 animate-bounce" />
-                <span>{streak}</span>
+            {roomMode !== 'EXAM' && (
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs font-black">
+                  <Flame className="w-3.5 h-3.5 fill-current text-amber-500 animate-bounce" />
+                  <span>{streak}</span>
+                </div>
+                <span className="text-xs font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-full">
+                  {Math.round(accumulatedScore)} Pts
+                </span>
               </div>
-              <span className="text-xs font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-full">
-                {Math.round(accumulatedScore)} Pts
-              </span>
-            </div>
+            )}
           </div>
 
           {/* Question Index Bar */}
@@ -992,17 +1016,16 @@ export const ParticipantAnswer: React.FC = () => {
             </div>
           </div>
 
-          {/* Active Power-Up Alert Banner (Hidden in EXAM mode or unsupported question types) */}
+          {/* Active Power-Up Alert Banner */}
           {(() => {
-            const isUnsupported = activeQuestion?.type === 'TRUE_FALSE' || activeQuestion?.type === 'SHORT_ANSWER' || activeQuestion?.type === 'SHORT_TEXT'
-            if (effectivePowerUp && isUnsupported) {
+            if (activePowerUp === 'fifty' && isFiftyUnsupportedForActiveQuestion) {
               return (
-                <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-100 text-amber-950 border-2 border-amber-300 rounded-xl text-xs font-bold animate-in slide-in-from-top-2 duration-300 shadow-sm">
+                <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-100 text-amber-955 border-2 border-amber-300 rounded-xl text-xs font-bold animate-in slide-in-from-top-2 duration-300 shadow-sm">
                   <div className="w-5 h-5 rounded-full bg-amber-200 flex items-center justify-center font-extrabold text-amber-800 flex-shrink-0">
                     ⚠️
                   </div>
                   <span>
-                    Power-ups cannot be used for True/False or Short Text questions. Please choose another item.
+                    50:50 Split is not applicable for True/False or Short Text questions.
                   </span>
                 </div>
               )
@@ -1163,13 +1186,25 @@ export const ParticipantAnswer: React.FC = () => {
 
         {/* Active Power-Up Selection Link Button (Disabled in EXAM mode) */}
         {!isAnswered && roomMode !== 'EXAM' && (
-          <button
-            type="button"
-            onClick={() => navigate('/powerups', { state: { nickname, roomCode, score: accumulatedScore, streak, questionNumber: questionIndex, questionType: activeQuestion?.type } })}
-            className="w-full py-4 bg-amber-100 hover:bg-amber-200 border-2 border-amber-300 text-amber-955 rounded-2xl font-button text-xs font-black transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 fill-amber-500 text-amber-600 animate-pulse" /> Select a Power-Up / Booster
-          </button>
+          <div className="w-full flex flex-col gap-2.5">
+            <button
+              type="button"
+              onClick={() => navigate('/powerups', { state: { nickname, roomCode, score: accumulatedScore, streak, questionNumber: questionIndex, questionType: activeQuestion?.type, optionsCount: activeQuestion?.options?.length || 0 } })}
+              className="w-full py-4 bg-amber-100 hover:bg-amber-200 border-2 border-amber-300 text-amber-955 rounded-2xl font-button text-xs font-black transition-all shadow-md active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 fill-amber-500 text-amber-600 animate-pulse" /> Select a Power-Up / Booster
+            </button>
+
+            {allowSkipQuestion && (
+              <button
+                type="button"
+                onClick={() => handleAnswerSubmit(null, null, true)}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 text-slate-700 rounded-2xl font-button text-xs font-black transition-all shadow-sm active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <FastForward className="w-4 h-4 text-slate-500 fill-slate-200 animate-pulse" /> Skip Question (Keep Streak intact)
+              </button>
+            )}
+          </div>
         )}
 
         {/* Result Popup Overlay */}
@@ -1179,7 +1214,15 @@ export const ParticipantAnswer: React.FC = () => {
               
               {/* Header result badge */}
               <div className="flex justify-center mb-4">
-                {isCorrect ? (
+                {roomMode === 'EXAM' ? (
+                  <span className="text-xs font-black text-indigo-800 bg-indigo-100 border-2 border-indigo-300 px-4 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                    <CheckCircle2 className="w-4 h-4 text-indigo-600 fill-indigo-100" /> Answer Recorded
+                  </span>
+                ) : selectedKey === 'SKIPPED' ? (
+                  <span className="text-xs font-black text-amber-800 bg-amber-100 border-2 border-amber-300 px-4 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                    <FastForward className="w-4 h-4 text-amber-600 fill-amber-100" /> Question Skipped
+                  </span>
+                ) : isCorrect ? (
                   <span className="text-xs font-black text-emerald-700 bg-emerald-100 border-2 border-emerald-300 px-4 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-100" /> Correct
                   </span>
@@ -1190,38 +1233,44 @@ export const ParticipantAnswer: React.FC = () => {
                 )}
               </div>
 
-              <h3 className={`text-xl font-black mb-2 ${isCorrect ? 'text-emerald-800' : 'text-rose-800'}`}>
-                {isCorrect ? 'Awesome Job!' : 'Better Luck Next Time!'}
+              <h3 className={`text-xl font-black mb-2 ${roomMode === 'EXAM' ? 'text-indigo-900' : selectedKey === 'SKIPPED' ? 'text-amber-800' : isCorrect ? 'text-emerald-800' : 'text-rose-800'}`}>
+                {roomMode === 'EXAM' ? 'Answer Recorded!' : selectedKey === 'SKIPPED' ? 'Question Skipped!' : isCorrect ? 'Awesome Job!' : 'Better Luck Next Time!'}
               </h3>
 
               <p className="text-xs text-slate-800 font-extrabold mb-6 leading-relaxed">
-                {isCorrect 
-                  ? `You answered quickly and earned points + Speed Bonus!` 
-                  : MOTIVATIONAL_MESSAGES[questionIndex % MOTIVATIONAL_MESSAGES.length]
+                {roomMode === 'EXAM'
+                  ? 'Your response has been saved securely for this exam. Moving to next question...'
+                  : selectedKey === 'SKIPPED'
+                    ? 'You skipped this question. Your winning streak has been preserved!'
+                    : isCorrect 
+                      ? `You answered quickly and earned points + Speed Bonus!` 
+                      : MOTIVATIONAL_MESSAGES[questionIndex % MOTIVATIONAL_MESSAGES.length]
                 }
               </p>
 
-              <div className="flex justify-center items-center gap-6 py-2 mb-6">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-outline uppercase tracking-wider font-bold">Points Earned</span>
-                  <span className={`text-2xl font-black ${isCorrect ? 'text-emerald-700' : 'text-slate-800'}`}>
-                    +{pointsEarned}
-                  </span>
+              {roomMode !== 'EXAM' && (
+                <div className="flex justify-center items-center gap-6 py-2 mb-6">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-outline uppercase tracking-wider font-bold">Points Earned</span>
+                    <span className={`text-2xl font-black ${isCorrect ? 'text-emerald-700' : 'text-slate-800'}`}>
+                      +{pointsEarned}
+                    </span>
+                  </div>
+
+                  <div className="h-8 w-px bg-outline-variant/30" />
+
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-outline uppercase tracking-wider font-bold">Current Streak</span>
+                    <span className="text-2xl font-black text-amber-500 flex items-center gap-1.5">
+                      <Flame className="w-6 h-6 fill-current" />
+                      {streak}
+                    </span>
+                  </div>
                 </div>
+              )}
 
-                <div className="h-8 w-px bg-outline-variant/30" />
-
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-outline uppercase tracking-wider font-bold">Current Streak</span>
-                  <span className="text-2xl font-black text-amber-500 flex items-center gap-1.5">
-                    <Flame className="w-6 h-6 fill-current" />
-                    {streak}
-                  </span>
-                </div>
-              </div>
-
-              {/* Periodic Round Leaderboard Standings (Every 3 questions) */}
-              {allowShowRank && questionIndex % 3 === 0 && leaderboardRoster.length > 0 && (
+              {/* Periodic Round Leaderboard Standings (Every 3 questions - Disabled in EXAM mode) */}
+              {allowShowRank && roomMode !== 'EXAM' && questionIndex % 3 === 0 && leaderboardRoster.length > 0 && (
                 <div className="mt-4 pt-4 border-t-2 border-slate-200 text-left mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-black text-primary uppercase tracking-wider flex items-center gap-1.5">

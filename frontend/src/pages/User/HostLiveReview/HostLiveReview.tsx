@@ -420,6 +420,23 @@ export const HostLiveReview: React.FC = () => {
     } catch (e) {}
   }
 
+  const getHostAvatar = (): string | null => {
+    try {
+      const pStr = localStorage.getItem('user_profile')
+      if (pStr) {
+        const p = JSON.parse(pStr)
+        if (p?.avatar || p?.avatar_url) return p.avatar || p.avatar_url
+      }
+      const uStr = localStorage.getItem('user')
+      if (uStr) {
+        const u = JSON.parse(uStr)
+        if (u?.avatar || u?.avatar_url) return u.avatar || u.avatar_url
+      }
+    } catch (e) {}
+    return null
+  }
+  const hostAvatar = getHostAvatar()
+
   const handleSendChatMessage = async (msgContent: string) => {
     const text = msgContent.trim()
     if (!text) return
@@ -427,7 +444,7 @@ export const HostLiveReview: React.FC = () => {
     let sentViaWS = false
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
       try {
-        wsSocket.send(JSON.stringify({ type: "SEND_CHAT_MESSAGE", t: "SCM", sender: "Host", message: text }))
+        wsSocket.send(JSON.stringify({ type: "SEND_CHAT_MESSAGE", t: "SCM", sender: "Host", message: text, avatar: hostAvatar }))
         sentViaWS = true
       } catch (wsErr) {
         console.warn("WebSocket send chat message failed, using REST fallback:", wsErr)
@@ -436,14 +453,14 @@ export const HostLiveReview: React.FC = () => {
 
     if (!sentViaWS) {
       try {
-        const res = await roomService.sendChatMessage(roomCode, "Host", text)
+        const res = await roomService.sendChatMessage(roomCode, "Host", text, hostAvatar)
         if (res && res.text) {
           setChatMessages((prev) => {
             const isDuplicate = prev.some(
               (m) => m.text === res.text && m.sender === "Host"
             )
             if (isDuplicate) return prev
-            return [...prev, { sender: "Host", text: res.text, avatar: res.avatar, timestamp: res.timestamp }]
+            return [...prev, { sender: "Host", text: res.text, avatar: res.avatar || hostAvatar, timestamp: res.timestamp }]
           })
         }
       } catch (err) {
@@ -742,6 +759,7 @@ export const HostLiveReview: React.FC = () => {
                   messages={chatMessages}
                   onSendMessage={handleSendChatMessage}
                   currentNickname="Host"
+                  currentAvatar={hostAvatar}
                 />
               </div>
             </div>

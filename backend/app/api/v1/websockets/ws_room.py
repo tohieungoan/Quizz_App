@@ -98,6 +98,7 @@ async def websocket_room(
                         answer_text = data.get("answer_text") or data.get("txt")
                         active_power_up = data.get("active_power_up") or data.get("pw")
                         streak = data.get("streak") or data.get("st") or 0
+                        is_skipped = bool(data.get("is_skipped") or data.get("is_skip") or active_power_up == "skip")
 
                         from starlette.concurrency import run_in_threadpool
                         from app.models.room import Participant
@@ -111,10 +112,18 @@ async def websocket_room(
                                     if not db_room or db_room.status != "PLAYING":
                                         return None, "Room is not active for submission."
 
-                                    participant = db_session.query(Participant).filter(
-                                        Participant.id == participant_id,
-                                        Participant.room_id == db_room.id
-                                    ).first()
+                                    participant = None
+                                    if participant_id:
+                                        participant = db_session.query(Participant).filter(
+                                            Participant.id == participant_id,
+                                            Participant.room_id == db_room.id
+                                        ).first()
+
+                                    if not participant and decoded_nickname:
+                                        participant = db_session.query(Participant).filter(
+                                            Participant.nickname == decoded_nickname,
+                                            Participant.room_id == db_room.id
+                                        ).first()
 
                                     if not participant:
                                         return None, "Participant not found."
@@ -129,6 +138,7 @@ async def websocket_room(
                                         answer_text=answer_text,
                                         active_power_up=active_power_up,
                                         client_streak=streak,
+                                        is_skipped=is_skipped,
                                         now=now
                                     )
                                     if participant.user_id:
@@ -150,19 +160,7 @@ async def websocket_room(
                                 logger.warning(f"Background DB submit_answer error: {db_err}")
                                 return None, str(db_err)
 
-                        # 1. Update Redis RAM state (<1ms)
-                        redis_total_score, ans_payload = await redis_room_service.submit_answer_redis(
-                            room_code=room_code,
-                            participant_id=participant_id,
-                            question_id=question_id,
-                            selected_option_id=selected_option_id,
-                            answer_text=answer_text,
-                            is_correct=True,
-                            score=100,
-                            correct_option_key=None,
-                        )
-
-                        # 2. Synchronize DB persistence task to get exact scoring & option key
+                        # 1. Synchronize DB persistence task to get exact scoring & option key
                         res, err = await run_in_threadpool(_do_submit_answer)
                         if res:
                             is_correct = res["is_correct"]
@@ -170,10 +168,24 @@ async def websocket_room(
                             total_score = res["total_score"]
                             correct_option_key = res["correct_option_key"]
                         else:
-                            is_correct = True
-                            score = 100
-                            total_score = redis_total_score or 100
+                            is_correct = False
+                            score = 0.0
+                            total_score = 0.0
                             correct_option_key = None
+
+                        # 2. Update Redis RAM state with actual calculated score (<1ms)
+                        redis_total_score, ans_payload = await redis_room_service.submit_answer_redis(
+                            room_code=room_code,
+                            participant_id=participant_id,
+                            question_id=question_id,
+                            selected_option_id=selected_option_id,
+                            answer_text=answer_text,
+                            is_correct=is_correct,
+                            score=score,
+                            correct_option_key=correct_option_key,
+                        )
+                        if redis_total_score:
+                            total_score = redis_total_score
 
                         # 3. Send response back to sender client
                         await websocket.send_json({
@@ -223,12 +235,20 @@ async def websocket_room(
                                     q_idx = db_room.current_question_index - 1
                                     if 0 <= q_idx < len(db_room.quiz.questions):
                                         q = db_room.quiz.questions[q_idx]
+                                        from app.utils.option_utils import format_question_options, get_shuffle_seed
+                                        should_shuffle = bool(getattr(db_room, "shuffle_options", False) or (db_room.quiz and getattr(db_room.quiz, "shuffle_options", False)))
+                                        seed = get_shuffle_seed(db_room.id, q.id, decoded_nickname) if should_shuffle else None
+                                        options_live, _ = format_question_options(
+                                            options=q.options or [],
+                                            should_shuffle=should_shuffle,
+                                            seed=seed
+                                        )
                                         active_q = {
                                             "id": q.id,
                                             "text": q.content,
                                             "type": q.type,
                                             "time_limit": q.time_limit,
-                                            "options": [{"id": o.id, "key": chr(65 + i), "label": o.content} for i, o in enumerate(q.options)]
+                                            "options": options_live
                                         }
                                         if db_room.current_question_started_at:
                                             elapsed = (datetime.datetime.utcnow() - db_room.current_question_started_at).total_seconds()
@@ -328,6 +348,34 @@ async def websocket_room(
 
                 elif msg_type in ["SEND_CHAT_MESSAGE", "SCM"]:
                     try:
+                        # Check allow_anonymous_question rule for guest participants
+                        def _check_anon_qa_permission():
+                            with SessionLocal() as db_session:
+                                db_room = crud_room.get_by_code(db=db_session, room_code=room_code)
+                                if db_room and not getattr(db_room, "allow_anonymous_question", True):
+                                    participant = None
+                                    if participant_id:
+                                        participant = db_session.query(Participant).filter(
+                                            Participant.id == participant_id,
+                                            Participant.room_id == db_room.id
+                                        ).first()
+                                    if not participant and decoded_nickname:
+                                        participant = db_session.query(Participant).filter(
+                                            Participant.nickname == decoded_nickname,
+                                            Participant.room_id == db_room.id
+                                        ).first()
+                                    if not participant or not participant.user_id:
+                                        return False
+                                return True
+
+                        allowed = await run_in_threadpool(_check_anon_qa_permission)
+                        if not allowed:
+                            await websocket.send_json({
+                                "type": "ERROR",
+                                "message": "Anonymous Q&A is disabled in this room. Please log in to participate."
+                            })
+                            continue
+
                         sender = data.get("sender") or decoded_nickname or "User"
                         text = data.get("message") or data.get("text") or ""
                         avatar = data.get("avatar")

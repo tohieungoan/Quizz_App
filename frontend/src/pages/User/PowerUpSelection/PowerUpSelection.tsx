@@ -45,25 +45,19 @@ export const PowerUpSelection: React.FC = () => {
   const location = useLocation()
 
   // State variables passed in React Router state
-  const state = location.state as { nickname?: string; roomCode?: string; score?: number; streak?: number; questionType?: string } | null
+  const state = location.state as { nickname?: string; roomCode?: string; score?: number; streak?: number; questionType?: string; optionsCount?: number } | null
   const nickname = state?.nickname || 'Guest'
   const roomCode = state?.roomCode || 'ROOM'
   const currentScore = state?.score ?? 0
   const currentStreak = state?.streak ?? 0
   const questionType = state?.questionType || ''
+  const optionsCount = state?.optionsCount ?? (questionType === 'TRUE_FALSE' ? 2 : (questionType === 'SHORT_ANSWER' || questionType === 'SHORT_TEXT' ? 0 : 4))
 
-  const isUnsupportedQuestionType = questionType === 'TRUE_FALSE' || questionType === 'SHORT_ANSWER' || questionType === 'SHORT_TEXT'
+  const isFiftyFiftyUnsupported = questionType === 'TRUE_FALSE' || questionType === 'SHORT_ANSWER' || questionType === 'SHORT_TEXT' || optionsCount <= 2
 
   const [powerUps, setPowerUps] = useState<PowerUp[]>([])
   const [selectedPowerUpId, setSelectedPowerUpId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-
-  // Initialize randomized power-up inventory for the participant in this session
-  useEffect(() => {
-    if (isUnsupportedQuestionType) {
-      setErrorMessage('Power-ups cannot be used for True/False or Short Text questions. Please choose another item or return to quiz.')
-    }
-  }, [isUnsupportedQuestionType])
 
   useEffect(() => {
     const storageKey = `powerups_${roomCode}_${nickname}`
@@ -112,8 +106,8 @@ export const PowerUpSelection: React.FC = () => {
   }, [roomCode, nickname])
 
   const handleSelect = (id: string) => {
-    if (isUnsupportedQuestionType) {
-      setErrorMessage('This power-up cannot be used for True/False or Short Text questions. Please choose another item.')
+    if (id === 'fifty' && isFiftyFiftyUnsupported) {
+      setErrorMessage('50:50 Split cannot be used for True/False or Short Text questions. Please choose another booster.')
       return
     }
 
@@ -125,12 +119,12 @@ export const PowerUpSelection: React.FC = () => {
   }
 
   const handleApply = () => {
-    if (isUnsupportedQuestionType) {
-      setErrorMessage('This power-up cannot be used for True/False or Short Text questions. Please choose another item.')
+    if (!selectedPowerUpId) return
+
+    if (selectedPowerUpId === 'fifty' && isFiftyFiftyUnsupported) {
+      setErrorMessage('50:50 Split cannot be used for True/False or Short Text questions. Please choose another booster.')
       return
     }
-
-    if (!selectedPowerUpId) return
 
     // Decrement item count in sessionStorage upon equipping
     const storageKey = `powerups_${roomCode}_${nickname}`
@@ -214,16 +208,18 @@ export const PowerUpSelection: React.FC = () => {
           {powerUps.map((pw) => {
             const isSelected = selectedPowerUpId === pw.id
             const isOutOfStock = pw.count === 0
+            const isUnsupported = pw.id === 'fifty' && isFiftyFiftyUnsupported
+            const isDisabled = isOutOfStock || isUnsupported
 
             return (
               <div
                 key={pw.id}
-                onClick={() => !isOutOfStock && handleSelect(pw.id)}
+                onClick={() => handleSelect(pw.id)}
                 className={`flex items-start gap-4 p-5 rounded-2xl border-2 transition-all duration-200 cursor-pointer shadow-md relative overflow-hidden bg-gradient-to-br ${pw.bgLight} ${
                   isSelected
                     ? 'border-primary ring-4 ring-primary/20 scale-[1.01]'
-                    : isOutOfStock
-                    ? 'opacity-35 border-outline-variant bg-[#eaeaff]/30 cursor-not-allowed'
+                    : isDisabled
+                    ? 'opacity-40 border-outline-variant bg-[#eaeaff]/30 cursor-not-allowed'
                     : 'border-outline-variant hover:border-primary/50'
                 }`}
               >
@@ -234,19 +230,31 @@ export const PowerUpSelection: React.FC = () => {
 
                 {/* Content details */}
                 <div className="flex-1 text-left">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center gap-2">
                     <h3 className="font-headline-md text-sm font-extrabold text-on-surface">{pw.name}</h3>
-                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border ${
-                      isOutOfStock
-                        ? 'bg-red-100 text-red-700 border-red-300'
-                        : 'bg-white text-slate-700 border-outline-variant shadow-sm'
-                    }`}>
-                      {isOutOfStock ? '0 Left' : `${pw.count} Left`}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      {isUnsupported && (
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+                          N/A for this question
+                        </span>
+                      )}
+                      <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border ${
+                        isOutOfStock
+                          ? 'bg-red-100 text-red-700 border-red-300'
+                          : 'bg-white text-slate-700 border-outline-variant shadow-sm'
+                      }`}>
+                        {isOutOfStock ? '0 Left' : `${pw.count} Left`}
+                      </span>
+                    </div>
                   </div>
                   <p className="font-body-md text-xs text-slate-850 mt-2 leading-relaxed font-semibold">
                     {pw.description}
                   </p>
+                  {isUnsupported && (
+                    <p className="text-[11px] font-bold text-amber-700 mt-1.5">
+                      ⚠️ 50:50 Split is only available for Multiple Choice questions with &gt; 2 options.
+                    </p>
+                  )}
                 </div>
 
                 {/* Selection indicator */}

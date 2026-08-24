@@ -331,15 +331,14 @@ def get_my_active_rooms(
             sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
             if 1 <= room.current_question_index <= len(sorted_questions):
                 q = sorted_questions[room.current_question_index - 1]
-                KEYS = ["A", "B", "C", "D"]
-                sorted_opts = sorted(q.options, key=lambda o: o.id)
-                options_live = []
-                for idx, opt in enumerate(sorted_opts):
-                    options_live.append({
-                        "id": opt.id,
-                        "key": KEYS[idx] if idx < len(KEYS) else "A",
-                        "label": opt.content or ""
-                    })
+                from app.utils.option_utils import format_question_options
+                should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+                seed = (room.id * 10007) + (q.id * 97) if should_shuffle else None
+                options_live, _ = format_question_options(
+                    options=q.options or [],
+                    should_shuffle=should_shuffle,
+                    seed=seed
+                )
                 raw_type = (q.type or "multiple_choice").lower().strip()
                 is_short = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
                 active_q = {
@@ -361,6 +360,7 @@ def get_my_active_rooms(
 @router.get("/{room_code}", response_model=RoomResponse, summary="Get active room by code")
 async def get_room_by_code(
     room_code: str,
+    nickname: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ) -> Any:
     """
@@ -381,19 +381,14 @@ async def get_room_by_code(
         if 1 <= room.current_question_index <= len(sorted_questions):
             q = sorted_questions[room.current_question_index - 1]
             
-            KEYS = ["A", "B", "C", "D"]
-            sorted_opts = sorted(q.options, key=lambda o: o.id)
-            options_live = []
-            correct_option_key = None
-            for idx, opt in enumerate(sorted_opts):
-                key = KEYS[idx] if idx < len(KEYS) else "A"
-                options_live.append({
-                    "id": opt.id,
-                    "key": key,
-                    "label": opt.content or ""
-                })
-                if opt.is_correct:
-                    correct_option_key = key
+            from app.utils.option_utils import format_question_options, get_shuffle_seed
+            should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+            seed = get_shuffle_seed(room.id, q.id, nickname) if should_shuffle else None
+            options_live, correct_option_key = format_question_options(
+                options=q.options or [],
+                should_shuffle=should_shuffle,
+                seed=seed
+            )
 
             raw_type = (q.type or "multiple_choice").lower().strip()
             is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
@@ -413,6 +408,9 @@ async def get_room_by_code(
 
     # Populate room fields dynamically
     setattr(room, "active_question", active_q)
+    if hasattr(room, "host") and room.host:
+        setattr(room, "host_name", room.host.fullname)
+        setattr(room, "host_avatar", room.host.avatar)
 
     # Attach live Q&A state, top voted questions & chat messages
     if room.room_code:
@@ -638,19 +636,14 @@ async def get_live_session(
     if 1 <= room.current_question_index <= len(sorted_questions):
         q = sorted_questions[room.current_question_index - 1]
         
-        # Format Options with keys A, B, C, D
-        KEYS = ["A", "B", "C", "D"]
-        sorted_opts = sorted(q.options or [], key=lambda o: o.id)
-        options_live = []
-        correct_option_key = None
-        for idx, opt in enumerate(sorted_opts):
-            options_live.append({
-                "id": opt.id,
-                "key": KEYS[idx] if idx < len(KEYS) else "A",
-                "label": opt.content or ""
-            })
-            if opt.is_correct:
-                correct_option_key = KEYS[idx] if idx < len(KEYS) else "A"
+        from app.utils.option_utils import format_question_options
+        should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+        seed = (room.id * 10007) + (q.id * 97) if should_shuffle else None
+        options_live, correct_option_key = format_question_options(
+            options=q.options or [],
+            should_shuffle=should_shuffle,
+            seed=seed
+        )
             
         raw_type = (q.type or "multiple_choice").lower().strip()
         is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
@@ -854,6 +847,7 @@ async def submit_answer(
             answer_text=answer_in.answer_text,
             active_power_up=answer_in.active_power_up,
             client_streak=answer_in.streak,
+            is_skipped=answer_in.is_skipped or False,
             now=now
         )
 

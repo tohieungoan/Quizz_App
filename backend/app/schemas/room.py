@@ -49,6 +49,8 @@ class RoomResponse(BaseModel):
     id: int
     quiz_id: int
     host_id: int
+    host_name: Optional[str] = None
+    host_avatar: Optional[str] = None
     group_id: Optional[int] = None
     room_code: Optional[str] = None
     qr_code_url: Optional[str] = None
@@ -138,6 +140,7 @@ class SubmitAnswerIn(BaseModel):
     answer_text: Optional[str] = None
     active_power_up: Optional[str] = None
     streak: Optional[int] = None
+    is_skipped: Optional[bool] = False
 
 
 class SubmitAnswerResponse(BaseModel):
@@ -155,6 +158,7 @@ class RoomAdminResponse(BaseModel):
     title: str
     room_code: str
     host_name: str
+    host_avatar: Optional[str] = None
     quiz_title: str
     status: str
     participantCount: int

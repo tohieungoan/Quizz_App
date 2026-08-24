@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Send, MessageSquare } from 'lucide-react'
+import { Send, MessageSquare, Lock } from 'lucide-react'
 
 export interface ChatMessage {
   id?: string
@@ -15,6 +15,8 @@ interface QAChatBoxProps {
   onSendMessage: (text: string) => void
   currentNickname: string
   currentAvatar?: string | null
+  allowAnonymousQuestion?: boolean
+  isGuestUser?: boolean
 }
 
 const ChatUserAvatar: React.FC<{
@@ -47,12 +49,19 @@ const ChatUserAvatar: React.FC<{
           : 'bg-slate-500'
       }`}
     >
-      {initialLetter}
+      {isHost ? '👑' : initialLetter}
     </div>
   )
 }
 
-export const QAChatBox: React.FC<QAChatBoxProps> = ({ messages, onSendMessage, currentNickname, currentAvatar }) => {
+export const QAChatBox: React.FC<QAChatBoxProps> = ({
+  messages,
+  onSendMessage,
+  currentNickname,
+  currentAvatar,
+  allowAnonymousQuestion = true,
+  isGuestUser = false
+}) => {
   const [inputText, setInputText] = useState('')
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
@@ -101,7 +110,7 @@ export const QAChatBox: React.FC<QAChatBoxProps> = ({ messages, onSendMessage, c
           messages.map((msg, index) => {
             const isMe = Boolean(msg.sender === currentNickname || msg.isSelf)
             const isHost = Boolean(msg.sender === 'Host' || (msg.sender && msg.sender.toLowerCase().includes('host')))
-            let rawAvatar = msg.avatar || (isMe ? currentAvatar : null)
+            let rawAvatar = msg.avatar || (isMe ? currentAvatar : (isHost ? currentAvatar : null))
             
             // Resolve avatar path / preset if string
             let avatarUrl: string | null = null
@@ -115,7 +124,7 @@ export const QAChatBox: React.FC<QAChatBoxProps> = ({ messages, onSendMessage, c
               }
             }
 
-            const initialLetter = (msg.sender || 'U').slice(0, 1).toUpperCase()
+            const initialLetter = isHost ? '👑' : (msg.sender || 'U').slice(0, 1).toUpperCase()
 
             return (
               <div
@@ -162,22 +171,29 @@ export const QAChatBox: React.FC<QAChatBoxProps> = ({ messages, onSendMessage, c
       </div>
 
       {/* Message Input */}
-      <form onSubmit={handleSend} className="p-3 bg-slate-50 border-t border-outline-variant/20 flex gap-2">
-        <input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="Type a message or question..."
-          className="flex-1 bg-white border border-outline-variant/40 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/40"
-        />
-        <button
-          type="submit"
-          disabled={!inputText.trim()}
-          className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-on-primary p-2.5 rounded-xl transition-all flex items-center justify-center"
-        >
-          <Send className="w-4 h-4" />
-        </button>
-      </form>
+      {allowAnonymousQuestion === false && isGuestUser ? (
+        <div className="p-3 bg-amber-50 border-t border-amber-200 text-amber-900 text-xs font-extrabold flex items-center justify-center gap-2 text-center">
+          <Lock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <span>Anonymous Q&A is disabled by Host. Please log in to post questions.</span>
+        </div>
+      ) : (
+        <form onSubmit={handleSend} className="p-3 bg-slate-50 border-t border-outline-variant/20 flex gap-2">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder="Type a message or question..."
+            className="flex-1 bg-white border border-outline-variant/40 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          <button
+            type="submit"
+            disabled={!inputText.trim()}
+            className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-on-primary p-2.5 rounded-xl transition-all flex items-center justify-center cursor-pointer"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      )}
     </div>
   )
 }

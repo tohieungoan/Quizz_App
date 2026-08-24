@@ -26,6 +26,7 @@ class TopActiveRoom(BaseModel):
     room_code: str
     quiz_title: str
     host_name: str
+    host_avatar: Optional[str] = None
     participant_count: int
     status: str
 

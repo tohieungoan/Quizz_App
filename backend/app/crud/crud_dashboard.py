@@ -77,6 +77,7 @@ class CRUDDashboard:
                 Room.room_code,
                 Quiz.title.label("quiz_title"),
                 User.fullname.label("host_name"),
+                User.avatar.label("host_avatar"),
                 func.count(Participant.id).label("participant_count"),
                 Room.status
             )
@@ -84,7 +85,7 @@ class CRUDDashboard:
             .join(User, Room.host_id == User.id)
             .outerjoin(Participant, Room.id == Participant.room_id)
             .filter(Room.status.in_(["PLAYING", "RUNNING", "WAITING"]))
-            .group_by(Room.id, Quiz.title, User.fullname)
+            .group_by(Room.id, Quiz.title, User.fullname, User.avatar)
             .order_by(desc("participant_count"))
             .limit(5)
             .all()
@@ -96,6 +97,7 @@ class CRUDDashboard:
                 "room_code": row.room_code or "",
                 "quiz_title": row.quiz_title or "",
                 "host_name": row.host_name or "",
+                "host_avatar": row.host_avatar or None,
                 "participant_count": row.participant_count,
                 "status": row.status or "RUNNING"
             }

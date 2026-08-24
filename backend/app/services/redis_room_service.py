@@ -278,22 +278,19 @@ class RedisRoomService:
                 res = []
                 voted_dict = {int(qid_str): int(v_cnt) for qid_str, v_cnt in raw_items}
 
-                KEYS = ["A", "B", "C", "D"]
+                from app.utils.option_utils import format_question_options
                 r_obj = db_session.query(Room).filter(Room.room_code == room_code).first()
+                should_shuffle = bool(r_obj and (getattr(r_obj, "shuffle_options", False) or (r_obj.quiz and getattr(r_obj.quiz, "shuffle_options", False))))
                 if r_obj and r_obj.quiz and r_obj.quiz.questions:
                     all_qs = sorted(r_obj.quiz.questions, key=lambda q: q.id)
                     for q in all_qs:
                         v_cnt = voted_dict.get(q.id, 0)
-                        sorted_opts = sorted(q.options, key=lambda o: o.id) if q.options else []
-                        opts_list = [
-                            {
-                                "id": opt.id,
-                                "key": KEYS[idx] if idx < len(KEYS) else "A",
-                                "label": opt.content or "",
-                                "is_correct": opt.is_correct
-                            }
-                            for idx, opt in enumerate(sorted_opts)
-                        ]
+                        seed = (r_obj.id * 10007) + (q.id * 97) if should_shuffle else None
+                        opts_list, _ = format_question_options(
+                            options=q.options or [],
+                            should_shuffle=should_shuffle,
+                            seed=seed
+                        )
                         res.append({
                             "question_id": q.id,
                             "text": q.content or f"Question #{q.id}",
