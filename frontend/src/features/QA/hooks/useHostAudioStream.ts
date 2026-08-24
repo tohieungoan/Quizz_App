@@ -65,6 +65,7 @@ export const useHostAudioStream = ({ socket, isConnected }: UseHostAudioStreamPr
           reader.onloadend = () => {
             const base64Data = (reader.result as string).split(',')[1]
             if (base64Data) {
+              console.log(`[Host Mic] Sending audio chunk size=${event.data.size} bytes, base64Len=${base64Data.length}`)
               socket.send(
                 JSON.stringify({
                   type: 'AUDIO_STREAM',
@@ -78,7 +79,8 @@ export const useHostAudioStream = ({ socket, isConnected }: UseHostAudioStreamPr
         }
       }
 
-      mediaRecorder.start(250) // Send slice every 250ms
+      mediaRecorder.start(500) // Send chunk every 500ms
+      console.log('[Host Mic] Microphone recorder started successfully!')
       setIsMicOn(true)
     } catch (err: any) {
       console.error('Failed to access microphone:', err)
