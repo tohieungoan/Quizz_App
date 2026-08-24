@@ -1,8 +1,7 @@
 const getBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL
   if (envUrl) return envUrl
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-  return `http://${hostname}:8000/api/v1`
+  return '/api/v1'
 }
 const BASE_URL = getBaseUrl()
 
