@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
+/** Live audio listener with Web Audio API, MediaSource fallback & user gesture unlock */
 interface UseAudioListenerProps {
   lastAudioChunk: string | null
 }
