@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getWebSocketUrl } from '@/utils/getWebSocketUrl';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -177,10 +178,7 @@ export const useNotifications = () => {
     let fallbackInterval: any = null;
 
     if (token) {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-      const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '');
-      const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/notifications?token=${token}`;
+      const wsUrl = getWebSocketUrl(`/api/v1/ws/notifications?token=${token}`);
 
       try {
         ws = new WebSocket(wsUrl);

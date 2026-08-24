@@ -7,6 +7,7 @@ import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
 import { useAudioListener, QAChatBox, TopVotedQuestionsList, ChatMessage, QuestionVoteItem } from '@/features/QA'
 import { soundFx } from '@/utils/soundEffects'
 import { confettiFx } from '@/utils/confettiEffects'
+import { getWebSocketUrl } from '@/utils/getWebSocketUrl'
 
 interface Option {
   id: number
@@ -387,11 +388,8 @@ export const ParticipantAnswer: React.FC = () => {
   useEffect(() => {
     if (!roomCode) return
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
-    const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '')
     const token = localStorage.getItem('token')
-    const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=false${token ? `&token=${token}` : ''}`
+    const wsUrl = getWebSocketUrl(`/api/v1/ws/rooms/${roomCode}?nickname=${encodeURIComponent(nickname)}&isHost=false${token ? `&token=${token}` : ''}`)
 
     let pingTimer: any = null
     let reconnectTimer: any = null

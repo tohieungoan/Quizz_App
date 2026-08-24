@@ -4,6 +4,7 @@ import { Users, Clock, Play, Award, Eye, EyeOff, CheckCircle2, ChevronRight, Bar
 import { roomService } from '@/services'
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
 import { useHostAudioStream, QAChatBox, TopVotedQuestionsList, ChatMessage, QuestionVoteItem } from '@/features/QA'
+import { getWebSocketUrl } from '@/utils/getWebSocketUrl'
 
 interface ParticipantAnswerState {
   id: string
@@ -184,10 +185,7 @@ export const HostLiveReview: React.FC = () => {
     fetchLiveSession()
 
     // 1. Establish WebSocket for instant event-driven updates (zero log spam)
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
-    const apiHost = baseUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '')
-    const wsUrl = `${wsProtocol}//${apiHost}/api/v1/ws/rooms/${roomCode}?nickname=Host&isHost=true${token ? `&token=${token}` : ''}`
+    const wsUrl = getWebSocketUrl(`/api/v1/ws/rooms/${roomCode}?nickname=Host&isHost=true${token ? `&token=${token}` : ''}`)
 
     let socket: WebSocket | null = null
     let pingTimer: any = null
