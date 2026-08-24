@@ -131,7 +131,7 @@ export const ParticipantAnswer: React.FC = () => {
   const [votedQuestionIds, setVotedQuestionIds] = useState<Set<number>>(new Set())
   const [lastAudioChunk, setLastAudioChunk] = useState<string | null>(null)
 
-  const { isHostSpeaking } = useAudioListener({ lastAudioChunk })
+  const { isHostSpeaking, needUserGesture, unlockAudio } = useAudioListener({ lastAudioChunk })
 
   const handleVoteQuestion = async (qId: number) => {
     if (!qId || votedQuestionIds.has(qId)) return
@@ -856,10 +856,14 @@ export const ParticipantAnswer: React.FC = () => {
             </div>
 
             {isHostSpeaking && (
-              <div className="flex items-center gap-2 bg-red-500 text-white px-3.5 py-1.5 rounded-full text-xs font-black animate-pulse shadow-sm">
+              <button
+                onClick={unlockAudio}
+                className="flex items-center gap-2 bg-red-500 hover:bg-red-600 active:scale-95 text-white px-3.5 py-1.5 rounded-full text-xs font-black animate-pulse shadow-sm cursor-pointer transition-all"
+                title="Click to listen to Host Voice"
+              >
                 <Mic className="w-3.5 h-3.5" />
-                <span>Host is Speaking Live...</span>
-              </div>
+                <span>{needUserGesture ? "🎙️ Click to Unmute Host Voice" : "Host is Speaking Live..."}</span>
+              </button>
             )}
           </div>
 
