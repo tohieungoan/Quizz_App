@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  
+  <!-- Rounded Base Badge -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle inner ring -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="none" stroke="#ffffff" stroke-width="12" stroke-opacity="0.2"/>
+
+  <!-- Q Trophy Emblem -->
+  <g filter="url(#glow)">
+    <!-- Outer Q Circle -->
+    <path d="M256 100 C170 100 100 170 100 256 C100 342 170 412 256 412 C295 412 331 398 359 374 L396 412 C406 422 422 422 432 412 C442 402 442 386 432 376 L394 338 C407 313 412 285 412 256 C412 170 342 100 256 100 Z M256 352 C203 352 160 309 160 256 C160 203 203 160 256 160 C309 160 352 203 352 256 C352 309 309 352 256 352 Z" fill="url(#goldGrad)"/>
+    
+    <!-- Center Trophy / Star Sparkle -->
+    <path d="M256 195 L273 235 L315 240 L283 270 L292 312 L256 290 L220 312 L229 270 L197 240 L239 235 Z" fill="#ffffff"/>
+  </g>
+</svg>
