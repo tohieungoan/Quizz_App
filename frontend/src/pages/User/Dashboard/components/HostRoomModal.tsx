@@ -17,7 +17,7 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
   const [selectedGroupId, setSelectedGroupId] = useState<string>('freedom');
   
   // Room Settings States
-  const [selectedGameMode, setSelectedGameMode] = useState<'CLASSIC' | 'TEAM' | 'EXAM'>('CLASSIC');
+  const [selectedGameMode, setSelectedGameMode] = useState<'CLASSIC' | 'EXAM'>('CLASSIC');
   const [progressionMode, setProgressionMode] = useState<'manual' | 'auto'>('manual');
   const [allowShowRank, setAllowShowRank] = useState(true);
   const [shuffleOptions, setShuffleOptions] = useState(true);
@@ -163,10 +163,9 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
             <label className="block text-xs font-extrabold mb-1.5 uppercase tracking-wider text-on-surface-variant">
               Room Game Mode
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { id: 'CLASSIC', label: 'Classic', desc: 'Standard FFA Quiz' },
-                { id: 'TEAM', label: 'Team', desc: 'Team Battle' },
                 { id: 'EXAM', label: 'Exam', desc: 'Strict Exam Mode' },
               ].map((m) => (
                 <button

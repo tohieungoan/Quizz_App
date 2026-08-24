@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award, ThumbsUp, Mic, MessageSquare, Volume2, FastForward } from 'lucide-react'
+import { Flame, Clock, Zap, HelpCircle, Shield, Sparkles, CheckCircle2, XCircle, ArrowRight, Award, ThumbsUp, Mic, MessageSquare, Volume2, VolumeX, FastForward } from 'lucide-react'
 import { roomService } from '../../../services/roomService'
 import { useAuth } from '../../../hooks/useAuth'
 import { getPlayerBadge, getBadgeStyle } from '@/utils/badgeHelper'
 import { useAudioListener, QAChatBox, TopVotedQuestionsList, ChatMessage, QuestionVoteItem } from '@/features/QA'
+import { soundFx } from '@/utils/soundEffects'
+import { confettiFx } from '@/utils/confettiEffects'
 
 interface Option {
   id: number
@@ -115,6 +117,8 @@ export const ParticipantAnswer: React.FC = () => {
   const [allowSkipQuestion, setAllowSkipQuestion] = useState(true)
   const [allowAnonymousQuestion, setAllowAnonymousQuestion] = useState(true)
   const [leaderboardRoster, setLeaderboardRoster] = useState<any[]>([])
+  const [isMuted, setIsMuted] = useState(false)
+  const [isShaking, setIsShaking] = useState(false)
 
   // Q&A & Voting states
   const [isQAMode, setIsQAMode] = useState<boolean>(() => {
@@ -498,6 +502,20 @@ export const ParticipantAnswer: React.FC = () => {
                 setCorrectOptionKey(correctOptKey)
                 setStreak(updatedStreak)
 
+                if (roomMode !== 'EXAM') {
+                  if (isAnsCorrect) {
+                    soundFx.playCorrect()
+                    confettiFx.fire(85)
+                    if (updatedStreak >= 3) {
+                      soundFx.playStreak(updatedStreak)
+                    }
+                  } else {
+                    soundFx.playWrong()
+                    setIsShaking(true)
+                    setTimeout(() => setIsShaking(false), 500)
+                  }
+                }
+
                 sessionStorage.setItem('play_streak', String(updatedStreak))
                 sessionStorage.setItem('play_final_streak', String(updatedStreak))
                 sessionStorage.setItem('play_accumulated_score', String(totalNewScore))
@@ -617,6 +635,8 @@ export const ParticipantAnswer: React.FC = () => {
   }, [roomCode, nickname, navigate])
 
   // Timer Countdown Effect (Server timestamp synced, continues even after answer is submitted)
+  const lastTickedSecondRef = useRef<number | null>(null)
+
   useEffect(() => {
     if (loading || !activeQuestion || !startedAtMs) return
 
@@ -627,6 +647,13 @@ export const ParticipantAnswer: React.FC = () => {
       const remaining = Math.max(0, Math.ceil(limit - elapsed))
       setTimeLeft(remaining)
 
+      if (remaining <= 5 && remaining > 0 && !isAnswered && roomMode !== 'EXAM') {
+        if (lastTickedSecondRef.current !== remaining) {
+          lastTickedSecondRef.current = remaining
+          soundFx.playTimerTick()
+        }
+      }
+
       if (remaining === 0 && !isAnswered) {
         handleAnswerSubmit(null, null)
       }
@@ -636,7 +663,7 @@ export const ParticipantAnswer: React.FC = () => {
     const timer = setInterval(updateTimer, 250)
 
     return () => clearInterval(timer)
-  }, [loading, activeQuestion, startedAtMs, isAnswered])
+  }, [loading, activeQuestion, startedAtMs, isAnswered, roomMode])
 
   // Submit Answer to API (WebSocket primary, REST HTTP fallback)
   const handleAnswerSubmit = async (optionId: number | null, keyOrText: string | null, isSkipped: boolean = false) => {
@@ -704,6 +731,20 @@ export const ParticipantAnswer: React.FC = () => {
       setAccumulatedScore(totalNewScore)
       setCorrectOptionKey(res.correct_option_key)
       setStreak(updatedStreak)
+
+      if (roomMode !== 'EXAM') {
+        if (isAnsCorrect) {
+          soundFx.playCorrect()
+          confettiFx.fire(85)
+          if (updatedStreak >= 3) {
+            soundFx.playStreak(updatedStreak)
+          }
+        } else if (!isSkipped) {
+          soundFx.playWrong()
+          setIsShaking(true)
+          setTimeout(() => setIsShaking(false), 500)
+        }
+      }
       
       sessionStorage.setItem('play_streak', String(updatedStreak))
       sessionStorage.setItem('play_final_streak', String(updatedStreak))
@@ -951,7 +992,7 @@ export const ParticipantAnswer: React.FC = () => {
   const myBadgeStyle = getBadgeStyle(myBadge)
 
   return (
-    <div className="w-full min-h-screen bg-[#f9f9ff] text-on-surface font-body-md relative overflow-hidden flex flex-col">
+    <div className={`w-full min-h-screen bg-[#f9f9ff] text-on-surface font-body-md relative overflow-hidden flex flex-col ${isShaking ? 'animate-shake' : ''}`}>
       {/* Background Dots */}
       <div
         className="absolute inset-0 pointer-events-none z-0"
@@ -980,17 +1021,31 @@ export const ParticipantAnswer: React.FC = () => {
               </div>
             </div>
 
-            {roomMode !== 'EXAM' && (
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs font-black">
-                  <Flame className="w-3.5 h-3.5 fill-current text-amber-500 animate-bounce" />
-                  <span>{streak}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const muted = soundFx.toggleMute()
+                  setIsMuted(muted)
+                }}
+                className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all border border-slate-200 cursor-pointer"
+                title={isMuted ? 'Unmute Quiz Sounds' : 'Mute Quiz Sounds'}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4 text-rose-500" /> : <Volume2 className="w-4 h-4 text-emerald-600" />}
+              </button>
+
+              {roomMode !== 'EXAM' && (
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs font-black">
+                    <Flame className="w-3.5 h-3.5 fill-current text-amber-500 animate-bounce" />
+                    <span>{streak}</span>
+                  </div>
+                  <span className="text-xs font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-full">
+                    {Math.round(accumulatedScore)} Pts
+                  </span>
                 </div>
-                <span className="text-xs font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1 rounded-full">
-                  {Math.round(accumulatedScore)} Pts
-                </span>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Question Index Bar */}

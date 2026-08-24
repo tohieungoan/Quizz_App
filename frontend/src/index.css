@@ -46,4 +46,26 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-8px) rotate(-1deg); }
+    40%, 80% { transform: translateX(8px) rotate(1deg); }
+  }
+
+  @keyframes floatUp {
+    0% { opacity: 0; transform: translateY(20px) scale(0.8); }
+    20% { opacity: 1; transform: translateY(0) scale(1.1); }
+    80% { opacity: 1; transform: translateY(-15px) scale(1); }
+    100% { opacity: 0; transform: translateY(-30px) scale(0.9); }
+  }
+
+  .animate-shake {
+    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+  }
+
+  .animate-float-score {
+    animation: floatUp 1.5s ease-out forwards;
+  }
 }
+
