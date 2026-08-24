@@ -370,6 +370,45 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   // Track per-question partial score inputs: { [questionId]: string }
   const [questionScoreInputs, setQuestionScoreInputs] = useState<Record<number, string>>({});
 
+  // 1. Auto-open Edit Exam Modal when navigated from Global Search
+  useEffect(() => {
+    const pendingExamId = sessionStorage.getItem('selected_host_exam_id');
+    if (pendingExamId && exams.length > 0) {
+      const targetExam = exams.find((e) => String(e.id) === String(pendingExamId));
+      if (targetExam) {
+        setEditingExam(targetExam);
+        setExamTitle(targetExam.title || '');
+        setSelectedQuizId(targetExam.quizId || '');
+        setSelectedGroupId(targetExam.groupId || '');
+        setExamDue(targetExam.due || '');
+        setExamDuration(targetExam.duration || 60);
+        setExamStatus(targetExam.status || 'Active');
+        setNavigationRule(targetExam.navigationRule || 'FREE_NAV');
+        setResultsPublished(targetExam.resultsPublished || false);
+        setIsExamModalOpen(true);
+      }
+      sessionStorage.removeItem('selected_host_exam_id');
+    }
+  }, [exams]);
+
+  // 2. Auto-open Edit Group Modal when navigated from Global Search
+  useEffect(() => {
+    const pendingGroupId = sessionStorage.getItem('selected_group_id');
+    if (pendingGroupId && groups.length > 0) {
+      const targetGroup = groups.find((g) => String(g.id) === String(pendingGroupId));
+      if (targetGroup) {
+        setEditingGroup(targetGroup);
+        setGroupName(targetGroup.name || '');
+        setGroupIcon(targetGroup.icon || 'GraduationCap');
+        setGroupDescription(targetGroup.description || '');
+        setGroupJoinCode(targetGroup.joinCode || targetGroup.id);
+        setGroupIsLocked(targetGroup.isLocked || false);
+        setIsGroupModalOpen(true);
+      }
+      sessionStorage.removeItem('selected_group_id');
+    }
+  }, [groups]);
+
   // Export Excel Helpers (.xls HTML Table Spreadsheet with UTF-8 BOM for Vietnamese support)
   const handleExportGroupExcel = async (group: HostGroup) => {
     let membersToExport: GroupMember[] = group.members || [];
