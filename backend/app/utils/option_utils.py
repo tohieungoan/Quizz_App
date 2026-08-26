@@ -37,10 +37,13 @@ def format_question_options(
     return options_live, correct_option_key
 
 
-def get_shuffle_seed(room_id: int, question_id: int, nickname: Optional[str] = None) -> int:
+def get_shuffle_seed(room_id: int, question_id: int, identifier: Optional[Any] = None) -> int:
     """
-    Calculates a normalized, consistent shuffle seed based on room_id, question_id, and nickname.
+    Calculates a normalized, consistent shuffle seed based on room_id, question_id, and participant identifier (id or nickname).
     """
-    clean_nick = nickname.strip().lower() if nickname else ""
-    seed_offset = sum(ord(c) for c in clean_nick) if clean_nick else 0
+    if identifier is None:
+        clean_str = ""
+    else:
+        clean_str = str(identifier).strip().casefold()
+    seed_offset = sum(ord(c) for c in clean_str) if clean_str else 0
     return (room_id * 10007) + (question_id * 97) + seed_offset

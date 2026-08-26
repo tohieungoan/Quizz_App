@@ -279,7 +279,8 @@ async def websocket_room(
                                         else:
                                             from app.utils.option_utils import format_question_options, get_shuffle_seed
                                             should_shuffle = bool(getattr(db_room, "shuffle_options", False) or (db_room.quiz and getattr(db_room.quiz, "shuffle_options", False)))
-                                            seed = get_shuffle_seed(db_room.id, q.id, decoded_nickname) if should_shuffle else None
+                                            p_identifier = p_obj.id if p_obj else (decoded_nickname or "")
+                                            seed = get_shuffle_seed(db_room.id, q.id, p_identifier) if should_shuffle else None
                                             options_live, _ = format_question_options(
                                                 options=q.options or [],
                                                 should_shuffle=should_shuffle,
