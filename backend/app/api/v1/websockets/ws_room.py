@@ -243,7 +243,12 @@ async def websocket_room(
                                         q = sorted_questions[db_room.current_question_index - 1]
                                         
                                         variant_question = None
-                                        if getattr(db_room, "use_ai_question", False) and decoded_nickname:
+                                        should_use_variants = bool(
+                                            db_room.variant_set_id
+                                            or getattr(db_room, "use_ai_question", False)
+                                            or (db_room.quiz and getattr(db_room.quiz, "variant_enabled", False))
+                                        )
+                                        if should_use_variants and decoded_nickname:
                                             from app.models.room import Participant
                                             from app.models.quiz_variant import QuizVariantQuestion
                                             p_obj = db_session.query(Participant).filter(

@@ -435,7 +435,26 @@ async def get_room_by_code(
                     Participant.id == participant_id,
                     Participant.room_id == room.id,
                 ).first()
-                if getattr(room, "use_ai_question", False) and participant and participant.quiz_variant_id:
+                should_use_variants = bool(
+                    room.variant_set_id
+                    or getattr(room, "use_ai_question", False)
+                    or (room.quiz and getattr(room.quiz, "variant_enabled", False))
+                )
+                if should_use_variants and participant and not participant.quiz_variant_id and room.variant_set_id:
+                    from app.models.quiz_variant import QuizVariantSet
+                    from app.services.quiz_variant_service import quiz_variant_service
+                    variant_set = db.query(QuizVariantSet).filter(QuizVariantSet.id == room.variant_set_id).first()
+                    if variant_set and variant_set.status == "READY":
+                        ready_vars = quiz_variant_service.ready_variants(variant_set)
+                        if ready_vars:
+                            all_participants = db.query(Participant).filter(Participant.room_id == room.id).all()
+                            try:
+                                quiz_variant_service.assign_balanced(all_participants, ready_vars)
+                                db.refresh(participant)
+                            except Exception:
+                                pass
+
+                if should_use_variants and participant and participant.quiz_variant_id:
                     variant_question = db.query(QuizVariantQuestion).filter(
                         QuizVariantQuestion.quiz_variant_id == participant.quiz_variant_id,
                         QuizVariantQuestion.original_question_id == q.id,
