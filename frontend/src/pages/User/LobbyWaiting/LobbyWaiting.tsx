@@ -19,6 +19,7 @@ interface Player {
 }
 
 interface HostMember {
+  id?: number | string
   nickname: string
   avatar?: string | null
   equipped_title?: string | null
@@ -138,8 +139,10 @@ export const LobbyWaiting: React.FC = () => {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>((location.state as any)?.qrCodeUrl || '')
   const [roomHostName, setRoomHostName] = useState<string | null>(null)
   const [roomHostAvatar, setRoomHostAvatar] = useState<string | null>(null)
+  const [isLocked, setIsLocked] = useState<boolean>(false)
+  const [isKicked, setIsKicked] = useState<boolean>(false)
 
-  // 1. Fetch room details to get status, created_at, and qr_code_url
+  // 1. Fetch room details to get status, created_at, qr_code_url, and is_locked
   useEffect(() => {
     if (!roomCode) return
     roomService.getRoom(roomCode)
@@ -176,11 +179,38 @@ export const LobbyWaiting: React.FC = () => {
         if (res.host_avatar) {
           setRoomHostAvatar(res.host_avatar)
         }
+        if (res.is_locked !== undefined) {
+          setIsLocked(!!res.is_locked)
+        }
       })
       .catch((err) => {
         console.error("Failed to load room details:", err)
       })
   }, [roomCode, isHost, nickname, participantId, fromSource, activeTab, navigate])
+
+  const handleToggleLock = async () => {
+    const targetRoomId = roomId || state?.roomId
+    if (!targetRoomId) return
+    try {
+      const res = await roomService.toggleLock(targetRoomId)
+      setIsLocked(!!res.is_locked)
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.message || "Failed to toggle room lock state.")
+    }
+  }
+
+  const handleKickParticipant = async (pId: number | string, pName: string) => {
+    const targetRoomId = roomId || state?.roomId
+    if (!targetRoomId || !pId) return
+    if (!window.confirm(`Are you sure you want to kick participant '${pName}' from the room?`)) return
+    try {
+      await roomService.kickParticipant(targetRoomId, pId)
+      setHostMembers(prev => prev.filter(m => String(m.id) !== String(pId) && m.nickname !== pName))
+      setPlayers(prev => prev.filter(p => String(p.id) !== String(pId) && p.name !== pName))
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.message || "Failed to kick participant.")
+    }
+  }
 
   // Countdown timer based on actual created_at
   useEffect(() => {
@@ -257,6 +287,7 @@ export const LobbyWaiting: React.FC = () => {
         const res = await roomService.getParticipants(targetRoomId)
         if (isHost) {
           setHostMembers(res.map((p: any): HostMember => ({
+            id: p.id,
             nickname: p.nickname || 'Guest',
             avatar: p.avatar || null,
             equipped_title: p.equipped_title ?? null,
@@ -357,6 +388,7 @@ export const LobbyWaiting: React.FC = () => {
                   setHostMembers(prev => activePlayersList.map((pName: string): HostMember => {
                     const existing = prev.find(m => m.nickname === pName)
                     return {
+                      id: existing?.id,
                       nickname: pName,
                       avatar: existing?.avatar || null,
                       equipped_title: existing?.equipped_title ?? null
@@ -369,7 +401,7 @@ export const LobbyWaiting: React.FC = () => {
                     const color = getAvatarColor(String(idx) + pName)
                     const existing = prev.find(p => p.name === pName)
                     return {
-                      id: String(idx),
+                      id: String(existing?.id || idx),
                       name: pName,
                       initials: getInitials(pName),
                       avatar: existing?.avatar || (isMe ? loggedAvatar : null),
@@ -389,6 +421,7 @@ export const LobbyWaiting: React.FC = () => {
                     const loggedAvatar = getLoggedInUserAvatar()
                     if (isHost) {
                       setHostMembers(res.map((p: any): HostMember => ({
+                        id: p.id,
                         nickname: p.nickname || 'Guest',
                         avatar: p.avatar || null,
                         equipped_title: p.equipped_title ?? null,
@@ -413,6 +446,15 @@ export const LobbyWaiting: React.FC = () => {
                     }
                   })
                   .catch((err: any) => console.error("Failed to refresh participants:", err))
+              }
+            } else if (data.type === "ROOM_LOCK_TOGGLED") {
+              setIsLocked(!!data.is_locked)
+            } else if (data.type === "PARTICIPANT_KICKED") {
+              if (!isHost && (String(data.participant_id) === String(participantId) || data.nickname === nickname)) {
+                setIsKicked(true)
+              } else {
+                setHostMembers(prev => prev.filter(m => String(m.id) !== String(data.participant_id) && m.nickname !== data.nickname))
+                setPlayers(prev => prev.filter(p => String(p.id) !== String(data.participant_id) && p.name !== data.nickname))
               }
             } else if (data.type === "GAME_STARTED") {
               if (!isHost) {
@@ -619,6 +661,20 @@ export const LobbyWaiting: React.FC = () => {
                 </button>
 
                 <button
+                  onClick={handleToggleLock}
+                  className={`w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 rounded-2xl sm:rounded-full font-button text-sm sm:text-base font-bold border transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                    isLocked
+                      ? 'bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-amber-500/20'
+                      : 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 shadow-emerald-600/20'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[20px]">
+                    {isLocked ? 'lock' : 'lock_open'}
+                  </span>
+                  {isLocked ? 'Room Locked (Closed)' : 'Lock Room'}
+                </button>
+
+                <button
                   onClick={handleStartGame}
                   disabled={hostMembers.length === 0}
                   title={hostMembers.length === 0 ? "Waiting for participants to join before starting" : "Start Quiz Session"}
@@ -658,7 +714,14 @@ export const LobbyWaiting: React.FC = () => {
                   <span className="material-symbols-outlined text-[24px] sm:text-[28px] fill-icon">groups</span>
                 </div>
                 <div>
-                  <h3 className="font-headline-md text-xl sm:text-2xl font-bold text-on-surface">{hostMembers.length} Members Joined</h3>
+                  <h3 className="font-headline-md text-xl sm:text-2xl font-bold text-on-surface flex items-center gap-2">
+                    {hostMembers.length} Members Joined
+                    {isLocked && (
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/30 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[14px]">lock</span> Locked
+                      </span>
+                    )}
+                  </h3>
                   <p className="text-on-surface-variant text-[11px] sm:text-xs font-body-md">Participants currently in the room</p>
                 </div>
               </div>
@@ -712,6 +775,19 @@ export const LobbyWaiting: React.FC = () => {
                         </span>
                       </div>
                     </div>
+                    {isHost && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (member.id) handleKickParticipant(member.id, member.nickname)
+                        }}
+                        title={`Kick ${member.nickname} from room`}
+                        className="p-1.5 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-80 hover:opacity-100 transition-all cursor-pointer flex-shrink-0 z-10"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">person_remove</span>
+                      </button>
+                    )}
                   </div>
                 )
               })}
@@ -731,6 +807,28 @@ export const LobbyWaiting: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (isKicked) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-5 border border-outline-variant/30 text-on-surface">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <span className="material-symbols-outlined text-[36px]">person_remove</span>
+          </div>
+          <div>
+            <h3 className="text-2xl font-black text-on-surface mb-1">Removed from Room</h3>
+            <p className="text-xs text-on-surface-variant">You have been removed from this live room session by the host.</p>
+          </div>
+          <button
+            onClick={() => navigate(localStorage.getItem('token') ? '/dashboard' : '/')}
+            className="w-full py-3 bg-primary text-on-primary rounded-xl font-extrabold text-sm shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+          >
+            Return to Dashboard
+          </button>
         </div>
       </div>
     )
@@ -770,8 +868,13 @@ export const LobbyWaiting: React.FC = () => {
           {/* Status indicator */}
           <div className="flex items-center gap-3 bg-surface/80 backdrop-blur-md px-4 py-2 rounded-lg shadow-sm">
             <span className="pulse-indicator" />
-            <span className="font-label-bold text-label-bold text-on-surface-variant">
+            <span className="font-label-bold text-label-bold text-on-surface-variant flex items-center gap-2">
               {allPlayers.length} in the room
+              {isLocked && (
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/30 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[12px]">lock</span> Locked
+                </span>
+              )}
             </span>
           </div>
         </header>

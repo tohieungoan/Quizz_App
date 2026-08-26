@@ -67,6 +67,7 @@ class RoomResponse(BaseModel):
     allow_voice_question: bool
     use_ai_question: bool
     shuffle_options: bool
+    is_locked: bool = False
     expire_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     created_at: datetime

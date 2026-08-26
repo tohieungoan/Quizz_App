@@ -242,7 +242,9 @@ class CRUDRoom:
             else:
                 raise ValueError(f"Nickname '{nickname}' is already taken in this room.")
 
-        # 3. If new participant is joining, verify room status is WAITING
+        # 3. If new participant is joining, verify room is not locked and status is WAITING
+        if getattr(room, "is_locked", False):
+            raise ValueError("This room has been locked by the host. New participants cannot join.")
         if room.status != "WAITING":
             raise ValueError(f"Cannot join room: The quiz session has already started or ended (status: {room.status}).")
 
@@ -255,8 +257,39 @@ class CRUDRoom:
             score=0.0
         )
         db.add(participant)
+        db.flush()
+
+        # If room has a variant_set_id, assign a balanced variant immediately
+        if room.variant_set_id:
+            from app.models.quiz_variant import QuizVariantSet
+            from app.services.quiz_variant_service import quiz_variant_service
+            variant_set = db.query(QuizVariantSet).filter(QuizVariantSet.id == room.variant_set_id).first()
+            if variant_set and variant_set.status == "READY":
+                ready_vars = quiz_variant_service.ready_variants(variant_set)
+                if ready_vars:
+                    all_participants = db.query(Participant).filter(Participant.room_id == room.id).all()
+                    try:
+                        quiz_variant_service.assign_balanced(all_participants, ready_vars)
+                    except Exception:
+                        pass
+
         db.commit()
         db.refresh(participant)
+        return participant
+
+    def kick_participant(self, db: Session, room: Room, participant_id: int) -> Participant:
+        """
+        Kick/Remove a participant from the room.
+        """
+        participant = db.query(Participant).filter(
+            Participant.room_id == room.id,
+            Participant.id == participant_id
+        ).first()
+        if not participant:
+            raise ValueError(f"Participant with ID {participant_id} not found in this room.")
+        
+        db.delete(participant)
+        db.commit()
         return participant
 
     def next_question(self, db: Session, room: Room) -> Room:
@@ -344,7 +377,7 @@ class CRUDRoom:
         is_correct = False
         is_skip_action = bool(is_skipped or active_power_up == 'skip' or (selected_option_id is None and answer_text is None))
 
-        if participant.quiz_variant_id:
+        if getattr(room, "use_ai_question", False) and participant.quiz_variant_id:
             variant_question = db.query(QuizVariantQuestion).filter(
                 QuizVariantQuestion.quiz_variant_id == participant.quiz_variant_id,
                 QuizVariantQuestion.original_question_id == question_id,
