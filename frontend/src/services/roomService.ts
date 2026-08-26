@@ -97,4 +97,7 @@ export const roomService = {
 
   kickParticipant: (roomId: number | string, participantId: number | string): Promise<any> =>
     apiClient.post<any>(`/rooms/${roomId}/kick-participant/${participantId}`, {}),
+
+  leaveRoom: (participantId: number | string): Promise<any> =>
+    apiClient.post<any>(`/rooms/participants/${participantId}/leave`, {}),
 }

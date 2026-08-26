@@ -292,6 +292,24 @@ class CRUDRoom:
         db.commit()
         return participant
 
+    def leave_participant(self, db: Session, participant_id: int) -> Optional[Participant]:
+        """
+        Participant explicitly leaves room or disconnects during WAITING lobby.
+        """
+        participant = db.query(Participant).filter(
+            Participant.id == participant_id
+        ).first()
+        if not participant:
+            return None
+        
+        room = db.query(Room).filter(Room.id == participant.room_id).first()
+        if room and room.status == "WAITING":
+            db.delete(participant)
+        else:
+            participant.status = "LEFT"
+        db.commit()
+        return participant
+
     def next_question(self, db: Session, room: Room) -> Room:
         """
         Advance room to the next question.

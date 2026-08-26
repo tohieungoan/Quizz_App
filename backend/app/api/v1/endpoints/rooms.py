@@ -807,6 +807,57 @@ async def kick_participant(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/participants/{participant_id}/leave", summary="Participant leaves the room")
+async def leave_room_endpoint(
+    participant_id: int,
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Endpoint for a participant to explicitly leave a room (or triggered via beforeunload sendBeacon).
+    Removes or marks participant status as LEFT in DB, then broadcasts PLAYER_LEFT to WS.
+    """
+    from starlette.concurrency import run_in_threadpool
+    from app.models.room import Participant, Room
+
+    def _do_leave():
+        p = db.query(Participant).filter(Participant.id == participant_id).first()
+        if not p:
+            return None, None, None
+        room = db.query(Room).filter(Room.id == p.room_id).first()
+        room_code = room.room_code if room else None
+        nickname = p.nickname
+        if room and room.status == "WAITING":
+            db.delete(p)
+        else:
+            p.status = "LEFT"
+        db.commit()
+        return room_code, nickname, room.id if room else None
+
+    room_code, nickname, room_id = await run_in_threadpool(_do_leave)
+    if room_code and nickname:
+        active_members = room_websocket_manager.get_room_members(room_code)
+        if nickname in active_members:
+            active_members = [m for m in active_members if m != nickname]
+        await room_websocket_manager.broadcast_to_room(
+            room_code,
+            {
+                "type": "PLAYER_LEFT",
+                "t": "PL",
+                "player": nickname,
+                "u": nickname,
+                "players": active_members,
+                "p": active_members,
+            }
+        )
+        if room_id:
+            await admin_room_manager.publish(
+                room_id=room_id,
+                room_code=room_code,
+                reason="PARTICIPANT_LEFT",
+            )
+    return {"message": "Successfully left the room."}
+
+
 @router.get("/{room_id}/live-session", response_model=RoomLiveStatus, summary="Get real-time live session data (Host Panel)")
 async def get_live_session(
     room_id: int,

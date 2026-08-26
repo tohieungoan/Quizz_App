@@ -438,6 +438,20 @@ async def websocket_room(
             room_websocket_manager.disconnect(websocket, room_code, decoded_nickname)
             logger.info(f"WebSocket client '{decoded_nickname}' disconnected from room '{room_code}'")
             if not isHost:
+                def _do_cleanup_disconnect():
+                    with SessionLocal() as db_session:
+                        db_room = crud_room.get_by_code(db=db_session, room_code=room_code)
+                        if db_room and db_room.status == "WAITING":
+                            from app.models.room import Participant
+                            p = db_session.query(Participant).filter(
+                                Participant.room_id == db_room.id,
+                                Participant.nickname == decoded_nickname
+                            ).first()
+                            if p:
+                                db_session.delete(p)
+                                db_session.commit()
+                await run_in_threadpool(_do_cleanup_disconnect)
+
                 active_members = room_websocket_manager.get_room_members(room_code)
                 await room_websocket_manager.broadcast_to_room(
                     room_code,
