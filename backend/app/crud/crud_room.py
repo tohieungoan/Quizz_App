@@ -395,13 +395,33 @@ class CRUDRoom:
         is_correct = False
         is_skip_action = bool(is_skipped or active_power_up == 'skip' or (selected_option_id is None and answer_text is None))
 
-        if getattr(room, "use_ai_question", False) and participant.quiz_variant_id:
-            variant_question = db.query(QuizVariantQuestion).filter(
-                QuizVariantQuestion.quiz_variant_id == participant.quiz_variant_id,
-                QuizVariantQuestion.original_question_id == question_id,
-            ).first()
-            if not variant_question:
-                raise ValueError("Question is unavailable in your assigned quiz version.")
+        should_use_variants = bool(
+            room.variant_set_id
+            or getattr(room, "use_ai_question", False)
+            or (room.quiz and getattr(room.quiz, "variant_enabled", False))
+        )
+        if should_use_variants:
+            if not participant.quiz_variant_id and room.variant_set_id:
+                from app.models.quiz_variant import QuizVariantSet
+                from app.services.quiz_variant_service import quiz_variant_service
+                variant_set = db.query(QuizVariantSet).filter(QuizVariantSet.id == room.variant_set_id).first()
+                if variant_set and variant_set.status == "READY":
+                    ready_vars = quiz_variant_service.ready_variants(variant_set)
+                    if ready_vars:
+                        all_participants = db.query(Participant).filter(Participant.room_id == room.id).all()
+                        try:
+                            quiz_variant_service.assign_balanced(all_participants, ready_vars)
+                            db.refresh(participant)
+                        except Exception:
+                            pass
+
+            if participant.quiz_variant_id:
+                variant_question = db.query(QuizVariantQuestion).filter(
+                    QuizVariantQuestion.quiz_variant_id == participant.quiz_variant_id,
+                    QuizVariantQuestion.original_question_id == question_id,
+                ).first()
+                if not variant_question:
+                    raise ValueError("Question is unavailable in your assigned quiz version.")
 
         if not is_skip_action:
             if variant_question:
