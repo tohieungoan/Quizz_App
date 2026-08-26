@@ -521,6 +521,28 @@ export const LobbyWaiting: React.FC = () => {
     }
   }, [roomCode, roomId, participantId, isHost, nickname, navigate, fromSource, activeTab, state?.roomId, state?.participantId])
 
+  // Automatically trigger leave beacon when participant closes tab or browser window
+  useEffect(() => {
+    if (isHost) return
+    const targetParticipantId = participantId || state?.participantId
+    if (!targetParticipantId) return
+
+    const handleTabClose = () => {
+      const apiBase = (import.meta as any).env?.VITE_API_URL || '/api/v1'
+      const beaconUrl = `${apiBase}/rooms/participants/${targetParticipantId}/leave`
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(beaconUrl)
+      }
+    }
+
+    window.addEventListener('beforeunload', handleTabClose)
+    window.addEventListener('pagehide', handleTabClose)
+    return () => {
+      window.removeEventListener('beforeunload', handleTabClose)
+      window.removeEventListener('pagehide', handleTabClose)
+    }
+  }, [isHost, participantId, state?.participantId])
+
   const myPlayer: Player = {
     id: 'me',
     name: nickname,
