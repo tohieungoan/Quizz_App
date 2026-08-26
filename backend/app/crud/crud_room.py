@@ -427,8 +427,12 @@ class CRUDRoom:
                         target_option_id = int(selected_option_id)
                     except (ValueError, TypeError):
                         target_option_id = selected_option_id
+                    from sqlalchemy import or_
                     selected_variant_option = db.query(QuizVariantOption).filter(
-                        QuizVariantOption.id == target_option_id,
+                        or_(
+                            QuizVariantOption.id == target_option_id,
+                            QuizVariantOption.original_option_id == target_option_id,
+                        ),
                         QuizVariantOption.variant_question_id == variant_question.id,
                     ).first()
                     if not selected_variant_option:

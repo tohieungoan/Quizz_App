@@ -238,27 +238,64 @@ async def websocket_room(
                                 active_q = None
                                 rem_seconds = 20
                                 if db_room.current_question_index and db_room.quiz and db_room.quiz.questions:
-                                    q_idx = db_room.current_question_index - 1
-                                    if 0 <= q_idx < len(db_room.quiz.questions):
-                                        q = db_room.quiz.questions[q_idx]
-                                        from app.utils.option_utils import format_question_options, get_shuffle_seed
-                                        should_shuffle = bool(getattr(db_room, "shuffle_options", False) or (db_room.quiz and getattr(db_room.quiz, "shuffle_options", False)))
-                                        seed = get_shuffle_seed(db_room.id, q.id, decoded_nickname) if should_shuffle else None
-                                        options_live, _ = format_question_options(
-                                            options=q.options or [],
-                                            should_shuffle=should_shuffle,
-                                            seed=seed
-                                        )
+                                    sorted_questions = sorted(db_room.quiz.questions, key=lambda q: (q.position, q.id))
+                                    if 1 <= db_room.current_question_index <= len(sorted_questions):
+                                        q = sorted_questions[db_room.current_question_index - 1]
+                                        
+                                        variant_question = None
+                                        if getattr(db_room, "use_ai_question", False) and decoded_nickname:
+                                            from app.models.room import Participant
+                                            from app.models.quiz_variant import QuizVariantQuestion
+                                            p_obj = db_session.query(Participant).filter(
+                                                Participant.room_id == db_room.id,
+                                                Participant.nickname == decoded_nickname,
+                                            ).first()
+                                            if p_obj and p_obj.quiz_variant_id:
+                                                variant_question = db_session.query(QuizVariantQuestion).filter(
+                                                    QuizVariantQuestion.quiz_variant_id == p_obj.quiz_variant_id,
+                                                    QuizVariantQuestion.original_question_id == q.id,
+                                                ).first()
+
+                                        if variant_question:
+                                            keys = [chr(ord("A") + index) for index in range(20)]
+                                            displayed_options = sorted(
+                                                variant_question.options,
+                                                key=lambda option: (option.position, option.id),
+                                            )
+                                            options_live = [
+                                                {
+                                                    "id": option.id,
+                                                    "variant_option_id": option.id,
+                                                    "key": keys[index] if index < len(keys) else str(index + 1),
+                                                    "label": option.content or "",
+                                                }
+                                                for index, option in enumerate(displayed_options)
+                                            ]
+                                        else:
+                                            from app.utils.option_utils import format_question_options, get_shuffle_seed
+                                            should_shuffle = bool(getattr(db_room, "shuffle_options", False) or (db_room.quiz and getattr(db_room.quiz, "shuffle_options", False)))
+                                            seed = get_shuffle_seed(db_room.id, q.id, decoded_nickname) if should_shuffle else None
+                                            options_live, _ = format_question_options(
+                                                options=q.options or [],
+                                                should_shuffle=should_shuffle,
+                                                seed=seed
+                                            )
+
+                                        raw_type = ((variant_question.type if variant_question else q.type) or "multiple_choice").lower().strip()
+                                        is_short_answer = raw_type in ["short_answer", "short answer", "short", "fill in the blank", "fill_in_the_blank", "fill_in"]
+
                                         active_q = {
                                             "id": q.id,
-                                            "text": q.content,
-                                            "type": q.type,
-                                            "time_limit": q.time_limit,
-                                            "options": options_live
+                                            "variant_question_id": variant_question.id if variant_question else None,
+                                            "text": (variant_question.content if variant_question else q.content) or "",
+                                            "type": "SHORT_ANSWER" if is_short_answer else "MULTIPLE_CHOICE",
+                                            "time_limit": variant_question.time_limit if variant_question else q.time_limit,
+                                            "options": options_live if not is_short_answer else [],
                                         }
                                         if db_room.current_question_started_at:
                                             elapsed = (datetime.datetime.utcnow() - db_room.current_question_started_at).total_seconds()
-                                            rem_seconds = max(0, int(q.time_limit - elapsed))
+                                            t_limit = (variant_question.time_limit if variant_question else q.time_limit) or 20
+                                            rem_seconds = max(0, int(t_limit - elapsed))
                                 return {
                                     "status": db_room.status,
                                     "current_question_index": db_room.current_question_index,
