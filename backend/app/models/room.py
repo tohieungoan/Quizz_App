@@ -34,6 +34,7 @@ class Room(Base):
     allow_voice_question: Mapped[bool] = mapped_column(Boolean, default=False)
     use_ai_question: Mapped[bool] = mapped_column(Boolean, default=False)
     shuffle_options: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     expire_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

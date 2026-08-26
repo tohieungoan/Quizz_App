@@ -226,22 +226,29 @@ def launch_room(
 
     try:
         variant_set_id = None
-        if room_in.shuffle_options and quiz.variant_enabled:
-            if not quiz.active_variant_set_id:
+        should_use_variants = room_in.use_ai_question or getattr(quiz, "variant_enabled", False)
+        if should_use_variants:
+            target_set_id = quiz.active_variant_set_id
+            variant_set = None
+            if target_set_id:
+                variant_set = db.query(QuizVariantSet).filter(
+                    QuizVariantSet.id == target_set_id,
+                    QuizVariantSet.quiz_id == quiz.id,
+                ).first()
+            if not variant_set:
+                variant_set = db.query(QuizVariantSet).filter(
+                    QuizVariantSet.quiz_id == quiz.id,
+                    QuizVariantSet.status == "READY",
+                ).order_by(QuizVariantSet.id.desc()).first()
+
+            if variant_set and variant_set.status == "READY":
+                variant_set_id = variant_set.id
+            elif getattr(quiz, "variant_enabled", False):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="Quiz versions are not prepared for the published quiz version.",
+                    detail="Quiz versions must be valid and published before launching a room with variants.",
                 )
-            variant_set = db.query(QuizVariantSet).filter(
-                QuizVariantSet.id == quiz.active_variant_set_id,
-                QuizVariantSet.quiz_id == quiz.id,
-            ).first()
-            if not variant_set or variant_set.status != "READY":
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Quiz versions must be valid and published before launching a room.",
-                )
-            variant_set_id = quiz.active_variant_set_id
+
         room = crud_room.create_room(
             db=db,
             obj_in=room_in,
@@ -428,7 +435,7 @@ async def get_room_by_code(
                     Participant.id == participant_id,
                     Participant.room_id == room.id,
                 ).first()
-                if participant and participant.quiz_variant_id:
+                if getattr(room, "use_ai_question", False) and participant and participant.quiz_variant_id:
                     variant_question = db.query(QuizVariantQuestion).filter(
                         QuizVariantQuestion.quiz_variant_id == participant.quiz_variant_id,
                         QuizVariantQuestion.original_question_id == q.id,
@@ -625,8 +632,14 @@ def get_room_participants(
     
     from app.models.badge import UserBadge, Badge
 
+    active_nicknames = None
+    if room.status == "WAITING" and room.room_code:
+        active_nicknames = set(room_websocket_manager.get_room_members(room.room_code))
+
     result = []
     for p in room.participants:
+        if active_nicknames is not None and p.nickname not in active_nicknames:
+            continue
         avatar_url = p.user.avatar if p.user and p.user.avatar else None
         # Resolve equipped title from the database for this participant
         equipped_title = None
@@ -729,6 +742,69 @@ async def start_room(
         )
     _trigger_auto_advance_if_enabled(db, updated_room)
     return updated_room
+
+
+@router.post("/{room_id}/toggle-lock", summary="Toggle room lock state (Host)")
+async def toggle_room_lock(
+    room_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    """
+    Toggle lock status of a room (lock to prevent new members from joining, or unlock).
+    Requires Host privileges.
+    """
+    room = crud_room.get(db=db, room_id=room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+    if room.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Only the room host can lock/unlock the room.")
+
+    room.is_locked = not getattr(room, "is_locked", False)
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+
+    if room.room_code:
+        await room_websocket_manager.broadcast_to_room(
+            room.room_code,
+            {"type": "ROOM_LOCK_TOGGLED", "is_locked": room.is_locked}
+        )
+
+    return {"id": room.id, "room_code": room.room_code, "is_locked": room.is_locked}
+
+
+@router.post("/{room_id}/kick-participant/{participant_id}", summary="Kick a participant from room (Host)")
+async def kick_participant(
+    room_id: int,
+    participant_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+) -> Any:
+    """
+    Kick a participant out of a live room.
+    Requires Host privileges.
+    """
+    room = crud_room.get(db=db, room_id=room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+    if room.host_id != current_user.id and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Only the room host can kick participants.")
+
+    try:
+        kicked_p = crud_room.kick_participant(db=db, room=room, participant_id=participant_id)
+        if room.room_code:
+            await room_websocket_manager.broadcast_to_room(
+                room.room_code,
+                {
+                    "type": "PARTICIPANT_KICKED",
+                    "participant_id": participant_id,
+                    "nickname": kicked_p.nickname,
+                }
+            )
+        return {"detail": f"Participant '{kicked_p.nickname}' has been kicked.", "participant_id": participant_id}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{room_id}/live-session", response_model=RoomLiveStatus, summary="Get real-time live session data (Host Panel)")
@@ -839,17 +915,40 @@ async def get_live_session(
                 if ans:
                     answered = True
                     selected_key = None
+                    options = active_question.get("options") or []
                     if ans.variant_option is not None:
-                        selected_key = chr(ord("A") + ans.variant_option.position)
+                        orig_id = getattr(ans.variant_option, "original_option_id", None)
+                        if orig_id is not None:
+                            selected_key = next(
+                                (
+                                    opt.get("key")
+                                    for opt in options
+                                    if isinstance(opt, dict) and opt.get("id") == orig_id
+                                ),
+                                None,
+                            )
+                        if selected_key is None:
+                            if ans.is_correct or getattr(ans.variant_option, "is_correct", False):
+                                selected_key = active_question.get("correct_option_key")
+                            else:
+                                wrong_opt = next(
+                                    (
+                                        opt.get("key")
+                                        for opt in options
+                                        if isinstance(opt, dict) and opt.get("key") != active_question.get("correct_option_key")
+                                    ),
+                                    None,
+                                )
+                                selected_key = wrong_opt or chr(ord("A") + (ans.variant_option.position or 0))
                     else:
-                        options = active_question.get("options")
-                        if isinstance(options, list):
+                        target_opt_id = ans.selected_option_id
+                        if target_opt_id and isinstance(options, list):
                             selected_key = next(
                                 (
                                     option.get("key")
                                     for option in options
                                     if isinstance(option, dict)
-                                    and option.get("id") == ans.selected_option_id
+                                    and option.get("id") == target_opt_id
                                 ),
                                 None,
                             )

@@ -91,4 +91,10 @@ export const roomService = {
 
   updateSettings: (roomId: number | string, settings: { progression_mode?: 'manual' | 'auto'; allow_show_rank?: boolean }): Promise<any> =>
     apiClient.patch<any>(`/rooms/${roomId}/settings`, settings),
+
+  toggleLock: (roomId: number | string): Promise<any> =>
+    apiClient.post<any>(`/rooms/${roomId}/toggle-lock`, {}),
+
+  kickParticipant: (roomId: number | string, participantId: number | string): Promise<any> =>
+    apiClient.post<any>(`/rooms/${roomId}/kick-participant/${participantId}`, {}),
 }
