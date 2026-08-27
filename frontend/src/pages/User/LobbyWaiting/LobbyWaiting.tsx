@@ -74,7 +74,52 @@ export const LobbyWaiting: React.FC = () => {
   const queryParams = new URLSearchParams(location.search)
   const urlRoomCode = queryParams.get('roomCode')
 
-  const [roomCode, setRoomCode] = useState(state?.roomCode || urlRoomCode || '')
+  const [roomCode, setRoomCode] = useState<string>(() => {
+    const code = state?.roomCode || urlRoomCode
+    if (code) {
+      sessionStorage.setItem('active_room_code', code)
+      return code
+    }
+    return sessionStorage.getItem('active_room_code') || ''
+  })
+
+  const [isHost, setIsHost] = useState<boolean>(() => {
+    const activeCode = state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || ''
+    if (state?.isHost !== undefined) {
+      sessionStorage.setItem(`is_host_${activeCode}`, state.isHost ? 'true' : 'false')
+      return !!state.isHost
+    }
+    return sessionStorage.getItem(`is_host_${activeCode}`) === 'true'
+  })
+
+  const [roomId, setRoomId] = useState<number>(() => {
+    const activeCode = state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || ''
+    if (state?.roomId) {
+      sessionStorage.setItem(`room_id_${activeCode}`, String(state.roomId))
+      return state.roomId
+    }
+    return Number(sessionStorage.getItem(`room_id_${activeCode}`) || 0)
+  })
+
+  const [participantId, setParticipantId] = useState<number>(() => {
+    const activeCode = state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || ''
+    if (state?.participantId) {
+      sessionStorage.setItem(`participant_id_${activeCode}`, String(state.participantId))
+      return state.participantId
+    }
+    return Number(sessionStorage.getItem(`participant_id_${activeCode}`) || 0)
+  })
+
+  const handleSetRoomId = (id: number) => {
+    setRoomId(id)
+    if (roomCode && id > 0) sessionStorage.setItem(`room_id_${roomCode}`, String(id))
+  }
+
+  const handleSetParticipantId = (id: number) => {
+    setParticipantId(id)
+    if (roomCode && id > 0) sessionStorage.setItem(`participant_id_${roomCode}`, String(id))
+  }
+
   const [nickname, setNickname] = useState(() => {
     if (state?.nickname) return state.nickname
     const stored = localStorage.getItem('user')
@@ -95,12 +140,9 @@ export const LobbyWaiting: React.FC = () => {
     }
     return guestId
   })
-  
-  const [roomId, setRoomId] = useState(state?.roomId || 0)
-  const [participantId, setParticipantId] = useState(state?.participantId || 0)
+
   const [isJoiningRoom, setIsJoiningRoom] = useState(false)
 
-  const isHost = !!state?.isHost
   const fromSource = state?.fromSource || (localStorage.getItem('token') ? 'dashboard' : 'landing')
   const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room'
 
@@ -165,7 +207,7 @@ export const LobbyWaiting: React.FC = () => {
           return
         }
         if (res.id) {
-          setRoomId(res.id)
+          handleSetRoomId(res.id)
         }
         if (res.created_at) {
           setCreatedAt(res.created_at)
@@ -256,8 +298,8 @@ export const LobbyWaiting: React.FC = () => {
       const doJoin = async (attemptsLeft = 2) => {
         try {
           const res = await roomService.joinRoom(urlRoomCode, nickname)
-          setRoomId(res.room_id)
-          setParticipantId(res.id)
+          handleSetRoomId(res.room_id)
+          handleSetParticipantId(res.id)
           setIsJoiningRoom(false)
         } catch (err: any) {
           if (attemptsLeft > 1) {
@@ -507,8 +549,7 @@ export const LobbyWaiting: React.FC = () => {
               alert("The session has been ended by host.")
               navigate(localStorage.getItem('token') ? '/dashboard' : '/')
             } else if (data.type === "ERROR") {
-              alert(data.message || "An error occurred in room connection.")
-              navigate(localStorage.getItem('token') ? '/dashboard' : '/')
+              console.warn("WebSocket room warning:", data.message)
             }
           } catch (e) {
             console.error("Error parsing WebSocket message:", e)
@@ -551,27 +592,6 @@ export const LobbyWaiting: React.FC = () => {
     }
   }, [roomCode, roomId, participantId, isHost, nickname, navigate, fromSource, activeTab, state?.roomId, state?.participantId])
 
-  // Automatically trigger leave beacon when participant closes tab or browser window
-  useEffect(() => {
-    if (isHost) return
-    const targetParticipantId = participantId || state?.participantId
-    if (!targetParticipantId) return
-
-    const handleTabClose = () => {
-      const apiBase = (import.meta as any).env?.VITE_API_URL || '/api/v1'
-      const beaconUrl = `${apiBase}/rooms/participants/${targetParticipantId}/leave`
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(beaconUrl)
-      }
-    }
-
-    window.addEventListener('beforeunload', handleTabClose)
-    window.addEventListener('pagehide', handleTabClose)
-    return () => {
-      window.removeEventListener('beforeunload', handleTabClose)
-      window.removeEventListener('pagehide', handleTabClose)
-    }
-  }, [isHost, participantId, state?.participantId])
 
   const myPlayer: Player = {
     id: 'me',

@@ -872,9 +872,22 @@ async def leave_room_endpoint(
 
     room_code, nickname, room_id = await run_in_threadpool(_do_leave)
     if room_code and nickname:
-        active_members = room_websocket_manager.get_room_members(room_code)
-        if nickname in active_members:
-            active_members = [m for m in active_members if m != nickname]
+        def _get_remaining_parts_info():
+            parts = db.query(Participant).filter(Participant.room_id == room_id).all()
+            result = []
+            for p in parts:
+                avatar = p.user.avatar if p.user else getattr(p, "avatar", None)
+                eq_title = getattr(p.user, "equipped_title", None) if p.user else getattr(p, "equipped_title", None)
+                result.append({
+                    "id": p.id,
+                    "nickname": p.nickname,
+                    "avatar": avatar,
+                    "equipped_title": eq_title,
+                })
+            return result
+        db_parts = await run_in_threadpool(_get_remaining_parts_info)
+        active_nicknames = [p["nickname"] for p in db_parts]
+
         await room_websocket_manager.broadcast_to_room(
             room_code,
             {
@@ -882,8 +895,9 @@ async def leave_room_endpoint(
                 "t": "PL",
                 "player": nickname,
                 "u": nickname,
-                "players": active_members,
-                "p": active_members,
+                "participants": db_parts,
+                "players": active_nicknames,
+                "p": active_nicknames,
             }
         )
         if room_id:
