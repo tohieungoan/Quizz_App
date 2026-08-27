@@ -24,6 +24,7 @@ class Exam(Base):
     timer: Mapped[int] = mapped_column(Integer, nullable=False)  # Duration in minutes
     navigation_rule: Mapped[str] = mapped_column(String, default="FREE_NAV")
     results_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    use_ai_question: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String, default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
