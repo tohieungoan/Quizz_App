@@ -23,6 +23,8 @@ class RoomConnectionManager:
         self._pubsub_client: Optional[aioredis.Redis] = None
         self._pub_client: Optional[aioredis.Redis] = None
 
+        self._local_seq_fallback: Dict[str, int] = {}
+
     def _get_pub_client(self) -> aioredis.Redis:
         if not self._pub_client:
             self._pub_client = aioredis.from_url(
@@ -143,11 +145,28 @@ class RoomConnectionManager:
         except Exception as e:
             logger.warning(f"Failed to publish room event to Redis Pub/Sub channel: {e}")
 
+    async def _get_next_seq(self, room_code: str) -> int:
+        """
+        Monotonic, cross-worker sequence number for a room, backed by Redis INCR.
+        Lets clients detect and discard out-of-order snapshots delivered via Pub/Sub.
+        """
+        try:
+            redis_client = self._get_pub_client()
+            return await redis_client.incr(f"room:{room_code}:seq")
+        except Exception as e:
+            logger.warning(f"Failed to get Redis seq for room {room_code}, falling back to local counter: {e}")
+            self._local_seq_fallback[room_code] = self._local_seq_fallback.get(room_code, 0) + 1
+            return self._local_seq_fallback[room_code]
+
     async def broadcast_to_room(self, room_code: str, message: dict, publish: bool = True):
         """
         Broadcasts message to local clients on this worker immediately (<1ms),
-        and asynchronously publishes to Redis Pub/Sub for other workers without blocking.
+        and publishes to Redis Pub/Sub for other workers.
+        Stamps message with monotonic seq number to prevent out-of-order roster updates.
         """
+        seq = await self._get_next_seq(room_code)
+        message["seq"] = seq
+
         # 1. Send locally first (instant <1ms latency)
         await self.broadcast_local(room_code, message)
 
@@ -159,7 +178,7 @@ class RoomConnectionManager:
                 "message": message
             })
             channel = f"{REDIS_CHANNEL_PREFIX}{room_code}"
-            asyncio.create_task(self._publish_async(channel, payload))
+            await self._publish_async(channel, payload)
 
     def get_room_members(self, room_code: str) -> List[str]:
         if room_code in self.active_connections:

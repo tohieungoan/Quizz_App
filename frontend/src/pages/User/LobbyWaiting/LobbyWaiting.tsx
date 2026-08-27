@@ -131,6 +131,11 @@ export const LobbyWaiting: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([])
   const [copied, setCopied] = useState(false)
   const roomIdRef = useRef(roomId || state?.roomId || 0)
+  // Tracks the highest 'seq' number applied so far, so that an
+  // out-of-order roster snapshot (arriving late from another worker
+  // via Redis Pub/Sub) doesn't overwrite a newer one and make the
+  // member list flicker/jump.
+  const lastAppliedSeqRef = useRef<number>(0)
 
   useEffect(() => {
     if (roomId) roomIdRef.current = roomId
@@ -387,6 +392,18 @@ export const LobbyWaiting: React.FC = () => {
             if (msgType === "PONG" || msgType === "PO") return
 
             if (msgType === "PLAYER_JOINED" || msgType === "PJ" || msgType === "PLAYER_LEFT" || msgType === "PL") {
+              // Discard stale/out-of-order roster snapshots: with multiple
+              // backend workers, Redis Pub/Sub delivery order isn't guaranteed,
+              // so an older snapshot can arrive after a newer one. Only apply
+              // a snapshot if its seq is newer than the last one we applied.
+              const incomingSeq = typeof data.seq === "number" ? data.seq : null
+              if (incomingSeq !== null) {
+                if (incomingSeq <= lastAppliedSeqRef.current) {
+                  return
+                }
+                lastAppliedSeqRef.current = incomingSeq
+              }
+
               // 1. Immediate UI roster update from WebSocket payload array if available
               const activePlayersList = data.p || data.players
               if (Array.isArray(activePlayersList)) {
