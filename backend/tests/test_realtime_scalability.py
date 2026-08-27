@@ -12,9 +12,13 @@ def test_websocket_room_submit_answer():
     client = TestClient(app)
     db = SessionLocal()
 
-    # Clean up test users
-    db.query(User).filter(User.email == "ws_test_user@example.com").delete()
-    db.commit()
+    # Clean up test users and their rooms/quizzes
+    user_ids = [u.id for u in db.query(User).filter(User.email == "ws_test_user@example.com").all()]
+    if user_ids:
+        db.query(Room).filter(Room.host_id.in_(user_ids)).delete(synchronize_session=False)
+        db.query(Quiz).filter(Quiz.user_id.in_(user_ids)).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_(user_ids)).delete(synchronize_session=False)
+        db.commit()
 
     # 1. Create test host & member
     host = User(
@@ -30,7 +34,7 @@ def test_websocket_room_submit_answer():
 
     try:
         # Create Quiz & Question
-        quiz = Quiz(user_id=host.id, title="WS Test Quiz", subject="Tech", difficulty="Easy", status="ACTIVE")
+        quiz = Quiz(user_id=host.id, title="WS Test Quiz", subject="Tech", difficulty="Easy", status="PUBLISHED")
         db.add(quiz)
         db.commit()
         db.refresh(quiz)
@@ -74,7 +78,7 @@ def test_websocket_room_submit_answer():
             # Send PING
             websocket.send_json({"type": "PING"})
             msg = websocket.receive_json()
-            if msg.get("type") == "PLAYER_JOINED":
+            while msg.get("type") in ["ROSTER_SYNC", "PLAYER_JOINED"]:
                 msg = websocket.receive_json()
             assert msg.get("type") == "PONG"
 

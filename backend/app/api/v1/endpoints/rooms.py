@@ -614,15 +614,32 @@ async def join_room_by_code(
         
         # Broadcast player joined event to all websocket clients in room
         from app.models.room import Participant
-        active_nicknames = await run_in_threadpool(
-            lambda: [row[0] for row in db.query(Participant.nickname).filter(Participant.room_id == room.id).all()]
-        )
+        def _get_parts_info():
+            parts = db.query(Participant).filter(Participant.room_id == room.id).all()
+            result = []
+            for p in parts:
+                avatar = p.user.avatar if p.user else getattr(p, "avatar", None)
+                eq_title = getattr(p.user, "equipped_title", None) if p.user else getattr(p, "equipped_title", None)
+                result.append({
+                    "id": p.id,
+                    "nickname": p.nickname,
+                    "avatar": avatar,
+                    "equipped_title": eq_title,
+                })
+            return result
+        db_parts = await run_in_threadpool(_get_parts_info)
+        active_nicknames = [p["nickname"] for p in db_parts]
+
         await room_websocket_manager.broadcast_to_room(
             room_code,
             {
                 "type": "PLAYER_JOINED",
+                "t": "PJ",
                 "player": participant.nickname,
-                "players": active_nicknames
+                "u": participant.nickname,
+                "participants": db_parts,
+                "players": active_nicknames,
+                "p": active_nicknames,
             }
         )
         if current_user:

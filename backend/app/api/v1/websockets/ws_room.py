@@ -13,6 +13,23 @@ from app.services.redis_room_service import redis_room_service
 
 logger = logging.getLogger(__name__)
 
+def _get_db_participants_payload(room_id: int) -> List[Dict[str, Any]]:
+    from app.db.session import SessionLocal
+    from app.models.room import Participant
+    with SessionLocal() as db_session:
+        participants = db_session.query(Participant).filter(Participant.room_id == room_id).all()
+        result = []
+        for p in participants:
+            avatar = p.user.avatar if p.user else getattr(p, "avatar", None)
+            eq_title = getattr(p.user, "equipped_title", None) if p.user else getattr(p, "equipped_title", None)
+            result.append({
+                "id": p.id,
+                "nickname": p.nickname,
+                "avatar": avatar,
+                "equipped_title": eq_title,
+            })
+        return result
+
 router = APIRouter()
 
 @router.websocket("/ws/rooms/{room_code}")
@@ -63,13 +80,25 @@ async def websocket_room(
         except Exception as jwt_err:
             logger.debug(f"Failed to decode token for client '{decoded_nickname}': {jwt_err}")
 
+    room_websocket_manager.cancel_pending_disconnect(room_code, decoded_nickname)
     await room_websocket_manager.connect(websocket, room_code, decoded_nickname)
     logger.info(f"WebSocket client '{decoded_nickname}' connected to room '{room_code}'")
 
+    # Fetch full DB participant roster
+    db_participants = await run_in_threadpool(_get_db_participants_payload, room_id)
+    db_nicknames = [p["nickname"] for p in db_participants]
+
+    # 1. Direct initial ROSTER_SYNC to newly connected client (Host or Member)
+    await websocket.send_json({
+        "type": "ROSTER_SYNC",
+        "t": "RS",
+        "participants": db_participants,
+        "players": db_nicknames,
+        "p": db_nicknames,
+    })
+
+    # 2. Broadcast PLAYER_JOINED to existing clients if member joined
     if not isHost:
-        active_nicknames = room_websocket_manager.get_room_members(room_code)
-        if decoded_nickname not in active_nicknames:
-            active_nicknames.append(decoded_nickname)
         await room_websocket_manager.broadcast_to_room(
             room_code,
             {
@@ -77,8 +106,9 @@ async def websocket_room(
                 "t": "PJ",
                 "player": decoded_nickname,
                 "u": decoded_nickname,
-                "players": active_nicknames,
-                "p": active_nicknames,
+                "participants": db_participants,
+                "players": db_nicknames,
+                "p": db_nicknames,
             }
         )
 
@@ -481,31 +511,31 @@ async def websocket_room(
             room_websocket_manager.disconnect(websocket, room_code, decoded_nickname)
             logger.info(f"WebSocket client '{decoded_nickname}' disconnected from room '{room_code}'")
             if not isHost:
-                def _do_cleanup_disconnect():
-                    with SessionLocal() as db_session:
-                        db_room = crud_room.get_by_code(db=db_session, room_code=room_code)
-                        if db_room and db_room.status == "WAITING":
-                            from app.models.room import Participant
-                            p = db_session.query(Participant).filter(
-                                Participant.room_id == db_room.id,
-                                Participant.nickname == decoded_nickname
-                            ).first()
-                            if p:
-                                db_session.delete(p)
-                                db_session.commit()
-                await run_in_threadpool(_do_cleanup_disconnect)
+                # 5-second Grace Period before broadcasting PLAYER_LEFT (DO NOT delete Participant from DB!)
+                async def _delayed_disconnect_notice():
+                    try:
+                        await asyncio.sleep(5.0)
+                        if decoded_nickname not in room_websocket_manager.get_room_members(room_code):
+                            db_parts = await run_in_threadpool(_get_db_participants_payload, room_id)
+                            nicks = [p["nickname"] for p in db_parts]
+                            await room_websocket_manager.broadcast_to_room(
+                                room_code,
+                                {
+                                    "type": "PLAYER_LEFT",
+                                    "t": "PL",
+                                    "player": decoded_nickname,
+                                    "u": decoded_nickname,
+                                    "participants": db_parts,
+                                    "players": nicks,
+                                    "p": nicks,
+                                }
+                            )
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as err:
+                        logger.error(f"Error in delayed disconnect notice for '{decoded_nickname}': {err}")
 
-                active_members = room_websocket_manager.get_room_members(room_code)
-                await room_websocket_manager.broadcast_to_room(
-                    room_code,
-                    {
-                        "type": "PLAYER_LEFT",
-                        "t": "PL",
-                        "player": decoded_nickname,
-                        "u": decoded_nickname,
-                        "players": active_members,
-                        "p": active_members,
-                    }
-                )
+                task = asyncio.create_task(_delayed_disconnect_notice())
+                room_websocket_manager.schedule_pending_disconnect(room_code, decoded_nickname, task)
         except Exception as cleanup_err:
             logger.error(f"Error during WebSocket cleanup for '{decoded_nickname}': {cleanup_err}")
