@@ -2184,24 +2184,29 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   <select
                     value={navigationRule}
                     onChange={(e) => setNavigationRule(e.target.value as 'FREE_NAV' | 'FIXED_NAV')}
-                    className="w-full px-2.5 py-1.5 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                    className="w-full px-2.5 py-2 bg-white border border-outline-variant/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-secondary/20"
                   >
                     <option value="FREE_NAV">Free</option>
                     <option value="FIXED_NAV">Sequential</option>
                   </select>
                 </div>
 
-                <div className="flex flex-col justify-center">
-                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1 sm:mt-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-on-surface uppercase tracking-wider mb-1">
+                    Publish Results
+                  </label>
+                  <div className="flex items-center gap-2 pt-2">
                     <input
+                      id="publish-results-checkbox"
                       type="checkbox"
                       checked={resultsPublished}
                       onChange={(e) => setResultsPublished(e.target.checked)}
-                      className="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary/50 cursor-pointer"
+                      className="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary/50 cursor-pointer shrink-0"
                     />
-                    <span className="text-xs font-bold text-on-surface">Publish Results</span>
-                  </label>
-                  <p className="text-[10px] text-on-surface-variant mt-0.5 ml-6">Display scores immediately.</p>
+                    <label htmlFor="publish-results-checkbox" className="text-xs font-medium text-on-surface cursor-pointer select-none">
+                      Display scores immediately
+                    </label>
+                  </div>
                 </div>
               </div>
 
