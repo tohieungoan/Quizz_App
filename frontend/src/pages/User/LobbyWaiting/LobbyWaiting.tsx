@@ -317,6 +317,8 @@ export const LobbyWaiting: React.FC = () => {
     }
 
     fetchInitialParticipants()
+    const pollTimer = setInterval(fetchInitialParticipants, 4000)
+    return () => clearInterval(pollTimer)
   }, [roomId, state?.roomId, isHost, nickname])
 
   // WebSocket real-time synchronization hook for participant roster and state sync
@@ -380,36 +382,64 @@ export const LobbyWaiting: React.FC = () => {
             const msgType = data.t || data.type
             if (msgType === "PONG" || msgType === "PO") return
 
-            if (msgType === "PLAYER_JOINED" || msgType === "PJ" || msgType === "PLAYER_LEFT" || msgType === "PL") {
-              // 1. Immediate UI roster update from WebSocket payload array if available
-              const activePlayersList = data.p || data.players
-              if (Array.isArray(activePlayersList)) {
+            if (msgType === "ROSTER_SYNC" || msgType === "RS" || msgType === "PLAYER_JOINED" || msgType === "PJ" || msgType === "PLAYER_LEFT" || msgType === "PL") {
+              // 1. Immediate UI roster update from WebSocket payload array if rich objects are available
+              if (Array.isArray(data.participants)) {
                 if (isHost) {
-                  setHostMembers(prev => activePlayersList.map((pName: string): HostMember => {
-                    const existing = prev.find(m => m.nickname === pName)
-                    return {
-                      id: existing?.id,
-                      nickname: pName,
-                      avatar: existing?.avatar || null,
-                      equipped_title: existing?.equipped_title ?? null
-                    }
-                  }))
+                  setHostMembers(data.participants.map((p: any): HostMember => ({
+                    id: p.id,
+                    nickname: p.nickname || 'Guest',
+                    avatar: p.avatar || null,
+                    equipped_title: p.equipped_title ?? null,
+                  })))
                 } else {
                   const loggedAvatar = getLoggedInUserAvatar()
-                  setPlayers(prev => activePlayersList.map((pName: string, idx: number): Player => {
-                    const isMe = pName === nickname
-                    const color = getAvatarColor(String(idx) + pName)
-                    const existing = prev.find(p => p.name === pName)
+                  setPlayers(data.participants.map((p: any, idx: number): Player => {
+                    const nick = p.nickname || 'Guest'
+                    const isMe = nick === nickname
+                    const color = getAvatarColor(String(p.id || idx) + nick)
                     return {
-                      id: String(existing?.id || idx),
-                      name: pName,
-                      initials: getInitials(pName),
-                      avatar: existing?.avatar || (isMe ? loggedAvatar : null),
+                      id: String(p.id || idx),
+                      name: nick,
+                      initials: getInitials(nick),
+                      avatar: p.avatar || (isMe ? loggedAvatar : null),
                       avatarBg: isMe ? 'bg-primary' : color.bg,
                       avatarText: isMe ? 'text-on-primary' : color.text,
                       isMe,
+                      equipped_title: p.equipped_title ?? null,
                     }
                   }))
+                }
+              } else {
+                const activePlayersList = data.p || data.players
+                if (Array.isArray(activePlayersList)) {
+                  if (isHost) {
+                    setHostMembers(prev => activePlayersList.map((pName: string): HostMember => {
+                      const existing = prev.find(m => m.nickname === pName)
+                      return {
+                        id: existing?.id,
+                        nickname: pName,
+                        avatar: existing?.avatar || null,
+                        equipped_title: existing?.equipped_title ?? null
+                      }
+                    }))
+                  } else {
+                    const loggedAvatar = getLoggedInUserAvatar()
+                    setPlayers(prev => activePlayersList.map((pName: string, idx: number): Player => {
+                      const isMe = pName === nickname
+                      const color = getAvatarColor(String(idx) + pName)
+                      const existing = prev.find(p => p.name === pName)
+                      return {
+                        id: String(existing?.id || idx),
+                        name: pName,
+                        initials: getInitials(pName),
+                        avatar: existing?.avatar || (isMe ? loggedAvatar : null),
+                        avatarBg: isMe ? 'bg-primary' : color.bg,
+                        avatarText: isMe ? 'text-on-primary' : color.text,
+                        isMe,
+                      }
+                    }))
+                  }
                 }
               }
 

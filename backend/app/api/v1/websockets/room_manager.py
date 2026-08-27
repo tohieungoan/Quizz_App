@@ -16,10 +16,25 @@ class RoomConnectionManager:
     def __init__(self):
         # Maps room_code -> { nickname: websocket }
         self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
+        self.pending_disconnect_tasks: Dict[str, asyncio.Task] = {}
         self.worker_id = str(uuid.uuid4())
         self._listener_task: Optional[asyncio.Task] = None
         self._pubsub_client: Optional[aioredis.Redis] = None
         self._pub_client: Optional[aioredis.Redis] = None
+
+    def schedule_pending_disconnect(self, room_code: str, nickname: str, task: asyncio.Task):
+        key = f"{room_code}:{nickname}"
+        existing = self.pending_disconnect_tasks.get(key)
+        if existing and not existing.done():
+            existing.cancel()
+        self.pending_disconnect_tasks[key] = task
+
+    def cancel_pending_disconnect(self, room_code: str, nickname: str):
+        key = f"{room_code}:{nickname}"
+        existing = self.pending_disconnect_tasks.pop(key, None)
+        if existing and not existing.done():
+            existing.cancel()
+            logger.info(f"Cancelled pending disconnect task for '{nickname}' in room '{room_code}'")
 
     def _get_pub_client(self) -> aioredis.Redis:
         if not self._pub_client:
