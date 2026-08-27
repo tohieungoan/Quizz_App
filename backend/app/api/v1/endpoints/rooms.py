@@ -675,14 +675,8 @@ def get_room_participants(
     
     from app.models.badge import UserBadge, Badge
 
-    active_nicknames = None
-    if room.status == "WAITING" and room.room_code:
-        active_nicknames = set(room_websocket_manager.get_room_members(room.room_code))
-
     result = []
     for p in room.participants:
-        if active_nicknames is not None and p.nickname not in active_nicknames:
-            continue
         avatar_url = p.user.avatar if p.user and p.user.avatar else None
         # Resolve equipped title from the database for this participant
         equipped_title = None
