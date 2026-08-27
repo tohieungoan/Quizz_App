@@ -16,10 +16,14 @@ class RoomConnectionManager:
     def __init__(self):
         # Maps room_code -> { nickname: websocket }
         self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
+        # Maps room_code -> { nickname: asyncio.Task }
+        self.pending_disconnect_tasks: Dict[str, Dict[str, asyncio.Task]] = {}
         self.worker_id = str(uuid.uuid4())
         self._listener_task: Optional[asyncio.Task] = None
         self._pubsub_client: Optional[aioredis.Redis] = None
         self._pub_client: Optional[aioredis.Redis] = None
+
+        self._local_seq_fallback: Dict[str, int] = {}
 
     def _get_pub_client(self) -> aioredis.Redis:
         if not self._pub_client:
@@ -33,9 +37,88 @@ class RoomConnectionManager:
 
     async def connect(self, websocket: WebSocket, room_code: str, nickname: str):
         await websocket.accept()
+
+        # Cancel any pending graceful disconnect task if user reconnected
+        if room_code in self.pending_disconnect_tasks and nickname in self.pending_disconnect_tasks[room_code]:
+            task = self.pending_disconnect_tasks[room_code].pop(nickname)
+            if not task.done():
+                task.cancel()
+                logger.info(f"Cancelled pending disconnect task for '{nickname}' in room '{room_code}' upon re-connection")
+
         if room_code not in self.active_connections:
             self.active_connections[room_code] = {}
         self.active_connections[room_code][nickname] = websocket
+
+    def schedule_graceful_disconnect(self, room_code: str, nickname: str, grace_seconds: int = 6):
+        """Schedules a background task to clean up a participant if they do not reconnect within grace_seconds."""
+        if room_code not in self.pending_disconnect_tasks:
+            self.pending_disconnect_tasks[room_code] = {}
+
+        existing_task = self.pending_disconnect_tasks[room_code].get(nickname)
+        if existing_task and not existing_task.done():
+            existing_task.cancel()
+
+        async def _do_graceful_disconnect():
+            try:
+                await asyncio.sleep(grace_seconds)
+                logger.info(f"Grace period ({grace_seconds}s) expired for client '{nickname}' in room '{room_code}'. Cleaning up...")
+
+                from starlette.concurrency import run_in_threadpool
+                from app.db.session import SessionLocal
+                from app.crud.crud_room import crud_room
+                from app.models.room import Participant
+                from app.api.v1.websockets.admin_room_manager import admin_room_manager
+
+                def _do_db_cleanup():
+                    with SessionLocal() as db_session:
+                        db_room = crud_room.get_by_code(db=db_session, room_code=room_code)
+                        if not db_room:
+                            return None, None
+                        p = db_session.query(Participant).filter(
+                            Participant.room_id == db_room.id,
+                            Participant.nickname == nickname
+                        ).first()
+                        if p:
+                            if db_room.status == "WAITING":
+                                db_session.delete(p)
+                            else:
+                                p.status = "LEFT"
+                            db_session.commit()
+
+                        remaining_list = db_session.query(Participant.nickname).filter(
+                            Participant.room_id == db_room.id,
+                            Participant.status != "LEFT"
+                        ).all()
+                        remaining_nicknames = [r[0] for r in remaining_list]
+                        return db_room.id, remaining_nicknames
+
+                room_id, remaining_members = await run_in_threadpool(_do_db_cleanup)
+                if remaining_members is not None:
+                    await self.broadcast_to_room(
+                        room_code,
+                        {
+                            "type": "PLAYER_LEFT",
+                            "t": "PL",
+                            "player": nickname,
+                            "u": nickname,
+                            "players": remaining_members,
+                            "p": remaining_members,
+                        }
+                    )
+                    if room_id:
+                        await admin_room_manager.publish(
+                            room_id=room_id,
+                            room_code=room_code,
+                            reason="PARTICIPANT_LEFT",
+                        )
+            except asyncio.CancelledError:
+                logger.info(f"Graceful disconnect timer cancelled for '{nickname}' in room '{room_code}'")
+            finally:
+                if room_code in self.pending_disconnect_tasks and nickname in self.pending_disconnect_tasks[room_code]:
+                    self.pending_disconnect_tasks[room_code].pop(nickname, None)
+
+        task = asyncio.create_task(_do_graceful_disconnect())
+        self.pending_disconnect_tasks[room_code][nickname] = task
 
     def disconnect(self, websocket: WebSocket, room_code: str, nickname: str):
         if room_code in self.active_connections:
@@ -62,11 +145,28 @@ class RoomConnectionManager:
         except Exception as e:
             logger.warning(f"Failed to publish room event to Redis Pub/Sub channel: {e}")
 
+    async def _get_next_seq(self, room_code: str) -> int:
+        """
+        Monotonic, cross-worker sequence number for a room, backed by Redis INCR.
+        Lets clients detect and discard out-of-order snapshots delivered via Pub/Sub.
+        """
+        try:
+            redis_client = self._get_pub_client()
+            return await redis_client.incr(f"room:{room_code}:seq")
+        except Exception as e:
+            logger.warning(f"Failed to get Redis seq for room {room_code}, falling back to local counter: {e}")
+            self._local_seq_fallback[room_code] = self._local_seq_fallback.get(room_code, 0) + 1
+            return self._local_seq_fallback[room_code]
+
     async def broadcast_to_room(self, room_code: str, message: dict, publish: bool = True):
         """
         Broadcasts message to local clients on this worker immediately (<1ms),
-        and asynchronously publishes to Redis Pub/Sub for other workers without blocking.
+        and publishes to Redis Pub/Sub for other workers.
+        Stamps message with monotonic seq number to prevent out-of-order roster updates.
         """
+        seq = await self._get_next_seq(room_code)
+        message["seq"] = seq
+
         # 1. Send locally first (instant <1ms latency)
         await self.broadcast_local(room_code, message)
 
@@ -78,7 +178,7 @@ class RoomConnectionManager:
                 "message": message
             })
             channel = f"{REDIS_CHANNEL_PREFIX}{room_code}"
-            asyncio.create_task(self._publish_async(channel, payload))
+            await self._publish_async(channel, payload)
 
     def get_room_members(self, room_code: str) -> List[str]:
         if room_code in self.active_connections:
