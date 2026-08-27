@@ -71,6 +71,7 @@ export interface HostAssignedExam {
   status: 'Pending' | 'Active' | 'Closed';
   navigationRule?: 'FREE_NAV' | 'FIXED_NAV';
   resultsPublished?: boolean;
+  useAiQuestion?: boolean;
   submissions?: {
     memberId: string;
     memberName: string;
@@ -183,6 +184,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
             status: uStatus,
             navigationRule: ex.navigation_rule || 'FREE_NAV',
             resultsPublished: ex.results_published || false,
+            useAiQuestion: Boolean(ex.use_ai_question || ex.variant_set_id),
             submissions: []
           };
         });
@@ -351,6 +353,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
   const [examStatus, setExamStatus] = useState<'Pending' | 'Active' | 'Closed'>('Pending');
   const [navigationRule, setNavigationRule] = useState<'FREE_NAV' | 'FIXED_NAV'>('FREE_NAV');
   const [resultsPublished, setResultsPublished] = useState<boolean>(false);
+  const [useAiQuestion, setUseAiQuestion] = useState<boolean>(false);
 
   // Submissions Modal State
   const [submissionsModalExam, setSubmissionsModalExam] = useState<HostAssignedExam | null>(null);
@@ -1155,6 +1158,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setExamStatus('Pending');
     setNavigationRule('FREE_NAV');
     setResultsPublished(false);
+    setUseAiQuestion(false);
     setIsExamModalOpen(true);
   };
 
@@ -1168,6 +1172,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
     setExamStatus(exam.status);
     setNavigationRule(exam.navigationRule || 'FREE_NAV');
     setResultsPublished(exam.resultsPublished || false);
+    setUseAiQuestion(exam.useAiQuestion || false);
     setIsExamModalOpen(true);
   };
 
@@ -1209,7 +1214,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           end_time: examDue ? new Date(examDue).toISOString() : undefined,
           status: examStatus === 'Active' ? 'ACTIVE' : examStatus === 'Pending' ? 'PENDING' : 'CLOSED',
           navigation_rule: navigationRule,
-          results_published: resultsPublished
+          results_published: resultsPublished,
+          use_ai_question: useAiQuestion
         });
       } else {
         await examService.assignExam({
@@ -1221,7 +1227,8 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
           timer: examDuration,
           navigation_rule: navigationRule,
           results_published: resultsPublished,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          use_ai_question: useAiQuestion
         });
       }
       setIsExamModalOpen(false);
@@ -2196,6 +2203,27 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                   </label>
                   <p className="text-[10px] text-on-surface-variant mt-0.5 ml-6">Display scores immediately.</p>
                 </div>
+              </div>
+
+              {/* Enable AI Similar Questions Toggle */}
+              <div className="p-3 bg-surface-container/30 rounded-xl border border-outline-variant/20 flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-on-surface">Enable AI Similar Questions</span>
+                  <span className="text-[10px] text-on-surface-variant">Generate & deliver similar question variants to candidates for exam paper diversity</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUseAiQuestion(!useAiQuestion)}
+                  className={`w-9 h-5 rounded-full relative p-0.5 transition-colors cursor-pointer shrink-0 ${
+                    useAiQuestion ? 'bg-secondary' : 'bg-outline-variant/40'
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 bg-white rounded-full shadow-xs transition-transform ${
+                      useAiQuestion ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
 
               {/* Status Selector */}

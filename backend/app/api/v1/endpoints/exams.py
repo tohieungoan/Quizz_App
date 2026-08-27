@@ -253,12 +253,25 @@ def assign_exam(
             status_code=status.HTTP_409_CONFLICT,
             detail="Only a published quiz can be assigned as an exam.",
         )
-    if quiz.variant_enabled:
-        variant_set = db.query(QuizVariantSet).filter(
-            QuizVariantSet.id == quiz.active_variant_set_id,
-            QuizVariantSet.quiz_id == quiz.id,
-        ).first()
-        if not variant_set or variant_set.status != "READY":
+    should_use_variants = bool(body.use_ai_question or getattr(quiz, "variant_enabled", False))
+    variant_set_id = None
+    if should_use_variants:
+        target_set_id = quiz.active_variant_set_id
+        variant_set = None
+        if target_set_id:
+            variant_set = db.query(QuizVariantSet).filter(
+                QuizVariantSet.id == target_set_id,
+                QuizVariantSet.quiz_id == quiz.id,
+            ).first()
+        if not variant_set:
+            variant_set = db.query(QuizVariantSet).filter(
+                QuizVariantSet.quiz_id == quiz.id,
+                QuizVariantSet.status == "READY",
+            ).order_by(QuizVariantSet.id.desc()).first()
+
+        if variant_set and variant_set.status == "READY":
+            variant_set_id = variant_set.id
+        elif getattr(quiz, "variant_enabled", False):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Quiz versions must be valid and published before assigning the exam.",
@@ -304,7 +317,8 @@ def assign_exam(
         navigation_rule=body.navigation_rule,
         results_published=body.results_published if body.results_published is not None else False,
         status=body.status,
-        variant_set_id=quiz.active_variant_set_id if quiz.variant_enabled else None,
+        use_ai_question=bool(body.use_ai_question),
+        variant_set_id=variant_set_id,
     )
     db.add(db_exam)
     db.commit()
@@ -390,6 +404,7 @@ def read_assigned_exams(
             "timer": exam.timer,
             "status": exam.status,
             "results_published": exam.results_published,
+            "use_ai_question": getattr(exam, "use_ai_question", False),
             "total_assignees": total_assignees,
             "submitted_count": submitted_count,
             "created_at": exam.created_at,
@@ -397,6 +412,7 @@ def read_assigned_exams(
             "group_name": exam.group.name if exam.group else None,
             "quiz_subject": exam.quiz.subject if exam.quiz else None,
             "navigation_rule": exam.navigation_rule,
+            "variant_set_id": exam.variant_set_id,
         })
     return result
 
@@ -441,6 +457,7 @@ def read_my_exams(
             "group_name": exam.group.name if exam.group else "Individual / General",
             "navigation_rule": exam.navigation_rule,
             "results_published": exam.results_published,
+            "use_ai_question": getattr(exam, "use_ai_question", False),
         })
     return result
 
@@ -592,13 +609,28 @@ def update_exam(
             )
             
         # Perform the updates
+        if quiz_id_changed or "use_ai_question" in update_data:
+            new_use_ai = update_data.get("use_ai_question", getattr(exam, "use_ai_question", False))
+            should_use_variants = bool(new_use_ai or getattr(target_quiz, "variant_enabled", False))
+            if should_use_variants:
+                target_set_id = target_quiz.active_variant_set_id
+                variant_set = None
+                if target_set_id:
+                    variant_set = db.query(QuizVariantSet).filter(
+                        QuizVariantSet.id == target_set_id,
+                        QuizVariantSet.quiz_id == target_quiz.id,
+                    ).first()
+                if not variant_set:
+                    variant_set = db.query(QuizVariantSet).filter(
+                        QuizVariantSet.quiz_id == target_quiz.id,
+                        QuizVariantSet.status == "READY",
+                    ).order_by(QuizVariantSet.id.desc()).first()
+                exam.variant_set_id = variant_set.id if (variant_set and variant_set.status == "READY") else None
+            else:
+                exam.variant_set_id = None
+
         if quiz_id_changed:
             exam.quiz_id = update_data["quiz_id"]
-            exam.variant_set_id = (
-                target_quiz.active_variant_set_id
-                if target_quiz.variant_enabled
-                else None
-            )
             db.query(ExamAssignee).filter(
                 ExamAssignee.exam_id == exam.id
             ).update({ExamAssignee.quiz_variant_id: None}, synchronize_session=False)

@@ -12,6 +12,7 @@ class ExamAssignRequest(BaseModel):
     navigation_rule: Optional[str] = "FREE_NAV"
     results_published: Optional[bool] = False
     status: Optional[str] = "ACTIVE"
+    use_ai_question: Optional[bool] = False
 
 class ExamUpdateRequest(BaseModel):
     quiz_id: Optional[int] = None
@@ -23,6 +24,7 @@ class ExamUpdateRequest(BaseModel):
     navigation_rule: Optional[str] = None
     results_published: Optional[bool] = None
     status: Optional[str] = None
+    use_ai_question: Optional[bool] = None
 
 class ExamResponse(BaseModel):
     id: int
@@ -37,6 +39,7 @@ class ExamResponse(BaseModel):
     status: str
     created_at: datetime
     variant_set_id: Optional[int] = None
+    use_ai_question: Optional[bool] = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -75,6 +78,7 @@ class UserExamResponse(BaseModel):
     group_name: Optional[str] = None
     navigation_rule: Optional[str] = "FREE_NAV"
     results_published: Optional[bool] = False
+    use_ai_question: Optional[bool] = False
 
 
 class ExamAnswerRequest(BaseModel):

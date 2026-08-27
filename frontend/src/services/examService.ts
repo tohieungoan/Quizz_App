@@ -10,6 +10,7 @@ export interface ExamAssignPayload {
   navigation_rule?: 'FREE_NAV' | 'FIXED_NAV';
   results_published?: boolean;
   status?: string;
+  use_ai_question?: boolean;
 }
 
 export interface ExamUpdatePayload {
@@ -22,6 +23,7 @@ export interface ExamUpdatePayload {
   navigation_rule?: 'FREE_NAV' | 'FIXED_NAV';
   results_published?: boolean;
   status?: string;
+  use_ai_question?: boolean;
 }
 
 export const examService = {
