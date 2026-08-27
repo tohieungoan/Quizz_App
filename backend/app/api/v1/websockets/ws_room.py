@@ -494,5 +494,7 @@ async def websocket_room(
         try:
             room_websocket_manager.disconnect(websocket, room_code, decoded_nickname)
             logger.info(f"WebSocket client '{decoded_nickname}' disconnected from room '{room_code}'")
+            if not isHost and decoded_nickname:
+                room_websocket_manager.schedule_graceful_disconnect(room_code, decoded_nickname, grace_seconds=6)
         except Exception as cleanup_err:
             logger.error(f"Error during WebSocket cleanup for '{decoded_nickname}': {cleanup_err}")

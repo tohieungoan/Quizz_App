@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -8,7 +9,7 @@ from app.models.user import User
 from app.models.quiz import Quiz
 from app.models.room import Room, Participant
 from app.core.security import get_password_hash, create_access_token
-from app.crud.crud_room import crud_room
+from app.api.v1.websockets.room_manager import room_websocket_manager
 
 def test_lobby_participant_persistence_and_roster():
     client = TestClient(app)
@@ -100,3 +101,23 @@ def test_lobby_participant_persistence_and_roster():
         db.query(User).filter(User.id == host.id).delete(synchronize_session=False)
         db.commit()
         db.close()
+
+
+@pytest.mark.anyio
+async def test_graceful_disconnect_timer_scheduling():
+    room_code = "TESTROOM99"
+    nickname = "TestGraceUser"
+
+    # Schedule 1-second grace disconnect timer
+    room_websocket_manager.schedule_graceful_disconnect(room_code, nickname, grace_seconds=1)
+    assert room_code in room_websocket_manager.pending_disconnect_tasks
+    assert nickname in room_websocket_manager.pending_disconnect_tasks[room_code]
+
+    task = room_websocket_manager.pending_disconnect_tasks[room_code][nickname]
+    assert not task.done()
+
+    # Cancel task manually (simulating re-connect before 1s expires)
+    task.cancel()
+    await asyncio.sleep(0.1)
+    assert task.done()
+    assert task.cancelled()
