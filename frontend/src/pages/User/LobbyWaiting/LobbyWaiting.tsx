@@ -74,52 +74,7 @@ export const LobbyWaiting: React.FC = () => {
   const queryParams = new URLSearchParams(location.search)
   const urlRoomCode = queryParams.get('roomCode')
 
-  const [roomCode, setRoomCode] = useState<string>(() => {
-    const code = state?.roomCode || urlRoomCode
-    if (code) {
-      sessionStorage.setItem('active_room_code', code)
-      return code
-    }
-    return sessionStorage.getItem('active_room_code') || ''
-  })
-
-  const [isHost, setIsHost] = useState<boolean>(() => {
-    const activeCode = state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || ''
-    if (state?.isHost !== undefined) {
-      sessionStorage.setItem(`is_host_${activeCode}`, state.isHost ? 'true' : 'false')
-      return !!state.isHost
-    }
-    return sessionStorage.getItem(`is_host_${activeCode}`) === 'true'
-  })
-
-  const [roomId, setRoomId] = useState<number>(() => {
-    const activeCode = state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || ''
-    if (state?.roomId) {
-      sessionStorage.setItem(`room_id_${activeCode}`, String(state.roomId))
-      return state.roomId
-    }
-    return Number(sessionStorage.getItem(`room_id_${activeCode}`) || 0)
-  })
-
-  const [participantId, setParticipantId] = useState<number>(() => {
-    const activeCode = state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || ''
-    if (state?.participantId) {
-      sessionStorage.setItem(`participant_id_${activeCode}`, String(state.participantId))
-      return state.participantId
-    }
-    return Number(sessionStorage.getItem(`participant_id_${activeCode}`) || 0)
-  })
-
-  const handleSetRoomId = (id: number) => {
-    setRoomId(id)
-    if (roomCode && id > 0) sessionStorage.setItem(`room_id_${roomCode}`, String(id))
-  }
-
-  const handleSetParticipantId = (id: number) => {
-    setParticipantId(id)
-    if (roomCode && id > 0) sessionStorage.setItem(`participant_id_${roomCode}`, String(id))
-  }
-
+  const [roomCode, setRoomCode] = useState(() => state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || '')
   const [nickname, setNickname] = useState(() => {
     if (state?.nickname) return state.nickname
     const stored = localStorage.getItem('user')
@@ -140,9 +95,18 @@ export const LobbyWaiting: React.FC = () => {
     }
     return guestId
   })
-
+  
+  const [roomId, setRoomId] = useState(() => state?.roomId || Number(sessionStorage.getItem('active_room_id')) || 0)
+  const [participantId, setParticipantId] = useState(() => state?.participantId || Number(sessionStorage.getItem('active_participant_id')) || 0)
   const [isJoiningRoom, setIsJoiningRoom] = useState(false)
 
+  useEffect(() => {
+    if (roomCode) sessionStorage.setItem('active_room_code', roomCode)
+    if (roomId) sessionStorage.setItem('active_room_id', String(roomId))
+    if (participantId) sessionStorage.setItem('active_participant_id', String(participantId))
+  }, [roomCode, roomId, participantId])
+
+  const isHost = !!state?.isHost
   const fromSource = state?.fromSource || (localStorage.getItem('token') ? 'dashboard' : 'landing')
   const activeTab = state?.activeTab || sessionStorage.getItem('dashboard_active_tab') || 'join_room'
 
@@ -207,7 +171,7 @@ export const LobbyWaiting: React.FC = () => {
           return
         }
         if (res.id) {
-          handleSetRoomId(res.id)
+          setRoomId(res.id)
         }
         if (res.created_at) {
           setCreatedAt(res.created_at)
@@ -298,8 +262,8 @@ export const LobbyWaiting: React.FC = () => {
       const doJoin = async (attemptsLeft = 2) => {
         try {
           const res = await roomService.joinRoom(urlRoomCode, nickname)
-          handleSetRoomId(res.room_id)
-          handleSetParticipantId(res.id)
+          setRoomId(res.room_id)
+          setParticipantId(res.id)
           setIsJoiningRoom(false)
         } catch (err: any) {
           if (attemptsLeft > 1) {
@@ -359,8 +323,6 @@ export const LobbyWaiting: React.FC = () => {
     }
 
     fetchInitialParticipants()
-    const pollTimer = setInterval(fetchInitialParticipants, 4000)
-    return () => clearInterval(pollTimer)
   }, [roomId, state?.roomId, isHost, nickname])
 
   // WebSocket real-time synchronization hook for participant roster and state sync
@@ -424,64 +386,36 @@ export const LobbyWaiting: React.FC = () => {
             const msgType = data.t || data.type
             if (msgType === "PONG" || msgType === "PO") return
 
-            if (msgType === "ROSTER_SYNC" || msgType === "RS" || msgType === "PLAYER_JOINED" || msgType === "PJ" || msgType === "PLAYER_LEFT" || msgType === "PL") {
-              // 1. Immediate UI roster update from WebSocket payload array if rich objects are available
-              if (Array.isArray(data.participants)) {
+            if (msgType === "PLAYER_JOINED" || msgType === "PJ" || msgType === "PLAYER_LEFT" || msgType === "PL") {
+              // 1. Immediate UI roster update from WebSocket payload array if available
+              const activePlayersList = data.p || data.players
+              if (Array.isArray(activePlayersList)) {
                 if (isHost) {
-                  setHostMembers(data.participants.map((p: any): HostMember => ({
-                    id: p.id,
-                    nickname: p.nickname || 'Guest',
-                    avatar: p.avatar || null,
-                    equipped_title: p.equipped_title ?? null,
-                  })))
+                  setHostMembers(prev => activePlayersList.map((pName: string): HostMember => {
+                    const existing = prev.find(m => m.nickname === pName)
+                    return {
+                      id: existing?.id,
+                      nickname: pName,
+                      avatar: existing?.avatar || null,
+                      equipped_title: existing?.equipped_title ?? null
+                    }
+                  }))
                 } else {
                   const loggedAvatar = getLoggedInUserAvatar()
-                  setPlayers(data.participants.map((p: any, idx: number): Player => {
-                    const nick = p.nickname || 'Guest'
-                    const isMe = nick === nickname
-                    const color = getAvatarColor(String(p.id || idx) + nick)
+                  setPlayers(prev => activePlayersList.map((pName: string, idx: number): Player => {
+                    const isMe = pName === nickname
+                    const color = getAvatarColor(String(idx) + pName)
+                    const existing = prev.find(p => p.name === pName)
                     return {
-                      id: String(p.id || idx),
-                      name: nick,
-                      initials: getInitials(nick),
-                      avatar: p.avatar || (isMe ? loggedAvatar : null),
+                      id: String(existing?.id || idx),
+                      name: pName,
+                      initials: getInitials(pName),
+                      avatar: existing?.avatar || (isMe ? loggedAvatar : null),
                       avatarBg: isMe ? 'bg-primary' : color.bg,
                       avatarText: isMe ? 'text-on-primary' : color.text,
                       isMe,
-                      equipped_title: p.equipped_title ?? null,
                     }
                   }))
-                }
-              } else {
-                const activePlayersList = data.p || data.players
-                if (Array.isArray(activePlayersList)) {
-                  if (isHost) {
-                    setHostMembers(prev => activePlayersList.map((pName: string): HostMember => {
-                      const existing = prev.find(m => m.nickname === pName)
-                      return {
-                        id: existing?.id,
-                        nickname: pName,
-                        avatar: existing?.avatar || null,
-                        equipped_title: existing?.equipped_title ?? null
-                      }
-                    }))
-                  } else {
-                    const loggedAvatar = getLoggedInUserAvatar()
-                    setPlayers(prev => activePlayersList.map((pName: string, idx: number): Player => {
-                      const isMe = pName === nickname
-                      const color = getAvatarColor(String(idx) + pName)
-                      const existing = prev.find(p => p.name === pName)
-                      return {
-                        id: String(existing?.id || idx),
-                        name: pName,
-                        initials: getInitials(pName),
-                        avatar: existing?.avatar || (isMe ? loggedAvatar : null),
-                        avatarBg: isMe ? 'bg-primary' : color.bg,
-                        avatarText: isMe ? 'text-on-primary' : color.text,
-                        isMe,
-                      }
-                    }))
-                  }
                 }
               }
 
@@ -523,6 +457,9 @@ export const LobbyWaiting: React.FC = () => {
               setIsLocked(!!data.is_locked)
             } else if (data.type === "PARTICIPANT_KICKED") {
               if (!isHost && (String(data.participant_id) === String(participantId) || data.nickname === nickname)) {
+                sessionStorage.removeItem('active_room_code')
+                sessionStorage.removeItem('active_room_id')
+                sessionStorage.removeItem('active_participant_id')
                 setIsKicked(true)
               } else {
                 setHostMembers(prev => prev.filter(m => String(m.id) !== String(data.participant_id) && m.nickname !== data.nickname))
@@ -549,7 +486,8 @@ export const LobbyWaiting: React.FC = () => {
               alert("The session has been ended by host.")
               navigate(localStorage.getItem('token') ? '/dashboard' : '/')
             } else if (data.type === "ERROR") {
-              console.warn("WebSocket room warning:", data.message)
+              alert(data.message || "An error occurred in room connection.")
+              navigate(localStorage.getItem('token') ? '/dashboard' : '/')
             }
           } catch (e) {
             console.error("Error parsing WebSocket message:", e)
@@ -593,6 +531,7 @@ export const LobbyWaiting: React.FC = () => {
   }, [roomCode, roomId, participantId, isHost, nickname, navigate, fromSource, activeTab, state?.roomId, state?.participantId])
 
 
+
   const myPlayer: Player = {
     id: 'me',
     name: nickname,
@@ -628,6 +567,10 @@ export const LobbyWaiting: React.FC = () => {
         }
       }
     }
+
+    sessionStorage.removeItem('active_room_code')
+    sessionStorage.removeItem('active_room_id')
+    sessionStorage.removeItem('active_participant_id')
 
     const isLoggedIn = !!(localStorage.getItem('token') || localStorage.getItem('user'))
     if (isLoggedIn || fromSource === 'dashboard') {

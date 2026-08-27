@@ -229,7 +229,15 @@ class CRUDRoom:
         ).first()
         
         if existing_nickname:
-            if existing_nickname.user_id is None and user_id is None:
+            if (user_id is not None and existing_nickname.user_id == user_id) or (
+                existing_nickname.nickname.lower() == nickname.lower()
+            ):
+                existing_nickname.status = "JOINED"
+                db.add(existing_nickname)
+                db.commit()
+                db.refresh(existing_nickname)
+                return existing_nickname
+            elif existing_nickname.user_id is None and user_id is None:
                 # If a new unauthenticated guest joins with a duplicate nickname, append a 4-digit code to generate a unique guest nickname
                 suffix = str(random.randint(1000, 9999))
                 nickname = f"{nickname}_{suffix}"

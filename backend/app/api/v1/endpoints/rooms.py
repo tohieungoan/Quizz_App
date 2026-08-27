@@ -614,32 +614,15 @@ async def join_room_by_code(
         
         # Broadcast player joined event to all websocket clients in room
         from app.models.room import Participant
-        def _get_parts_info():
-            parts = db.query(Participant).filter(Participant.room_id == room.id).all()
-            result = []
-            for p in parts:
-                avatar = p.user.avatar if p.user else getattr(p, "avatar", None)
-                eq_title = getattr(p.user, "equipped_title", None) if p.user else getattr(p, "equipped_title", None)
-                result.append({
-                    "id": p.id,
-                    "nickname": p.nickname,
-                    "avatar": avatar,
-                    "equipped_title": eq_title,
-                })
-            return result
-        db_parts = await run_in_threadpool(_get_parts_info)
-        active_nicknames = [p["nickname"] for p in db_parts]
-
+        active_nicknames = await run_in_threadpool(
+            lambda: [row[0] for row in db.query(Participant.nickname).filter(Participant.room_id == room.id).all()]
+        )
         await room_websocket_manager.broadcast_to_room(
             room_code,
             {
                 "type": "PLAYER_JOINED",
-                "t": "PJ",
                 "player": participant.nickname,
-                "u": participant.nickname,
-                "participants": db_parts,
-                "players": active_nicknames,
-                "p": active_nicknames,
+                "players": active_nicknames
             }
         )
         if current_user:
@@ -872,22 +855,16 @@ async def leave_room_endpoint(
 
     room_code, nickname, room_id = await run_in_threadpool(_do_leave)
     if room_code and nickname:
-        def _get_remaining_parts_info():
-            parts = db.query(Participant).filter(Participant.room_id == room_id).all()
-            result = []
-            for p in parts:
-                avatar = p.user.avatar if p.user else getattr(p, "avatar", None)
-                eq_title = getattr(p.user, "equipped_title", None) if p.user else getattr(p, "equipped_title", None)
-                result.append({
-                    "id": p.id,
-                    "nickname": p.nickname,
-                    "avatar": avatar,
-                    "equipped_title": eq_title,
-                })
-            return result
-        db_parts = await run_in_threadpool(_get_remaining_parts_info)
-        active_nicknames = [p["nickname"] for p in db_parts]
+        def _get_remaining_members():
+            if not room_id:
+                return []
+            p_list = db.query(Participant.nickname).filter(
+                Participant.room_id == room_id,
+                Participant.status != "LEFT"
+            ).all()
+            return [r[0] for r in p_list]
 
+        remaining_members = await run_in_threadpool(_get_remaining_members)
         await room_websocket_manager.broadcast_to_room(
             room_code,
             {
@@ -895,9 +872,8 @@ async def leave_room_endpoint(
                 "t": "PL",
                 "player": nickname,
                 "u": nickname,
-                "participants": db_parts,
-                "players": active_nicknames,
-                "p": active_nicknames,
+                "players": remaining_members,
+                "p": remaining_members,
             }
         )
         if room_id:
