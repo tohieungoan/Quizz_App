@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from fastapi import WebSocket
 import redis.asyncio as aioredis
 from app.core.config import settings
@@ -14,8 +14,8 @@ REDIS_CHANNEL = "quizz_room_events"
 
 class RoomConnectionManager:
     def __init__(self):
-        # Maps room_code -> { nickname: websocket }
-        self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
+        # Maps room_code -> { nickname: Set[WebSocket] }
+        self.active_connections: Dict[str, Dict[str, Set[WebSocket]]] = {}
         self.pending_disconnect_tasks: Dict[str, asyncio.Task] = {}
         self.worker_id = str(uuid.uuid4())
         self._listener_task: Optional[asyncio.Task] = None
@@ -50,21 +50,24 @@ class RoomConnectionManager:
         await websocket.accept()
         if room_code not in self.active_connections:
             self.active_connections[room_code] = {}
-        self.active_connections[room_code][nickname] = websocket
+        if nickname not in self.active_connections[room_code]:
+            self.active_connections[room_code][nickname] = set()
+        self.active_connections[room_code][nickname].add(websocket)
 
     def disconnect(self, websocket: WebSocket, room_code: str, nickname: str):
         if room_code in self.active_connections:
             if nickname in self.active_connections[room_code]:
-                del self.active_connections[room_code][nickname]
+                self.active_connections[room_code][nickname].discard(websocket)
+                if not self.active_connections[room_code][nickname]:
+                    del self.active_connections[room_code][nickname]
             if not self.active_connections[room_code]:
                 del self.active_connections[room_code]
 
     async def broadcast_local(self, room_code: str, message: dict):
         """Sends WebSocket message only to clients connected directly to THIS worker instance."""
         if room_code in self.active_connections:
-            for nickname in list(self.active_connections[room_code].keys()):
-                ws = self.active_connections[room_code].get(nickname)
-                if ws:
+            for nickname, sockets in list(self.active_connections[room_code].items()):
+                for ws in list(sockets):
                     try:
                         await ws.send_json(message)
                     except Exception:
