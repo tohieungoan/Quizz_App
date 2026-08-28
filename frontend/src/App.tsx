@@ -33,6 +33,12 @@ import { useAuth } from './hooks/useAuth';
 import { GraduationCap } from 'lucide-react';
 import { startNewQuizDraftSession } from './utils/quizDraftSession';
 
+const LobbyWaitingWrapper = () => {
+  const location = useLocation()
+  const key = (location.state as any)?.roomCode || location.search || 'lobby'
+  return <LobbyWaiting key={key} />
+}
+
 /**
  * Route classification:
  * - PUBLIC_ONLY:  Accessible only when NOT logged in (logged in -> redirect to /dashboard)
@@ -164,11 +170,6 @@ const App: React.FC = () => {
             />
           }
         />
-const LobbyWaitingWrapper = () => {
-  const location = useLocation()
-  const key = (location.state as any)?.roomCode || location.search || 'lobby'
-  return <LobbyWaiting key={key} />
-}
 
         <Route path="/lobby" element={<LobbyWaitingWrapper />} />
         <Route path="/exam" element={<FormalExam />} />
