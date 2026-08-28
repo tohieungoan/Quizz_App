@@ -342,6 +342,8 @@ export const LobbyWaiting: React.FC = () => {
     }
 
     fetchInitialParticipants()
+    const pollInterval = setInterval(fetchInitialParticipants, 3000)
+    return () => clearInterval(pollInterval)
   }, [roomId, state?.roomId, isHost, nickname])
 
   // WebSocket real-time synchronization hook for participant roster and state sync

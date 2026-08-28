@@ -621,8 +621,11 @@ async def join_room_by_code(
             room_code,
             {
                 "type": "PLAYER_JOINED",
+                "t": "PJ",
                 "player": participant.nickname,
-                "players": active_nicknames
+                "u": participant.nickname,
+                "players": active_nicknames,
+                "p": active_nicknames,
             }
         )
         if current_user:
