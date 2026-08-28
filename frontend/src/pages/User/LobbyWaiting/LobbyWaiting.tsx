@@ -96,8 +96,23 @@ export const LobbyWaiting: React.FC = () => {
     return guestId
   })
   
-  const [roomId, setRoomId] = useState(() => state?.roomId || Number(sessionStorage.getItem('active_room_id')) || 0)
-  const [participantId, setParticipantId] = useState(() => state?.participantId || Number(sessionStorage.getItem('active_participant_id')) || 0)
+  const [roomId, setRoomId] = useState(() => {
+    const activeCode = sessionStorage.getItem('active_room_code')
+    const currentCode = urlRoomCode || state?.roomCode
+    if (currentCode && activeCode && currentCode !== activeCode) {
+      return state?.roomId || 0
+    }
+    return state?.roomId || Number(sessionStorage.getItem('active_room_id')) || 0
+  })
+
+  const [participantId, setParticipantId] = useState(() => {
+    const activeCode = sessionStorage.getItem('active_room_code')
+    const currentCode = urlRoomCode || state?.roomCode
+    if (currentCode && activeCode && currentCode !== activeCode) {
+      return state?.participantId || 0
+    }
+    return state?.participantId || Number(sessionStorage.getItem('active_participant_id')) || 0
+  })
   const [isJoiningRoom, setIsJoiningRoom] = useState(false)
 
   useEffect(() => {
@@ -272,18 +287,23 @@ export const LobbyWaiting: React.FC = () => {
   }, [createdAt, isHost, roomId, state?.roomId, navigate])
 
   // 2. If user came via direct URL (location.search has roomCode), perform joinRoom safely
-  const hasAttemptedJoin = useRef(false)
+  const attemptedJoinCodeRef = useRef<string | null>(null)
   useEffect(() => {
     if (isHost) return
-    if (urlRoomCode && !participantId && !isJoiningRoom && !hasAttemptedJoin.current) {
-      hasAttemptedJoin.current = true
+    const storedCode = sessionStorage.getItem('active_room_code')
+    const needsJoin = urlRoomCode && (!participantId || storedCode !== urlRoomCode || attemptedJoinCodeRef.current !== urlRoomCode)
+    if (needsJoin && !isJoiningRoom && attemptedJoinCodeRef.current !== urlRoomCode) {
+      attemptedJoinCodeRef.current = urlRoomCode
       setIsJoiningRoom(true)
 
       const doJoin = async (attemptsLeft = 2) => {
         try {
-          const res = await roomService.joinRoom(urlRoomCode, nickname)
+          const res = await roomService.joinRoom(urlRoomCode!, nickname)
           setRoomId(res.room_id)
           setParticipantId(res.id)
+          sessionStorage.setItem('active_room_code', urlRoomCode!)
+          sessionStorage.setItem('active_room_id', String(res.room_id))
+          sessionStorage.setItem('active_participant_id', String(res.id))
           setIsJoiningRoom(false)
         } catch (err: any) {
           if (attemptsLeft > 1) {
@@ -291,7 +311,7 @@ export const LobbyWaiting: React.FC = () => {
             setTimeout(() => doJoin(attemptsLeft - 1), 500)
           } else {
             setIsJoiningRoom(false)
-            hasAttemptedJoin.current = false
+            attemptedJoinCodeRef.current = null
             const errorMsg = err.response?.data?.detail || err.message || 'Failed to join room'
             alert(`Join Error: ${errorMsg}`)
             navigate(localStorage.getItem('token') ? '/dashboard' : '/')
