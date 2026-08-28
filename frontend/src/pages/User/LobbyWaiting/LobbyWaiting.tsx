@@ -127,7 +127,6 @@ export const LobbyWaiting: React.FC = () => {
     return null
   }
 
-  // Common lobby states
   const [players, setPlayers] = useState<Player[]>([])
   const [copied, setCopied] = useState(false)
   const roomIdRef = useRef(roomId || state?.roomId || 0)
@@ -136,6 +135,19 @@ export const LobbyWaiting: React.FC = () => {
   // via Redis Pub/Sub) doesn't overwrite a newer one and make the
   // member list flicker/jump.
   const lastAppliedSeqRef = useRef<number>(0)
+
+  // Reset seq tracker and clear stale room session if joining a new room in the same tab
+  useEffect(() => {
+    lastAppliedSeqRef.current = 0
+    const storedCode = sessionStorage.getItem('active_room_code')
+    if (roomCode && storedCode && storedCode !== roomCode) {
+      sessionStorage.removeItem('active_room_id')
+      sessionStorage.removeItem('active_participant_id')
+      sessionStorage.setItem('active_room_code', roomCode)
+      setRoomId(state?.roomId || 0)
+      setParticipantId(state?.participantId || 0)
+    }
+  }, [roomCode, state?.roomId, state?.participantId])
 
   useEffect(() => {
     if (roomId) roomIdRef.current = roomId
