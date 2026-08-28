@@ -22,7 +22,6 @@ class RoomConnectionManager:
         self._listener_task: Optional[asyncio.Task] = None
         self._pubsub_client: Optional[aioredis.Redis] = None
         self._pub_client: Optional[aioredis.Redis] = None
-
         self._local_seq_fallback: Dict[str, int] = {}
 
     def _get_pub_client(self) -> aioredis.Redis:
@@ -35,19 +34,63 @@ class RoomConnectionManager:
             )
         return self._pub_client
 
+    async def _add_redis_active_connection(self, room_code: str, nickname: str):
+        try:
+            redis_client = self._get_pub_client()
+            key = f"room:{room_code}:active_connections"
+            await redis_client.hincrby(key, nickname, 1)
+            await redis_client.expire(key, 7200)
+        except Exception as e:
+            logger.warning(f"Failed to add active connection in Redis: {e}")
+
+    async def _remove_redis_active_connection(self, room_code: str, nickname: str):
+        try:
+            redis_client = self._get_pub_client()
+            key = f"room:{room_code}:active_connections"
+            val = await redis_client.hincrby(key, nickname, -1)
+            if val is not None and int(val) <= 0:
+                await redis_client.hdel(key, nickname)
+        except Exception as e:
+            logger.warning(f"Failed to remove active connection from Redis: {e}")
+
+    async def _is_redis_active_connection(self, room_code: str, nickname: str) -> bool:
+        try:
+            redis_client = self._get_pub_client()
+            key = f"room:{room_code}:active_connections"
+            val = await redis_client.hget(key, nickname)
+            if val and int(val) > 0:
+                return True
+        except Exception as e:
+            logger.warning(f"Failed to check active connection in Redis: {e}")
+        return False
+
+    async def _publish_cancel_disconnect(self, room_code: str, nickname: str):
+        payload = json.dumps({
+            "sender_id": self.worker_id,
+            "room_code": room_code,
+            "action": "CANCEL_DISCONNECT",
+            "nickname": nickname,
+        })
+        channel = f"{REDIS_CHANNEL_PREFIX}{room_code}"
+        await self._publish_async(channel, payload)
+
     async def connect(self, websocket: WebSocket, room_code: str, nickname: str):
         await websocket.accept()
 
-        # Cancel any pending graceful disconnect task if user reconnected
+        # 1. Cancel local pending disconnect task if present on this worker instance
         if room_code in self.pending_disconnect_tasks and nickname in self.pending_disconnect_tasks[room_code]:
             task = self.pending_disconnect_tasks[room_code].pop(nickname)
             if not task.done():
                 task.cancel()
-                logger.info(f"Cancelled pending disconnect task for '{nickname}' in room '{room_code}' upon re-connection")
+                logger.info(f"Cancelled local pending disconnect task for '{nickname}' in room '{room_code}' upon re-connection")
 
         if room_code not in self.active_connections:
             self.active_connections[room_code] = {}
         self.active_connections[room_code][nickname] = websocket
+
+        # 2. Register in Redis active connection count & notify all other workers via Redis Pub/Sub
+        await self._add_redis_active_connection(room_code, nickname)
+        await self._publish_cancel_disconnect(room_code, nickname)
 
     def schedule_graceful_disconnect(self, room_code: str, nickname: str, grace_seconds: int = 6):
         """Schedules a background task to clean up a participant if they do not reconnect within grace_seconds."""
@@ -61,6 +104,16 @@ class RoomConnectionManager:
         async def _do_graceful_disconnect():
             try:
                 await asyncio.sleep(grace_seconds)
+
+                # Double check: Check if participant reconnected locally or on another worker in Redis
+                if nickname in self.active_connections.get(room_code, {}):
+                    logger.info(f"Grace period ({grace_seconds}s) expired for '{nickname}' in room '{room_code}', but user is active locally. Aborting cleanup.")
+                    return
+
+                if await self._is_redis_active_connection(room_code, nickname):
+                    logger.info(f"Grace period ({grace_seconds}s) expired for '{nickname}' in room '{room_code}', but user is active on another worker. Aborting cleanup.")
+                    return
+
                 logger.info(f"Grace period ({grace_seconds}s) expired for client '{nickname}' in room '{room_code}'. Cleaning up...")
 
                 from starlette.concurrency import run_in_threadpool
@@ -121,11 +174,23 @@ class RoomConnectionManager:
         self.pending_disconnect_tasks[room_code][nickname] = task
 
     def disconnect(self, websocket: WebSocket, room_code: str, nickname: str):
+        """
+        Removes a connection from active_connections — but ONLY if the
+        websocket being disconnected is still the one currently stored for
+        this nickname. Prevent stale disconnects from wiping out newer connections.
+        """
         if room_code in self.active_connections:
-            if nickname in self.active_connections[room_code]:
+            if self.active_connections[room_code].get(nickname) is websocket:
                 del self.active_connections[room_code][nickname]
-            if not self.active_connections[room_code]:
-                del self.active_connections[room_code]
+                if not self.active_connections[room_code]:
+                    del self.active_connections[room_code]
+
+        # Asynchronously decrement Redis active connection count
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._remove_redis_active_connection(room_code, nickname))
+        except RuntimeError:
+            pass
 
     async def broadcast_local(self, room_code: str, message: dict):
         """Sends WebSocket message only to clients connected directly to THIS worker instance."""
@@ -146,10 +211,6 @@ class RoomConnectionManager:
             logger.warning(f"Failed to publish room event to Redis Pub/Sub channel: {e}")
 
     async def _get_next_seq(self, room_code: str) -> int:
-        """
-        Monotonic, cross-worker sequence number for a room, backed by Redis INCR.
-        Lets clients detect and discard out-of-order snapshots delivered via Pub/Sub.
-        """
         try:
             redis_client = self._get_pub_client()
             return await redis_client.incr(f"room:{room_code}:seq")
@@ -159,18 +220,11 @@ class RoomConnectionManager:
             return self._local_seq_fallback[room_code]
 
     async def broadcast_to_room(self, room_code: str, message: dict, publish: bool = True):
-        """
-        Broadcasts message to local clients on this worker immediately (<1ms),
-        and publishes to Redis Pub/Sub for other workers.
-        Stamps message with monotonic seq number to prevent out-of-order roster updates.
-        """
         seq = await self._get_next_seq(room_code)
         message["seq"] = seq
 
-        # 1. Send locally first (instant <1ms latency)
         await self.broadcast_local(room_code, message)
 
-        # 2. Asynchronously publish to Redis Pub/Sub in background task
         if publish:
             payload = json.dumps({
                 "sender_id": self.worker_id,
@@ -194,7 +248,7 @@ class RoomConnectionManager:
                     settings.REDIS_URL,
                     decode_responses=True,
                     socket_connect_timeout=5.0,
-                    socket_timeout=None,  # Keep socket open indefinitely for listening
+                    socket_timeout=None,
                 )
                 pubsub = self._pubsub_client.pubsub()
                 pattern = f"{REDIS_CHANNEL_PREFIX}*"
@@ -213,10 +267,20 @@ class RoomConnectionManager:
                                 
                             data = json.loads(data_raw)
                             sender_id = data.get("sender_id")
+                            action = data.get("action")
                             target_room = data.get("room_code") or room_code
                             message = data.get("message")
 
-                            # Dispatch to local WebSocket clients if connected on this worker instance
+                            # Handle CANCEL_DISCONNECT signal from another worker
+                            if action == "CANCEL_DISCONNECT":
+                                cancel_nick = data.get("nickname")
+                                if target_room and cancel_nick and target_room in self.pending_disconnect_tasks:
+                                    task = self.pending_disconnect_tasks[target_room].pop(cancel_nick, None)
+                                    if task and not task.done():
+                                        task.cancel()
+                                        logger.info(f"Cancelled pending disconnect task for '{cancel_nick}' in room '{target_room}' via Pub/Sub signal from worker [{sender_id[:8]}]")
+                                continue
+
                             if target_room and message and target_room in self.active_connections:
                                 if sender_id != self.worker_id:
                                     await self.broadcast_local(target_room, message)
@@ -244,4 +308,6 @@ class RoomConnectionManager:
             self._listener_task.cancel()
 
 room_websocket_manager = RoomConnectionManager()
+
+
 
