@@ -164,7 +164,13 @@ const App: React.FC = () => {
             />
           }
         />
-        <Route path="/lobby" element={<LobbyWaiting />} />
+const LobbyWaitingWrapper = () => {
+  const location = useLocation()
+  const key = (location.state as any)?.roomCode || location.search || 'lobby'
+  return <LobbyWaiting key={key} />
+}
+
+        <Route path="/lobby" element={<LobbyWaitingWrapper />} />
         <Route path="/exam" element={<FormalExam />} />
         <Route path="/exam/:examId" element={<FormalExam />} />
         <Route path="/play" element={<ParticipantAnswer />} />

@@ -139,17 +139,18 @@ export const LobbyWaiting: React.FC = () => {
   // Reset seq tracker and clear stale room session if joining a new room in the same tab
   useEffect(() => {
     lastAppliedSeqRef.current = 0
-    const storedCode = sessionStorage.getItem('active_room_code')
-    if (roomCode && storedCode && storedCode !== roomCode) {
-      sessionStorage.removeItem('active_room_id')
-      sessionStorage.removeItem('active_participant_id')
-      sessionStorage.setItem('active_room_code', roomCode)
-      const newRoomId = state?.roomId || 0
-      setRoomId(newRoomId)
-      roomIdRef.current = newRoomId
-      setParticipantId(state?.participantId || 0)
+    if (state?.roomCode && state.roomCode !== roomCode) {
+      setRoomCode(state.roomCode)
+      setRoomId(state.roomId || 0)
+      setParticipantId(state.participantId || 0)
+      setPlayers([])
+      setHostMembers([])
+      roomIdRef.current = state.roomId || 0
+      sessionStorage.setItem('active_room_code', state.roomCode)
+      if (state.roomId) sessionStorage.setItem('active_room_id', String(state.roomId))
+      if (state.participantId) sessionStorage.setItem('active_participant_id', String(state.participantId))
     }
-  }, [roomCode, state?.roomId, state?.participantId])
+  }, [state?.roomCode, state?.roomId, state?.participantId, roomCode])
 
   useEffect(() => {
     if (roomId) roomIdRef.current = roomId
