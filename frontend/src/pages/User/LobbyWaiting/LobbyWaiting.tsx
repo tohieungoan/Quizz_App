@@ -441,6 +441,7 @@ export const LobbyWaiting: React.FC = () => {
               if (targetRoomId) {
                 roomService.getParticipants(targetRoomId)
                   .then((res: any[]) => {
+                    if (!Array.isArray(res) || res.length === 0) return
                     const loggedAvatar = getLoggedInUserAvatar()
                     if (isHost) {
                       setHostMembers(res.map((p: any): HostMember => ({
