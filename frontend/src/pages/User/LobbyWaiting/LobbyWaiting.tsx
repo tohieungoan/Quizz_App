@@ -74,7 +74,7 @@ export const LobbyWaiting: React.FC = () => {
   const queryParams = new URLSearchParams(location.search)
   const urlRoomCode = queryParams.get('roomCode')
 
-  const [roomCode, setRoomCode] = useState(() => state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || '')
+  const [roomCode, setRoomCode] = useState(() => urlRoomCode || state?.roomCode || sessionStorage.getItem('active_room_code') || '')
   const [nickname, setNickname] = useState(() => {
     if (state?.nickname) return state.nickname
     const stored = localStorage.getItem('user')

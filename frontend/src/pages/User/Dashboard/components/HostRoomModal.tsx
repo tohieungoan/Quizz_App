@@ -76,7 +76,7 @@ export const HostRoomModal: React.FC<HostRoomModalProps> = ({ isOpen, onClose })
       });
 
       onClose();
-      navigate('/lobby', {
+      navigate(`/lobby?roomCode=${roomData.room_code}`, {
         state: {
           roomCode: roomData.room_code,
           roomId: roomData.id,

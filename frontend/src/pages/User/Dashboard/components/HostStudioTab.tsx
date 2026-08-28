@@ -1598,7 +1598,7 @@ export const HostStudioTab: React.FC<HostStudioTabProps> = ({
                     <button
                       onClick={() => {
                         if (isWaiting) {
-                          navigate('/lobby', {
+                          navigate(`/lobby?roomCode=${room.room_code}`, {
                             state: {
                               roomCode: room.room_code,
                               roomId: room.id,

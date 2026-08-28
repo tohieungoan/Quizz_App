@@ -124,7 +124,7 @@ export const JoinRoomTab: React.FC = () => {
           },
         });
       } else {
-        navigate('/lobby', {
+        navigate(`/lobby?roomCode=${fullCode}`, {
           state: {
             roomCode: fullCode,
             nickname: nickname.trim() || 'Alex Johnson',

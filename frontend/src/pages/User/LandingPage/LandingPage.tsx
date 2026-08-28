@@ -113,7 +113,7 @@ export const LandingPage: React.FC = () => {
               }
             })
           } else {
-            navigate('/lobby', {
+            navigate(`/lobby?roomCode=${roomCode}`, {
               state: {
                 roomCode,
                 nickname: nickname.trim(),
