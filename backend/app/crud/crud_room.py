@@ -576,8 +576,8 @@ class CRUDRoom:
                     correct_option_key = keys[index] if index < len(keys) else str(index + 1)
                     break
         else:
-            from app.utils.option_utils import format_question_options, get_shuffle_seed
-            should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+            from app.utils.option_utils import format_question_options, get_shuffle_seed, is_shuffle_options_enabled
+            should_shuffle = is_shuffle_options_enabled(room)
             p_identifier = participant.id if participant else (participant.nickname or "")
             seed = get_shuffle_seed(room.id, question_id, p_identifier) if should_shuffle else None
             _, correct_option_key = format_question_options(

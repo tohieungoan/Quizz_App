@@ -375,8 +375,8 @@ def get_my_active_rooms(
             sorted_questions = sorted(room.quiz.questions, key=lambda q: (q.position, q.id))
             if 1 <= room.current_question_index <= len(sorted_questions):
                 q = sorted_questions[room.current_question_index - 1]
-                from app.utils.option_utils import format_question_options
-                should_shuffle = bool(getattr(room, "shuffle_options", False) or (room.quiz and getattr(room.quiz, "shuffle_options", False)))
+                from app.utils.option_utils import format_question_options, is_shuffle_options_enabled
+                should_shuffle = is_shuffle_options_enabled(room)
                 seed = (room.id * 10007) + (q.id * 97) if should_shuffle else None
                 options_live, _ = format_question_options(
                     options=q.options or [],
@@ -482,12 +482,9 @@ async def get_room_by_code(
                     for index, option in enumerate(displayed_options)
                 ]
             else:
-                from app.utils.option_utils import format_question_options, get_shuffle_seed
+                from app.utils.option_utils import format_question_options, get_shuffle_seed, is_shuffle_options_enabled
 
-                should_shuffle = bool(
-                    getattr(room, "shuffle_options", False)
-                    or (room.quiz and getattr(room.quiz, "shuffle_options", False))
-                )
+                should_shuffle = is_shuffle_options_enabled(room)
                 participant_identifier = participant.id if participant else (nickname or "")
                 seed = get_shuffle_seed(room.id, q.id, participant_identifier) if should_shuffle else None
                 options_live, _ = format_question_options(
