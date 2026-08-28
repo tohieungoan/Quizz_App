@@ -393,12 +393,12 @@ export const LobbyWaiting: React.FC = () => {
               .catch((err) => console.error("Error checking room status on WS open:", err))
           }
 
-          // Periodic PING to keep connection alive
+          // Periodic PING every 3s for real-time presence heartbeat
           pingTimer = setInterval(() => {
             if (socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify({ type: "PING" }))
+              socket.send(JSON.stringify({ type: "PING", t: "P" }))
             }
-          }, 5000)
+          }, 3000)
         }
 
         socket.onmessage = (event) => {

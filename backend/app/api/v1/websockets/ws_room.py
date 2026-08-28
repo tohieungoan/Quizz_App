@@ -103,6 +103,7 @@ async def websocket_room(
             if isinstance(data, dict):
                 msg_type = data.get("type") or data.get("t")
                 if msg_type in ["PING", "P"]:
+                    await room_websocket_manager.update_heartbeat(room_code, decoded_nickname)
                     await websocket.send_json({"type": "PONG", "t": "PO"})
                 elif msg_type in ["SUBMIT_ANSWER", "SA"]:
                     # Handle real-time WebSocket answer submission (<5ms)

@@ -49,6 +49,15 @@ class RoomConnectionManager:
             self.active_connections[room_code] = {}
         self.active_connections[room_code][nickname] = websocket
 
+    async def update_heartbeat(self, room_code: str, nickname: str):
+        """Updates Redis presence timestamp for active participant on ping heartbeat."""
+        try:
+            import time
+            redis_client = self._get_pub_client()
+            await redis_client.set(f"room:{room_code}:last_seen:{nickname}", str(time.time()), ex=15)
+        except Exception as e:
+            logger.warning(f"Failed to set heartbeat for '{nickname}' in room '{room_code}': {e}")
+
     def schedule_graceful_disconnect(self, room_code: str, nickname: str, grace_seconds: int = 6):
         """Schedules a background task to clean up a participant if they do not reconnect within grace_seconds."""
         if room_code not in self.pending_disconnect_tasks:
