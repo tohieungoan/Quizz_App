@@ -144,7 +144,9 @@ export const LobbyWaiting: React.FC = () => {
       sessionStorage.removeItem('active_room_id')
       sessionStorage.removeItem('active_participant_id')
       sessionStorage.setItem('active_room_code', roomCode)
-      setRoomId(state?.roomId || 0)
+      const newRoomId = state?.roomId || 0
+      setRoomId(newRoomId)
+      roomIdRef.current = newRoomId
       setParticipantId(state?.participantId || 0)
     }
   }, [roomCode, state?.roomId, state?.participantId])
