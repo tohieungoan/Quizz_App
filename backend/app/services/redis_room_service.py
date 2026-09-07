@@ -278,9 +278,9 @@ class RedisRoomService:
                 res = []
                 voted_dict = {int(qid_str): int(v_cnt) for qid_str, v_cnt in raw_items}
 
-                from app.utils.option_utils import format_question_options
+                from app.utils.option_utils import format_question_options, is_shuffle_options_enabled
                 r_obj = db_session.query(Room).filter(Room.room_code == room_code).first()
-                should_shuffle = bool(r_obj and (getattr(r_obj, "shuffle_options", False) or (r_obj.quiz and getattr(r_obj.quiz, "shuffle_options", False))))
+                should_shuffle = is_shuffle_options_enabled(r_obj)
                 if r_obj and r_obj.quiz and r_obj.quiz.questions:
                     all_qs = sorted(r_obj.quiz.questions, key=lambda q: q.id)
                     for q in all_qs:

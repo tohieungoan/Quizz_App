@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173"]
     FRONTEND_URL: str = "http://localhost:5173"
 
-    # PostgreSQL Database URL
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/quizz_db"
+    # Database URL (defaults to SQLite fallback if PostgreSQL is not specified in .env)
+    DATABASE_URL: str = "sqlite:///./sql_app.db"
 
     # SMTP Email Configuration
     SMTP_HOST: Optional[str] = "smtp.gmail.com"

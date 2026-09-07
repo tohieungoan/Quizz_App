@@ -47,3 +47,17 @@ def get_shuffle_seed(room_id: int, question_id: int, identifier: Optional[Any] =
         clean_str = str(identifier).strip().casefold()
     seed_offset = sum(ord(c) for c in clean_str) if clean_str else 0
     return (room_id * 10007) + (question_id * 97) + seed_offset
+
+
+def is_shuffle_options_enabled(room) -> bool:
+    """
+    Determines if option shuffling is enabled for a room.
+    Room setting takes precedence over Quiz default.
+    """
+    if not room:
+        return False
+    if hasattr(room, "shuffle_options") and getattr(room, "shuffle_options") is not None:
+        return bool(getattr(room, "shuffle_options"))
+    if getattr(room, "quiz", None) and hasattr(room.quiz, "shuffle_options") and getattr(room.quiz, "shuffle_options") is not None:
+        return bool(getattr(room.quiz, "shuffle_options"))
+    return False

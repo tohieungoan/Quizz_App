@@ -74,7 +74,7 @@ export const LobbyWaiting: React.FC = () => {
   const queryParams = new URLSearchParams(location.search)
   const urlRoomCode = queryParams.get('roomCode')
 
-  const [roomCode, setRoomCode] = useState(() => state?.roomCode || urlRoomCode || sessionStorage.getItem('active_room_code') || '')
+  const [roomCode, setRoomCode] = useState(() => urlRoomCode || state?.roomCode || sessionStorage.getItem('active_room_code') || '')
   const [nickname, setNickname] = useState(() => {
     if (state?.nickname) return state.nickname
     const stored = localStorage.getItem('user')
@@ -96,8 +96,23 @@ export const LobbyWaiting: React.FC = () => {
     return guestId
   })
   
-  const [roomId, setRoomId] = useState(() => state?.roomId || Number(sessionStorage.getItem('active_room_id')) || 0)
-  const [participantId, setParticipantId] = useState(() => state?.participantId || Number(sessionStorage.getItem('active_participant_id')) || 0)
+  const [roomId, setRoomId] = useState(() => {
+    const activeCode = sessionStorage.getItem('active_room_code')
+    const currentCode = urlRoomCode || state?.roomCode
+    if (currentCode && activeCode && currentCode !== activeCode) {
+      return state?.roomId || 0
+    }
+    return state?.roomId || Number(sessionStorage.getItem('active_room_id')) || 0
+  })
+
+  const [participantId, setParticipantId] = useState(() => {
+    const activeCode = sessionStorage.getItem('active_room_code')
+    const currentCode = urlRoomCode || state?.roomCode
+    if (currentCode && activeCode && currentCode !== activeCode) {
+      return state?.participantId || 0
+    }
+    return state?.participantId || Number(sessionStorage.getItem('active_participant_id')) || 0
+  })
   const [isJoiningRoom, setIsJoiningRoom] = useState(false)
 
   useEffect(() => {
@@ -127,7 +142,6 @@ export const LobbyWaiting: React.FC = () => {
     return null
   }
 
-  // Common lobby states
   const [players, setPlayers] = useState<Player[]>([])
   const [copied, setCopied] = useState(false)
   const roomIdRef = useRef(roomId || state?.roomId || 0)
@@ -136,6 +150,22 @@ export const LobbyWaiting: React.FC = () => {
   // via Redis Pub/Sub) doesn't overwrite a newer one and make the
   // member list flicker/jump.
   const lastAppliedSeqRef = useRef<number>(0)
+
+  // Reset seq tracker and clear stale room session if joining a new room in the same tab
+  useEffect(() => {
+    lastAppliedSeqRef.current = 0
+    if (state?.roomCode && state.roomCode !== roomCode) {
+      setRoomCode(state.roomCode)
+      setRoomId(state.roomId || 0)
+      setParticipantId(state.participantId || 0)
+      setPlayers([])
+      setHostMembers([])
+      roomIdRef.current = state.roomId || 0
+      sessionStorage.setItem('active_room_code', state.roomCode)
+      if (state.roomId) sessionStorage.setItem('active_room_id', String(state.roomId))
+      if (state.participantId) sessionStorage.setItem('active_participant_id', String(state.participantId))
+    }
+  }, [state?.roomCode, state?.roomId, state?.participantId, roomCode])
 
   useEffect(() => {
     if (roomId) roomIdRef.current = roomId
@@ -257,18 +287,23 @@ export const LobbyWaiting: React.FC = () => {
   }, [createdAt, isHost, roomId, state?.roomId, navigate])
 
   // 2. If user came via direct URL (location.search has roomCode), perform joinRoom safely
-  const hasAttemptedJoin = useRef(false)
+  const attemptedJoinCodeRef = useRef<string | null>(null)
   useEffect(() => {
     if (isHost) return
-    if (urlRoomCode && !participantId && !isJoiningRoom && !hasAttemptedJoin.current) {
-      hasAttemptedJoin.current = true
+    const storedCode = sessionStorage.getItem('active_room_code')
+    const needsJoin = urlRoomCode && (!participantId || storedCode !== urlRoomCode || attemptedJoinCodeRef.current !== urlRoomCode)
+    if (needsJoin && !isJoiningRoom && attemptedJoinCodeRef.current !== urlRoomCode) {
+      attemptedJoinCodeRef.current = urlRoomCode
       setIsJoiningRoom(true)
 
       const doJoin = async (attemptsLeft = 2) => {
         try {
-          const res = await roomService.joinRoom(urlRoomCode, nickname)
+          const res = await roomService.joinRoom(urlRoomCode!, nickname)
           setRoomId(res.room_id)
           setParticipantId(res.id)
+          sessionStorage.setItem('active_room_code', urlRoomCode!)
+          sessionStorage.setItem('active_room_id', String(res.room_id))
+          sessionStorage.setItem('active_participant_id', String(res.id))
           setIsJoiningRoom(false)
         } catch (err: any) {
           if (attemptsLeft > 1) {
@@ -276,7 +311,7 @@ export const LobbyWaiting: React.FC = () => {
             setTimeout(() => doJoin(attemptsLeft - 1), 500)
           } else {
             setIsJoiningRoom(false)
-            hasAttemptedJoin.current = false
+            attemptedJoinCodeRef.current = null
             const errorMsg = err.response?.data?.detail || err.message || 'Failed to join room'
             alert(`Join Error: ${errorMsg}`)
             navigate(localStorage.getItem('token') ? '/dashboard' : '/')
@@ -328,6 +363,8 @@ export const LobbyWaiting: React.FC = () => {
     }
 
     fetchInitialParticipants()
+    const pollInterval = setInterval(fetchInitialParticipants, 3000)
+    return () => clearInterval(pollInterval)
   }, [roomId, state?.roomId, isHost, nickname])
 
   // WebSocket real-time synchronization hook for participant roster and state sync
@@ -377,12 +414,12 @@ export const LobbyWaiting: React.FC = () => {
               .catch((err) => console.error("Error checking room status on WS open:", err))
           }
 
-          // Periodic PING to keep connection alive
+          // Periodic PING every 3s for real-time presence heartbeat
           pingTimer = setInterval(() => {
             if (socket && socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify({ type: "PING" }))
+              socket.send(JSON.stringify({ type: "PING", t: "P" }))
             }
-          }, 5000)
+          }, 3000)
         }
 
         socket.onmessage = (event) => {
@@ -441,6 +478,7 @@ export const LobbyWaiting: React.FC = () => {
               if (targetRoomId) {
                 roomService.getParticipants(targetRoomId)
                   .then((res: any[]) => {
+                    if (!Array.isArray(res) || res.length === 0) return
                     const loggedAvatar = getLoggedInUserAvatar()
                     if (isHost) {
                       setHostMembers(res.map((p: any): HostMember => ({
