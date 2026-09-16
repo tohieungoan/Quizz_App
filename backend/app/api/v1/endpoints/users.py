@@ -378,7 +378,7 @@ def delete_user(
         )
 
     # 2. Prevent deleting the last remaining active Super Admin
-    if user.role == "SUPER_ADMIN":
+    if user.role == "SUPER_ADMIN" and user.status == "ACTIVE":
         active_super_admin_count = (
             db.query(User)
             .filter(User.role == "SUPER_ADMIN", User.status == "ACTIVE")

@@ -76,7 +76,7 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
           subject: q.subject || 'General',
           q: q.question_count || 0,
           diff: q.difficulty || 'Medium',
-          author: 'Admin',
+          author: q.creator_name || q.creator_email || 'Admin',
           date: new Date(q.created_at).toLocaleDateString(),
           time: new Date(q.created_at).toLocaleTimeString()
         }));
@@ -238,13 +238,13 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
               <tr className="bg-surface-container/50 text-label-bold text-on-surface-variant uppercase text-xs tracking-wider">
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">ID</th>
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">Quiz Title</th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30">Subject</th>
+                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
+                  Owner
+                </th>
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
                   Questions
                 </th>
-                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
-                  Difficulty
-                </th>
+                <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">Subject</th>
                 <th className="px-4 md:px-6 py-4 font-semibold border-b border-outline-variant/30 text-center">
                   Status
                 </th>
@@ -273,21 +273,11 @@ export const Quizzes: React.FC<QuizzesProps> = ({ onCreateQuiz, onEditQuiz }) =>
                     <td className="px-4 md:px-6 py-4 font-semibold text-on-surface max-w-xs truncate">
                       {quiz.title}
                     </td>
-                    <td className="px-4 md:px-6 py-4 text-on-surface-variant whitespace-nowrap">{quiz.subject}</td>
-                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">{quiz.q} Qs</td>
-                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          quiz.diff === 'Easy'
-                            ? 'bg-green-100 text-green-700'
-                            : quiz.diff === 'Medium'
-                            ? 'bg-orange-100 text-orange-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        {quiz.diff}
-                      </span>
+                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap text-on-surface-variant font-medium">
+                      {quiz.author}
                     </td>
+                    <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">{quiz.q} Qs</td>
+                    <td className="px-4 md:px-6 py-4 text-center text-on-surface-variant whitespace-nowrap">{quiz.subject}</td>
                     <td className="px-4 md:px-6 py-4 text-center whitespace-nowrap">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${

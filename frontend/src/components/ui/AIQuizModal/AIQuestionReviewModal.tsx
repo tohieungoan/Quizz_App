@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Check,
@@ -17,6 +18,51 @@ import {
 } from 'lucide-react';
 import { AIQuestionReviewItem, AIQuestionType } from '@/types/aiQuiz';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
+
+const CustomSelect = ({
+  value,
+  options,
+  onChange,
+  className
+}: {
+  value: string;
+  options: { label: string; value: string }[];
+  onChange: (val: string) => void;
+  className?: string;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const selected = options.find(o => o.value === value) || options[0];
+
+  return (
+    <div className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center justify-between w-full ${className} ${isOpen ? 'border-primary ring-2 ring-primary/10' : ''}`}
+      >
+        <span className="truncate">{selected?.label}</span>
+        <ChevronDown className={`w-4 h-4 text-on-surface-variant shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
+          <div className="absolute z-50 w-full mt-1.5 bg-surface-container-lowest border border-outline-variant/40 rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)] p-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+            {options.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                className={`w-full flex items-center px-3 py-2 text-sm font-semibold rounded-lg transition-colors ${value === opt.value ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-low'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 interface AIQuestionReviewModalProps {
   isOpen: boolean;
@@ -396,20 +442,32 @@ export function AIQuestionReviewModal({
                     </div>
 
                     <div className="order-last grid w-full grid-cols-2 gap-2 lg:order-none lg:w-auto lg:grid-cols-[140px_108px_100px]">
-                      <label className="col-span-2 min-w-0 sm:col-span-1">
+                      <div className="col-span-2 min-w-0 sm:col-span-1">
                         <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-on-surface-variant">Question type</span>
-                        <select value={selectedQuestion.type} onChange={event => updateSelected(question => normalizeForType(question, event.target.value as Exclude<AIQuestionType, 'all'>))} className="h-10 w-full rounded-lg border border-outline-variant/45 bg-surface-container-low/35 px-2.5 text-base font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 sm:h-9 sm:text-xs">
-                          <option value="multiple">Multiple choice</option>
-                          <option value="truefalse">True / False</option>
-                          <option value="short">Short answer</option>
-                        </select>
-                      </label>
-                      <label className="min-w-0">
+                        <CustomSelect 
+                          value={selectedQuestion.type} 
+                          onChange={val => updateSelected(question => normalizeForType(question, val as Exclude<AIQuestionType, 'all'>))} 
+                          options={[
+                            { value: 'multiple', label: 'Multiple choice' },
+                            { value: 'truefalse', label: 'True / False' },
+                            { value: 'short', label: 'Short answer' }
+                          ]}
+                          className="h-10 rounded-lg border border-outline-variant/45 bg-surface-container-low/35 px-2.5 text-base font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 sm:h-9 sm:text-xs" 
+                        />
+                      </div>
+                      <div className="min-w-0">
                         <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-on-surface-variant">Difficulty</span>
-                        <select value={selectedQuestion.difficulty} onChange={event => updateSelected(question => ({ ...question, difficulty: event.target.value as AIQuestionReviewItem['difficulty'] }))} className="h-10 w-full rounded-lg border border-outline-variant/45 bg-surface-container-low/35 px-2.5 text-base font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 sm:h-9 sm:text-xs">
-                          <option value="EASY">Easy</option><option value="MEDIUM">Medium</option><option value="HARD">Hard</option>
-                        </select>
-                      </label>
+                        <CustomSelect 
+                          value={selectedQuestion.difficulty} 
+                          onChange={val => updateSelected(question => ({ ...question, difficulty: val as AIQuestionReviewItem['difficulty'] }))} 
+                          options={[
+                            { value: 'EASY', label: 'Easy' },
+                            { value: 'MEDIUM', label: 'Medium' },
+                            { value: 'HARD', label: 'Hard' }
+                          ]}
+                          className="h-10 rounded-lg border border-outline-variant/45 bg-surface-container-low/35 px-2.5 text-base font-semibold text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 sm:h-9 sm:text-xs" 
+                        />
+                      </div>
                       <label className="min-w-0">
                         <span className="mb-1 block text-[9px] font-bold uppercase tracking-wide text-on-surface-variant">Time limit</span>
                         <span className="relative block">
@@ -419,9 +477,9 @@ export function AIQuestionReviewModal({
                       </label>
                     </div>
 
-                    <div className="ml-auto flex items-center gap-1">
-                      <label className={`mr-1 flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold shadow-sm transition-all ${selectedQuestion.media_url ? 'border-primary/50 bg-primary/10 text-primary' : 'border-outline-variant/50 text-on-surface hover:bg-primary/5 hover:text-primary'} ${uploadingQuestionId ? 'pointer-events-none opacity-60' : ''}`} title={selectedQuestion.media_url ? 'Change image' : 'Add image'}>
-                        {uploadingQuestionId === selectedQuestion.review_id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                    <div className="ml-auto flex items-center gap-1 sm:mt-3.5">
+                      <label className={`mr-1 flex h-10 sm:h-9 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-bold shadow-sm transition-all ${selectedQuestion.media_url ? 'border-primary/50 bg-primary/10 text-primary' : 'border-outline-variant/50 text-on-surface hover:bg-primary/5 hover:text-primary'} ${uploadingQuestionId ? 'pointer-events-none opacity-60' : ''}`} title={selectedQuestion.media_url ? 'Change image' : 'Add image'}>
+                        {uploadingQuestionId === selectedQuestion.review_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
                         {uploadingQuestionId === selectedQuestion.review_id ? `${progress}%` : 'Image'}
                         <input type="file" accept="image/*" className="hidden" disabled={Boolean(uploadingQuestionId)} onChange={event => {
                           const file = event.target.files?.[0];
@@ -429,7 +487,7 @@ export function AIQuestionReviewModal({
                           event.target.value = '';
                         }} />
                       </label>
-                      <button type="button" onClick={() => void removeQuestion(selectedIndex)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-error/20 text-error transition-colors hover:bg-error/10" title="Delete question" aria-label="Delete question"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => void removeQuestion(selectedIndex)} className="flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-error/20 text-error transition-colors hover:bg-error/10" title="Delete question" aria-label="Delete question"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </div>
                   {selectedQuestion.media_url && (

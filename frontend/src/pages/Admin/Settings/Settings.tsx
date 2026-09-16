@@ -262,7 +262,8 @@ export function Settings() {
                     </div>
                     <div className="flex justify-center w-10">
                       <ToggleSwitch 
-                        checked={matrix.newUser.email} 
+                        checked={matrix.newUser.email && emailAlerts}
+                        disabled={!emailAlerts}
                         onChange={(val) => handleToggle('newUser', 'email', val)} 
                       />
                     </div>
@@ -289,7 +290,8 @@ export function Settings() {
                     </div>
                     <div className="flex justify-center w-10">
                       <ToggleSwitch 
-                        checked={matrix.userDeleted.email} 
+                        checked={matrix.userDeleted.email && emailAlerts}
+                        disabled={!emailAlerts}
                         onChange={(val) => handleToggle('userDeleted', 'email', val)} 
                       />
                     </div>
@@ -316,7 +318,8 @@ export function Settings() {
                     </div>
                     <div className="flex justify-center w-10">
                       <ToggleSwitch 
-                        checked={matrix.userStatus.email} 
+                        checked={matrix.userStatus.email && emailAlerts}
+                        disabled={!emailAlerts}
                         onChange={(val) => handleToggle('userStatus', 'email', val)} 
                       />
                     </div>
@@ -343,7 +346,8 @@ export function Settings() {
                     </div>
                     <div className="flex justify-center w-10">
                       <ToggleSwitch 
-                        checked={matrix.userImported.email} 
+                        checked={matrix.userImported.email && emailAlerts}
+                        disabled={!emailAlerts}
                         onChange={(val) => handleToggle('userImported', 'email', val)} 
                       />
                     </div>
@@ -385,7 +389,8 @@ export function Settings() {
                     </div>
                     <div className="flex justify-center w-10">
                       <ToggleSwitch 
-                        checked={matrix.permissionChanges.email} 
+                        checked={matrix.permissionChanges.email && emailAlerts}
+                        disabled={!emailAlerts}
                         onChange={(val) => handleToggle('permissionChanges', 'email', val)} 
                       />
                     </div>
@@ -412,7 +417,8 @@ export function Settings() {
                     </div>
                     <div className="flex justify-center w-10">
                       <ToggleSwitch 
-                        checked={matrix.criticalDataDeletion.email} 
+                        checked={matrix.criticalDataDeletion.email && emailAlerts}
+                        disabled={!emailAlerts}
                         onChange={(val) => handleToggle('criticalDataDeletion', 'email', val)} 
                       />
                     </div>

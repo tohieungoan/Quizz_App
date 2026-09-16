@@ -208,7 +208,7 @@ export function Achievements() {
                 tier: 'COMMON',
                 points_required: 0,
                 type_value: 'QUIZ_COUNT',
-                target_value: 1
+                target_value: 0
               });
               setIsModalOpen(true);
             }}
@@ -324,7 +324,7 @@ export function Achievements() {
                 </div>
                 
                 <div className="mt-5 pt-5 border-t border-slate-100/80 bg-slate-50/50 -mx-6 -mb-6 p-6">
-                  <div className="flex items-center gap-4 mb-3">
+                  <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
                       <Target className="w-3.5 h-3.5 text-blue-500" />
                       Target: <span className="text-blue-500">{item.target_value} {item.type_value}</span>
@@ -336,32 +336,6 @@ export function Achievements() {
                       </div>
                     )}
                   </div>
-                  
-                  <button 
-                    onClick={() => handleViewUsers(item)}
-                    className="w-full flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-sm hover:border-primary/40 hover:bg-primary/5 transition-all group/users text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex -space-x-2 shrink-0">
-                        <div className="w-7 h-7 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center">
-                          <Users className="w-3.5 h-3.5 text-indigo-500" />
-                        </div>
-                        <div className="w-7 h-7 rounded-full border-2 border-white bg-emerald-100 flex items-center justify-center">
-                          <Star className="w-3.5 h-3.5 text-emerald-500" />
-                        </div>
-                        <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[9px] font-black text-slate-500 group-hover/users:bg-primary group-hover/users:text-white transition-colors">
-                          +99
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 group-hover/users:text-primary/70">Unlocked By</div>
-                        <div className="text-sm font-bold text-slate-800">
-                        {unlockedCount.toLocaleString()} <span className="font-bold text-slate-500">players</span>
-                      </div>
-                      </div>
-                    </div>
-                    <ChevronDown className="w-4 h-4 text-slate-300 -rotate-90 group-hover/users:text-primary group-hover/users:translate-x-1 transition-all" />
-                  </button>
                 </div>
               </div>
             );
@@ -385,173 +359,211 @@ export function Achievements() {
 
       {/* Edit/Create Modal */}
       {isModalOpen && editingAchievement && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-t-[32px] sm:rounded-[32px] shadow-2xl w-full max-w-4xl animate-in slide-in-from-bottom-full sm:zoom-in-95 duration-200 flex flex-col max-h-[95dvh] sm:max-h-[90dvh]">
-            <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex justify-between items-center relative overflow-hidden shrink-0 rounded-t-[32px]">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -z-10 translate-x-1/2 -translate-y-1/2"></div>
-              <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90dvh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-slate-100 bg-white flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                   {editingAchievement.id === 0 ? <Plus className="w-5 h-5" /> : <Edit2 className="w-5 h-5" />}
                 </div>
                 {editingAchievement.id === 0 ? 'Create New Badge' : 'Edit Achievement'}
               </h2>
             </div>
             
-            <form onSubmit={handleSave} className="p-5 sm:p-8 bg-slate-50/30 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                {/* Left Column: Basic Info Card */}
-                <div className="bg-white p-6 rounded-[24px] border border-slate-200/60 shadow-sm space-y-6">
-                  <div className="flex items-center gap-2 mb-2 pb-4 border-b border-slate-100">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-                      <Type className="w-4 h-4 text-indigo-600" />
-                    </div>
-                    <h3 className="font-extrabold text-slate-800">Basic Information</h3>
-                  </div>
-
-                  <div className="space-y-5">
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto">
+              <div className="p-6 sm:p-8">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-x-12 gap-y-8">
+                  {/* Left Column: Basic Info */}
+                  <div className="space-y-6 md:col-span-2">
                     <div>
-                      <label className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                        Name
-                      </label>
-                      <input
-                        type="text"
-                        value={editingAchievement.name}
-                        onChange={e => setEditingAchievement({...editingAchievement, name: e.target.value})}
-                        className="w-full px-4 py-3 bg-slate-50/80 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all text-slate-800 placeholder:text-slate-400 shadow-sm"
-                        placeholder="e.g. Quiz Master"
-                        required
-                      />
+                      <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <Type className="w-4 h-4 text-indigo-500" />
+                        Basic Information
+                      </h3>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Name
+                          </label>
+                          <input
+                            type="text"
+                            value={editingAchievement.name}
+                            onChange={e => setEditingAchievement({...editingAchievement, name: e.target.value})}
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all text-slate-800 placeholder:text-slate-400"
+                            placeholder="e.g. Quiz Master"
+                            required
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Description
+                          </label>
+                          <textarea
+                            value={editingAchievement.description}
+                            onChange={e => setEditingAchievement({...editingAchievement, description: e.target.value})}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all text-slate-800 placeholder:text-slate-400 resize-none"
+                            placeholder="What does the user need to do to get this?"
+                            rows={4}
+                            required
+                          />
+                        </div>
+                      </div>
                     </div>
-                    
+                  </div>
+
+                  {/* Right Column: Visuals & Rules */}
+                  <div className="space-y-6 md:col-span-3">
                     <div>
-                      <label className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                        Description
-                      </label>
-                      <textarea
-                        value={editingAchievement.description}
-                        onChange={e => setEditingAchievement({...editingAchievement, description: e.target.value})}
-                        className="w-full px-4 py-3 bg-slate-50/80 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all text-slate-800 placeholder:text-slate-400 resize-none shadow-sm"
-                        placeholder="What does the user need to do to get this?"
-                        rows={4}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
+                      <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        Visuals & Rules
+                      </h3>
 
-                {/* Right Column: Visuals & Rules Card */}
-                <div className="bg-white p-6 rounded-[24px] border border-slate-200/60 shadow-sm space-y-6">
-                  <div className="flex items-center gap-2 mb-2 pb-4 border-b border-slate-100">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-                      <Sparkles className="w-4 h-4 text-amber-600" />
-                    </div>
-                    <h3 className="font-extrabold text-slate-800">Visuals & Rules</h3>
-                  </div>
+                      <div className="grid grid-cols-2 gap-4 mb-5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Rarity Tier</label>
+                          <CustomSelect
+                            value={editingAchievement.tier}
+                            onChange={(val) => setEditingAchievement({...editingAchievement, tier: val as any})}
+                            options={[
+                              { value: 'COMMON', label: 'Common', colorClass: 'text-slate-600' },
+                              { value: 'RARE', label: 'Rare', colorClass: 'text-blue-600' },
+                              { value: 'EPIC', label: 'Epic', colorClass: 'text-purple-600' },
+                              { value: 'LEGENDARY', label: 'Legendary', colorClass: 'text-amber-500' }
+                            ]}
+                            renderOption={(opt) => (
+                              <span className={`font-bold ${opt.colorClass}`}>{opt.label}</span>
+                            )}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Badge Icon</label>
+                          <CustomSelect
+                            value={editingAchievement.icon}
+                            onChange={(val) => setEditingAchievement({...editingAchievement, icon: val})}
+                            options={[
+                              { value: 'trophy', label: 'Trophy', icon: Trophy },
+                              { value: 'award', label: 'Award', icon: Award },
+                              { value: 'zap', label: 'Zap', icon: Zap },
+                              { value: 'flame', label: 'Flame', icon: Flame },
+                              { value: 'moon', label: 'Moon', icon: Moon },
+                              { value: 'star', label: 'Star', icon: Star },
+                              { value: 'shield', label: 'Shield', icon: Shield }
+                            ]}
+                            renderOption={(opt) => (
+                              <div className="flex items-center gap-2">
+                                {opt.icon && <opt.icon className="w-4 h-4" />}
+                                <span>{opt.label}</span>
+                              </div>
+                            )}
+                          />
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-5">
-                    <div className="z-30 relative">
-                      <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Rarity Tier</label>
-                      <CustomSelect
-                        value={editingAchievement.tier}
-                        onChange={(val) => setEditingAchievement({...editingAchievement, tier: val as any})}
-                        options={[
-                          { value: 'COMMON', label: 'Common', colorClass: 'text-slate-600' },
-                          { value: 'RARE', label: 'Rare', colorClass: 'text-blue-600' },
-                          { value: 'EPIC', label: 'Epic', colorClass: 'text-purple-600' },
-                          { value: 'LEGENDARY', label: 'Legendary', colorClass: 'text-amber-500' }
-                        ]}
-                        renderOption={(opt) => (
-                          <span className={`font-bold ${opt.colorClass}`}>{opt.label}</span>
-                        )}
-                      />
-                    </div>
-                    <div className="z-30 relative">
-                      <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Badge Icon</label>
-                      <CustomSelect
-                        value={editingAchievement.icon}
-                        onChange={(val) => setEditingAchievement({...editingAchievement, icon: val})}
-                        options={[
-                          { value: 'trophy', label: 'Trophy', icon: Trophy },
-                          { value: 'award', label: 'Award', icon: Award },
-                          { value: 'zap', label: 'Zap', icon: Zap },
-                          { value: 'flame', label: 'Flame', icon: Flame },
-                          { value: 'moon', label: 'Moon', icon: Moon },
-                          { value: 'star', label: 'Star', icon: Star },
-                          { value: 'shield', label: 'Shield', icon: Shield }
-                        ]}
-                        renderOption={(opt) => (
-                          <div className="flex items-center gap-2">
-                            {opt.icon && <opt.icon className="w-4 h-4" />}
-                            <span>{opt.label}</span>
+                      <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
+                            <CustomSelect
+                              value={editingAchievement.category}
+                              onChange={(val) => setEditingAchievement({...editingAchievement, category: val as any})}
+                              options={[
+                                { value: 'TITLE', label: 'Title' },
+                                { value: 'BADGE', label: 'Badge' }
+                              ]}
+                            />
                           </div>
-                        )}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 mt-2 space-y-4">
-                    <div className="grid grid-cols-2 gap-5">
-                      <div className="z-20 relative">
-                        <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Category</label>
-                        <CustomSelect
-                          value={editingAchievement.category}
-                          onChange={(val) => setEditingAchievement({...editingAchievement, category: val as any})}
-                          options={[
-                            { value: 'TITLE', label: 'Title (Profile equip)' },
-                            { value: 'BADGE', label: 'Badge (Achievement)' }
-                          ]}
-                        />
-                      </div>
-                      <div className="z-20 relative">
-                        <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Condition Type</label>
-                        <CustomSelect
-                          value={editingAchievement.type_value}
-                          onChange={(val) => setEditingAchievement({...editingAchievement, type_value: val})}
-                          options={[
-                            { value: 'STREAK', label: 'Daily Streak' },
-                            { value: 'QUIZ_COUNT', label: 'Quiz Count' },
-                            { value: 'PERFECT_SCORE', label: 'Perfect Score' }
-                          ]}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-5">
-                      <div>
-                        <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Target Value</label>
-                        <input
-                          type="number"
-                          value={editingAchievement.target_value}
-                          onChange={e => setEditingAchievement({...editingAchievement, target_value: parseInt(e.target.value) || 1})}
-                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-slate-800 shadow-sm"
-                          min="1"
-                        />
-                      </div>
-                      <div>
-                        <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Points Required</label>
-                        <input
-                          type="number"
-                          value={editingAchievement.points_required}
-                          onChange={e => setEditingAchievement({...editingAchievement, points_required: parseInt(e.target.value) || 0})}
-                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-slate-800 shadow-sm"
-                          min="0"
-                        />
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Bonus Reward (EXP)</label>
+                            <input
+                              type="number"
+                              value={editingAchievement.points_required === 0 ? 0 : (editingAchievement.points_required || '')}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setEditingAchievement({...editingAchievement, points_required: val === '' ? '' as any : parseInt(val)});
+                              }}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-slate-800 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              min="0"
+                              placeholder="0"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Unlock Condition (Choose One)</label>
+                          <div className="space-y-2">
+                            {[
+                              { id: 'QUIZ_COUNT', label: 'Completed Quizzes', unit: 'quizzes' },
+                              { id: 'STREAK', label: 'Study Streak', unit: 'days' },
+                              { id: 'TOTAL_POINTS', label: 'Total Accumulated EXP', unit: 'EXP' },
+                              { id: 'PERFECT_SCORE', label: 'Perfect Score Achieved', unit: 'times' }
+                            ].map((condition) => {
+                              const isSelected = editingAchievement.type_value === condition.id;
+                              return (
+                                <div 
+                                  key={condition.id} 
+                                  onClick={() => {
+                                    if (!isSelected) {
+                                      setEditingAchievement({
+                                        ...editingAchievement, 
+                                        type_value: condition.id,
+                                        target_value: 0
+                                      });
+                                    }
+                                  }}
+                                  className={`flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer ${isSelected ? 'bg-primary/5 border-primary/30 ring-1 ring-primary/20' : 'bg-white border-slate-200 hover:border-slate-300'}`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isSelected ? 'border-primary bg-primary' : 'border-slate-300'}`}>
+                                      {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                    </div>
+                                    <span className={`text-[13px] font-semibold ${isSelected ? 'text-primary' : 'text-slate-600'}`}>{condition.label}</span>
+                                  </div>
+                                  
+                                  {isSelected && (
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="number"
+                                        value={editingAchievement.target_value === 0 ? 0 : (editingAchievement.target_value || '')}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setEditingAchievement({
+                                            ...editingAchievement, 
+                                            target_value: val === '' ? '' as any : parseInt(val)
+                                          });
+                                        }}
+                                        className="w-16 h-8 text-center px-2 py-1 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        min="0"
+                                      />
+                                      <span className="text-[10px] font-semibold text-slate-400 w-10 uppercase tracking-wider">{condition.unit}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-6 flex justify-end gap-3 border-t border-slate-100">
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 shrink-0 rounded-b-[24px]">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-3 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-8 py-3 rounded-xl text-sm font-bold text-white bg-primary hover:bg-[#4f39b1] hover:shadow-lg hover:shadow-primary/30 transition-all active:scale-95"
+                  className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-[#4f39b1] hover:shadow-lg hover:shadow-primary/30 transition-all active:scale-95"
                 >
                   Save Badge
                 </button>

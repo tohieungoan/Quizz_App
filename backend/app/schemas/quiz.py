@@ -74,6 +74,8 @@ class QuizResponse(QuizBase):
     published_at: Optional[datetime] = None
     active_variant_set_id: Optional[int] = None
     variant_status: Optional[str] = None
+    creator_name: Optional[str] = None
+    creator_email: Optional[str] = None
 
 class QuizPageResponse(BaseModel):
     data: List[QuizResponse]

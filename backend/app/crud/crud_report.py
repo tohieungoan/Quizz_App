@@ -16,6 +16,34 @@ from app.models.exam import Exam, ExamAssignee, ExamAnswer
 from app.models.quiz_variant import QuizVariant, QuizVariantQuestion
 from app.schemas.report import ReportMetrics, ReportListItem, ReportPageResponse, ReportParticipant, ReportQuestionAnalysis, ReportParticipantPageResponse, ReportQuestionPageResponse
 
+
+def _report_version_label(code: str | None, *, has_variant_set: bool) -> str:
+    """Translate internal version codes into user-facing report labels."""
+    if not code:
+        return "Unassigned" if has_variant_set else "Original"
+
+    normalized_code = code.strip().upper()
+    if normalized_code == "A" or normalized_code == "ORIGINAL":
+        return "Original"
+    if len(normalized_code) == 1 and "B" <= normalized_code <= "Z":
+        return f"Version {ord(normalized_code) - ord('A')}"
+    if normalized_code.isdigit():
+        return f"Version {int(normalized_code)}"
+    return code
+
+
+def _report_version_sort_key(code: str) -> tuple[int, int | str]:
+    """Keep Original first, numbered versions next, and unknown labels last."""
+    normalized_code = code.strip().upper()
+    if normalized_code in {"A", "ORIGINAL"}:
+        return (0, 0)
+    if len(normalized_code) == 1 and "B" <= normalized_code <= "Z":
+        return (1, ord(normalized_code) - ord("A"))
+    if normalized_code.isdigit():
+        return (1, int(normalized_code))
+    return (2, normalized_code)
+
+
 class CRUDReport:
     def get_metrics(self, db: Session) -> ReportMetrics:
         total_participants = db.query(func.count(Participant.id)).scalar() or 0
@@ -474,21 +502,25 @@ class CRUDReport:
             db, session_id=session_id, session_type=normalized_type, skip=0, limit=1_000_000
         )
 
+        has_variant_set = session.variant_set_id is not None
+
         def version_key(code: str | None) -> str:
             if code:
                 return code
-            return "Unassigned" if session.variant_set_id else "Original"
+            return "Unassigned" if has_variant_set else "Original"
+
+        def version_label(code: str | None) -> str:
+            return _report_version_label(code, has_variant_set=has_variant_set)
 
         questions_by_version = defaultdict(list)
         for question in question_report.data:
             questions_by_version[version_key(question.version_code)].append(question)
 
-        version_codes = sorted(
-            set(questions_by_version),
-            key=lambda value: (value not in {"A", "B", "C", "D", "E"}, value),
-        )
-        if not version_codes:
-            version_codes = ["Original"]
+        version_codes = set(questions_by_version)
+        # Version A is the immutable snapshot of the source quiz. Always expose
+        # it as Original, even when no participant happened to receive it.
+        version_codes.add("A" if has_variant_set else "Original")
+        version_codes = sorted(version_codes, key=_report_version_sort_key)
 
         navy = "1A0B82"
         light_blue = "E8E7F7"
@@ -561,7 +593,7 @@ class CRUDReport:
                 participant.rank,
                 participant.user_id or "Guest",
                 participant.nickname,
-                version_key(participant.version_code),
+                version_label(participant.version_code),
                 participant.score,
                 participant.correct_answers,
                 accuracy_value(participant.accuracy),
@@ -593,7 +625,7 @@ class CRUDReport:
         question_workbook = Workbook()
         question_workbook.remove(question_workbook.active)
         for code in version_codes:
-            sheet_name = f"Version {code}" if code in {"A", "B", "C", "D", "E"} else code
+            sheet_name = version_label(code)
             sheet = question_workbook.create_sheet(title=sheet_name[:31])
             style_title(sheet, f"{title} — Question Statistics — {sheet_name}")
             sheet["A3"] = "Session ID"
@@ -601,7 +633,7 @@ class CRUDReport:
             sheet["D3"] = "Type"
             sheet["E3"] = normalized_type
             sheet["G3"] = "Version"
-            sheet["H3"] = code
+            sheet["H3"] = sheet_name
             question_headers = [
                 "Question ID", "Original Question ID", "Question Content", "Difficulty",
                 "Total Answers", "Correct", "Incorrect", "Accuracy",

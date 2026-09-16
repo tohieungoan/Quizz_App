@@ -29,8 +29,6 @@ class ValidatedVariantQuestion:
 
 
 class QuizVariantPayloadValidator:
-    """Validate mappings and deterministically verify simple numeric variants."""
-
     _ARITHMETIC_PATTERN = re.compile(
         r"(?<![\w.])(-?\d+(?:[.,]\d+)?(?:\s*(?:\+|-|\*|/|×|÷)\s*-?\d+(?:[.,]\d+)?)+)"
     )
@@ -185,12 +183,6 @@ class QuizVariantPayloadValidator:
         generated_options: list[ValidatedVariantOption],
         numeric_answers: dict[int, list[float]],
     ) -> None:
-        """Reject wrong or unchanged answers for directly evaluable arithmetic.
-
-        Complex word problems remain subject to the normal strict mapping and AI
-        quality checks. This deterministic guard intentionally handles only a
-        small safe grammar instead of evaluating arbitrary model-produced text.
-        """
         source_expression = cls._extract_arithmetic(str(source.get("content") or ""))
         source_correct = [
             option

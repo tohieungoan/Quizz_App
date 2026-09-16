@@ -50,10 +50,10 @@ class CRUDBadge:
             
             count_map = {badge_id: count for badge_id, count in counts}
             for badge in badges:
-                badge.unlocked_count = count_map.get(badge.id, 0)
+                badge.unlocked_count = count_map.get(badge.id, 0)  # type: ignore
         else:
             for badge in badges:
-                badge.unlocked_count = 0
+                badge.unlocked_count = 0  # type: ignore
                 
         return badges, total
 

@@ -65,7 +65,8 @@ class CRUDQuiz:
         subject: Optional[str] = None
     ) -> Tuple[List[Quiz], int]:
         """Get all quizzes in the system with pagination and optional filtering."""
-        query = db.query(Quiz)
+        from sqlalchemy.orm import joinedload
+        query = db.query(Quiz).options(joinedload(Quiz.author))
         
         # Apply filters
         if keyword:
